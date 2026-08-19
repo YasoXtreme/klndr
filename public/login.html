@@ -1,103 +1,130 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Klndr | Log In</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-  <link rel="stylesheet" href="/public/css/common.css">
-  <link rel="stylesheet" href="/public/css/login.css">
-</head>
-<body>
-  <div class="login-page-wrapper">
-    <!-- Brand Header: YASSEN | Klndr -->
-    <div class="login-brand-container">
-      <div class="brand-header">
-        <img src="/assets/yassen logo.svg" alt="YASSEN" class="logo-svg">
-        <span class="brand-divider">|</span>
-        <span class="brand-title">Klndr</span>
-      </div>
-    </div>
-
-    <!-- Login Card -->
-    <div class="login-card">
-      <div class="login-card-header">
-        <div class="title-group">
-          <h1>Hello there</h1>
-          <p>Log in to your Klndr account</p>
-        </div>
-        <!-- Google Icon hand gesture with waving animation -->
-        <div class="waving-hand">
-          <span class="material-symbols-outlined" style="font-size: 38px; color: #000000;">waving_hand</span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Klndr | Log In</title>
+    <link rel="icon" href="/assets/favicon.ico" type="image/x-icon" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+    />
+    <link rel="stylesheet" href="/public/css/common.css" />
+    <link rel="stylesheet" href="/public/css/login.css" />
+  </head>
+  <body>
+    <div class="login-page-wrapper">
+      <!-- Brand Header: YASSEN | Klndr -->
+      <div class="login-brand-container">
+        <div class="brand-header">
+          <img src="/assets/yassen logo.svg" alt="YASSEN" class="logo-svg" />
+          <span class="brand-divider">|</span>
+          <span class="brand-title">Klndr</span>
         </div>
       </div>
 
-      <form id="loginForm" class="login-form">
-        <div id="loginError" class="login-error"></div>
-
-        <div class="form-group">
-          <label for="usernameInput">Username</label>
-          <input type="text" id="usernameInput" name="username" autocomplete="username" required autofocus placeholder="Enter your username">
+      <!-- Login Card -->
+      <div class="login-card">
+        <div class="login-card-header">
+          <div class="title-group">
+            <h1>Hello there</h1>
+            <p>Log in to your Klndr account</p>
+          </div>
+          <!-- Google Icon hand gesture with waving animation -->
+          <div class="waving-hand">
+            <span
+              class="material-symbols-outlined"
+              style="font-size: 38px; color: #000000"
+              >waving_hand</span
+            >
+          </div>
         </div>
 
-        <div class="form-group">
-          <label for="passwordInput">Password</label>
-          <input type="password" id="passwordInput" name="password" autocomplete="current-password" required placeholder="••••••••">
-        </div>
+        <form id="loginForm" class="login-form">
+          <div id="loginError" class="login-error"></div>
 
-        <div class="form-actions">
-          <button type="submit" id="submitBtn" class="btn-continue">Continue</button>
-        </div>
-      </form>
+          <div class="form-group">
+            <label for="usernameInput">Username</label>
+            <input
+              type="text"
+              id="usernameInput"
+              name="username"
+              autocomplete="username"
+              required
+              autofocus
+              placeholder="Enter your username"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="passwordInput">Password</label>
+            <input
+              type="password"
+              id="passwordInput"
+              name="password"
+              autocomplete="current-password"
+              required
+              placeholder="••••••••"
+            />
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="submitBtn" class="btn-continue">
+              Continue
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Beta Disclaimer Footer -->
+      <div class="login-footer-disclaimer">
+        <strong>Klndr</strong> is currently in beta and is invite only to select
+        beta testers, to get access and become a beta tester, contact
+        <strong>beta@yassen.dev</strong>
+      </div>
     </div>
 
-    <!-- Beta Disclaimer Footer -->
-    <div class="login-footer-disclaimer">
-      <strong>Klndr</strong> is currently in beta and is invite only to select beta testers, to get access and become a beta tester, contact <strong>beta@yassen.dev</strong>
-    </div>
-  </div>
+    <script>
+      const form = document.getElementById("loginForm");
+      const usernameInput = document.getElementById("usernameInput");
+      const passwordInput = document.getElementById("passwordInput");
+      const submitBtn = document.getElementById("submitBtn");
+      const errorBox = document.getElementById("loginError");
 
-  <script>
-    const form = document.getElementById('loginForm');
-    const usernameInput = document.getElementById('usernameInput');
-    const passwordInput = document.getElementById('passwordInput');
-    const submitBtn = document.getElementById('submitBtn');
-    const errorBox = document.getElementById('loginError');
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        errorBox.style.display = "none";
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Verifying...";
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      errorBox.style.display = 'none';
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Verifying...';
+        try {
+          const res = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username: usernameInput.value.trim(),
+              password: passwordInput.value,
+            }),
+          });
 
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: usernameInput.value.trim(),
-            password: passwordInput.value
-          })
-        });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || "Authentication failed");
+          }
 
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Authentication failed');
+          if (data.token) {
+            localStorage.setItem("klndr_token", data.token);
+            localStorage.setItem("klndr_user", JSON.stringify(data.user));
+          }
+
+          window.location.href = "/";
+        } catch (err) {
+          errorBox.textContent = err.message;
+          errorBox.style.display = "block";
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Continue";
         }
-
-        if (data.token) {
-          localStorage.setItem('klndr_token', data.token);
-          localStorage.setItem('klndr_user', JSON.stringify(data.user));
-        }
-
-        window.location.href = '/';
-      } catch (err) {
-        errorBox.textContent = err.message;
-        errorBox.style.display = 'block';
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Continue';
-      }
-    });
-  </script>
-</body>
+      });
+    </script>
+  </body>
 </html>
