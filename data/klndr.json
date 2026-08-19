@@ -1,0 +1,29 @@
+{
+  "users": [
+    {
+      "id": "usr_36e04bb29ba0",
+      "username": "yassen",
+      "password_hash": "$2b$10$k7a7Y3YQaozrXIDgEmqL0uSoIg0z2ZyoNEQ1m8HhdCW4aUSCwGYGi",
+      "role": "admin",
+      "created_at": 1787081442
+    }
+  ],
+  "sessions": {
+    "ses_7a327f2e9a0e1a72c5edb6050637057a5aa9116e456eed38a862788e8a6653f9": {
+      "user_id": "usr_36e04bb29ba0",
+      "created_at": 1787141017,
+      "expires_at": 1789733017
+    }
+  },
+  "tasks": [],
+  "settings": {
+    "usr_36e04bb29ba0": {
+      "startHour": 8,
+      "endHour": 20,
+      "snapMinutes": 15,
+      "bucketHours": 2,
+      "snapToRuler": true,
+      "tickPercent": 25
+    }
+  }
+}

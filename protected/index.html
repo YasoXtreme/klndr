@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Klndr | Fluid Time-Blocking Workspace</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="/public/css/common.css">
+  <link rel="stylesheet" href="/protected/css/app.css">
+</head>
+<body>
+  <!-- 1. Top Navigation Bar -->
+  <header class="app-topbar">
+    <div class="topbar-left">
+      <div class="topbar-brand">
+        <img src="/assets/yassen logo.svg" alt="YASSEN" class="logo-svg">
+        <span class="brand-divider">|</span>
+        <span class="brand-title">Klndr</span>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <!-- User Profile Pill (Opens Tabbed Account Modal) -->
+      <div class="user-profile-pill" id="userProfileTrigger" title="Account & Settings">
+        <div class="user-avatar-circle">
+          <span class="material-symbols-outlined" style="font-size: 18px; color: #000;">person</span>
+        </div>
+        <span id="topbarUsername">User</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 2. Main Dual-Pane Workspace Layout -->
+  <main class="app-workspace-layout">
+    <!-- LEFT PANE: CALENDAR TIMELINE -->
+    <section class="calendar-pane" id="calendarPane">
+      <div class="calendar-pane-header">
+        <div class="calendar-header-left">
+          <!-- Calendar Collapse Button -->
+          <button type="button" class="btn-calendar-collapse" id="btnCalendarCollapse" title="Toggle calendar width">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: #000;">chevron_left</span>
+          </button>
+          <h2 class="calendar-title">Calendar</h2>
+        </div>
+
+        <!-- Date Range Navigator -->
+        <div class="calendar-header-center">
+          <div class="calendar-date-nav-group">
+            <button type="button" class="btn-nav-arrow" id="btnPrevWeek" title="Previous week">
+              <span class="material-symbols-outlined" style="font-size: 16px;">chevron_left</span>
+            </button>
+            <span class="date-range-label" id="calendarDateRangeLabel">Loading...</span>
+            <button type="button" class="btn-nav-arrow" id="btnNextWeek" title="Next week">
+              <span class="material-symbols-outlined" style="font-size: 16px;">chevron_right</span>
+            </button>
+            <button type="button" class="btn-today" id="btnTodayWeek">Today</button>
+          </div>
+        </div>
+
+        <!-- Calendar Options Sliders Icon -->
+        <div class="calendar-header-right">
+          <button type="button" class="btn-icon-square" id="btnCalendarSliders" title="Calendar Settings">
+            <span class="material-symbols-outlined" style="font-size: 20px; color: #000;">tune</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Timeline Scrollable Workspace (0-24H) -->
+      <div class="timeline-workspace-container" id="timeline-workspace">
+        <canvas id="timelineCanvas"></canvas>
+        <div id="timelineDomOverlay"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANE: TASKS SIDEBAR DRAWER & MULTI-COLUMN FULL VIEW -->
+    <aside class="tasks-sidebar-pane" id="tasks-sidebar-pane">
+      <div class="sidebar-header">
+        <h2 class="sidebar-header-title">Tasks</h2>
+        <div class="sidebar-actions-group">
+          <!-- Popout/Export icon -->
+          <button type="button" class="btn-sidebar-icon" id="sidebarExportBtn" title="Export tasks summary">
+            <span class="material-symbols-outlined" style="font-size: 18px;">open_in_new</span>
+          </button>
+          <!-- Search icon -->
+          <button type="button" class="btn-sidebar-icon" id="sidebarSearchBtn" title="Search tasks">
+            <span class="material-symbols-outlined" style="font-size: 18px;">search</span>
+          </button>
+          <!-- Filter icon -->
+          <button type="button" class="btn-sidebar-icon" id="sidebarFilterBtn" title="Filter tasks">
+            <span class="material-symbols-outlined" style="font-size: 18px;">filter_list</span>
+          </button>
+          <!-- Collapse/Expand icon -->
+          <button type="button" class="btn-sidebar-icon" id="sidebarCollapseBtn" title="Toggle sidebar width">
+            <span class="material-symbols-outlined" style="font-size: 18px;">chevron_right</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Expandable Search Bar -->
+      <div class="sidebar-search-bar" id="sidebarSearchBar" style="display: none;">
+        <input type="text" id="sidebarSearchInput" class="sidebar-search-input" placeholder="Search tasks by name...">
+      </div>
+
+      <!-- Expandable Filter Bar (All is leftmost, Uncompleted & Unscheduled is default) -->
+      <div class="sidebar-filter-bar" id="sidebarFilterBar" style="display: none;">
+        <button type="button" class="category-filter-pill" data-category="ALL">All</button>
+        <button type="button" class="category-filter-pill active" data-category="UNCOMPLETED_UNSCHEDULED">Uncompleted & Unscheduled</button>
+        <button type="button" class="category-filter-pill" data-category="UNCOMPLETED">Uncompleted</button>
+        <button type="button" class="category-filter-pill" data-category="COMPLETED">Completed</button>
+        <button type="button" class="category-filter-pill" data-category="UNSCHEDULED">Unscheduled</button>
+        <button type="button" class="category-filter-pill" data-category="Mathematics">Mathematics</button>
+        <button type="button" class="category-filter-pill" data-category="Arabic">Arabic</button>
+        <button type="button" class="category-filter-pill" data-category="French">French</button>
+        <button type="button" class="category-filter-pill" data-category="German">German</button>
+        <button type="button" class="category-filter-pill" data-category="Biology">Biology</button>
+        <button type="button" class="category-filter-pill" data-category="Geology">Geology</button>
+        <button type="button" class="category-filter-pill" data-category="Mechanics">Mechanics</button>
+        <button type="button" class="category-filter-pill" data-category="Physics">Physics</button>
+        <button type="button" class="category-filter-pill" data-category="Chemistry">Chemistry</button>
+        <button type="button" class="category-filter-pill" data-category="Break">Break</button>
+        <button type="button" class="category-filter-pill" data-category="General">General</button>
+      </div>
+
+      <!-- Task Cards Standard Scrollable List -->
+      <div class="sidebar-tasks-scroll" id="sidebarTasksList"></div>
+
+      <!-- Multi-Column Category Kanban Container (Visible when Calendar is Collapsed) -->
+      <div class="tasks-multicolumn-container" id="tasksMulticolumnContainer" style="display: none;"></div>
+
+      <!-- Simplified Inline Task Creation Bar -->
+      <div class="sidebar-inline-create-container">
+        <div class="inline-create-box">
+          <input type="text" id="inlineTaskInput" class="inline-create-input" placeholder="Write your task here" autocomplete="off">
+          
+          <!-- 3 Right-Aligned Picker Buttons -->
+          <button type="button" class="inline-picker-btn" id="btnInlineIcon" title="Choose Icon">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: #000;">add_reaction</span>
+          </button>
+
+          <button type="button" class="inline-picker-btn" id="btnInlineColor" title="Choose Color">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: #000;">palette</span>
+          </button>
+
+          <button type="button" class="inline-picker-btn" id="btnInlineCategory" title="Choose Category">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: #000;">category</span>
+          </button>
+        </div>
+
+        <!-- 20 Icons Popup Grid -->
+        <div class="picker-popup-grid" id="inlineIconPopup"></div>
+
+        <!-- 20 Colors Popup Grid -->
+        <div class="picker-popup-grid" id="inlineColorPopup"></div>
+
+        <!-- Category Popup List -->
+        <div class="picker-popup-categories" id="inlineCategoryPopup"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ====================================================
+       3. MODALS & FLOATING EDITOR
+       ==================================================== -->
+
+  <!-- Modal 1: Tabbed Account Modal -->
+  <div class="modal-container" id="accountModal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Account & Profile</h2>
+        <button type="button" class="modal-close-btn">
+          <span class="material-symbols-outlined" style="font-size: 24px;">close</span>
+        </button>
+      </div>
+
+      <div class="modal-tabs-header">
+        <button type="button" class="modal-tab-btn active" id="tabBtnSettings">Account Settings</button>
+        <button type="button" class="modal-tab-btn" id="tabBtnAdmin" style="display: none;">Beta Users (Admin)</button>
+      </div>
+
+      <!-- Tab 1: Account Settings -->
+      <div class="modal-tab-panel" id="tabPanelSettings">
+        <div style="margin-bottom: 16px; background: #f9fafb; padding: 10px 14px; border: 1.5px solid #000; border-radius: 8px; font-size: 13.5px;">
+          <div>Logged in as: <strong id="displayCurrentUsername">user</strong></div>
+          <div>Role: <span id="displayCurrentRole" style="font-weight: 700; text-transform: uppercase;">user</span></div>
+        </div>
+
+        <!-- Change Username -->
+        <form id="changeUsernameForm" class="modal-form" style="margin-bottom: 18px;">
+          <div id="usernameStatusMsg" class="status-msg"></div>
+          <div class="form-row">
+            <label for="inputNewUsername">Change Username</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="inputNewUsername" required placeholder="New username" style="flex: 1;">
+              <button type="submit" class="btn-modal-primary" style="height: 38px;">Update</button>
+            </div>
+          </div>
+        </form>
+
+        <!-- Change Password -->
+        <form id="changePasswordForm" class="modal-form">
+          <div id="passwordStatusMsg" class="status-msg"></div>
+          <div class="form-row">
+            <label for="inputCurrentPassword">Current Password</label>
+            <input type="password" id="inputCurrentPassword" required placeholder="••••••••">
+          </div>
+          <div class="form-row-group">
+            <div class="form-row">
+              <label for="inputNewPassword">New Password</label>
+              <input type="password" id="inputNewPassword" required placeholder="••••••••">
+            </div>
+            <div class="form-row">
+              <label for="inputConfirmPassword">Confirm New Password</label>
+              <input type="password" id="inputConfirmPassword" required placeholder="••••••••">
+            </div>
+          </div>
+          <div class="modal-actions" style="justify-content: space-between;">
+            <button type="button" class="btn-modal-danger" id="btnAccountLogout">
+              <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px;">logout</span>
+              Log Out
+            </button>
+            <button type="submit" class="btn-modal-primary">Change Password</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Tab 2: Admin Beta Users Manager -->
+      <div class="modal-tab-panel" id="tabPanelAdmin" style="display: none;">
+        <form id="adminAddUserForm" class="modal-form" style="margin-bottom: 20px;">
+          <div id="adminUserStatusMsg" class="status-msg"></div>
+          <div class="form-row">
+            <label for="adminNewUsername">New Beta Username</label>
+            <input type="text" id="adminNewUsername" required placeholder="e.g. john">
+          </div>
+          <div class="form-row-group">
+            <div class="form-row">
+              <label for="adminNewPassword">Password</label>
+              <input type="password" id="adminNewPassword" required placeholder="••••••••">
+            </div>
+            <div class="form-row">
+              <label for="adminNewRole">Role</label>
+              <select id="adminNewRole">
+                <option value="user">Beta Tester</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn-modal-primary" style="align-self: flex-end;">Add User</button>
+        </form>
+
+        <h3 style="font-size: 15px; font-weight: 800; margin-bottom: 8px;">Active Beta Accounts</h3>
+        <div style="max-height: 180px; overflow-y: auto; border: 1.5px solid #000; border-radius: 8px;">
+          <table class="admin-users-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Created</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="adminUsersTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Floating Block Edit Preview (Pure card with Cancel and Apply) -->
+  <div class="modal-container" id="blockPreviewModal">
+    <div class="modal-backdrop"></div>
+    <div class="floating-block-editor-wrapper">
+      <!-- Direct Floating Task Card Preview -->
+      <div class="block-preview-card" id="previewCardElement">
+        <div class="task-badge-circle">
+          <span class="material-symbols-outlined" id="previewCardBadgeIcon" style="font-size: 18px; color: #000;">square_foot</span>
+        </div>
+        
+        <input type="text" id="previewTaskTitleInput" class="preview-title-input" placeholder="Task title...">
+
+        <div class="preview-controls-row">
+          <button type="button" class="inline-picker-btn" id="btnPreviewIcon" title="Change Icon">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: #000;">add_reaction</span>
+          </button>
+          <button type="button" class="inline-picker-btn" id="btnPreviewColor" title="Change Color">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: #000;">palette</span>
+          </button>
+          <button type="button" class="inline-picker-btn" id="btnPreviewCategory" title="Change Category">
+            <span class="material-symbols-outlined" style="font-size: 18px; color: #000;">category</span>
+          </button>
+        </div>
+
+        <!-- Pickers Popups for Preview Modal -->
+        <div class="picker-popup-grid" id="previewIconPopup"></div>
+        <div class="picker-popup-grid" id="previewColorPopup"></div>
+        <div class="picker-popup-categories" id="previewCategoryPopup"></div>
+      </div>
+
+      <!-- Action Buttons below floating card -->
+      <div class="floating-block-actions">
+        <button type="button" class="btn-modal-secondary" id="btnCancelBlockPreview">Cancel</button>
+        <button type="button" class="btn-modal-primary" id="btnApplyBlockPreview">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Calendar Settings Modal -->
+  <div class="modal-container" id="settingsModal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Calendar Options</h2>
+        <button type="button" class="modal-close-btn">
+          <span class="material-symbols-outlined" style="font-size: 24px;">close</span>
+        </button>
+      </div>
+      <form id="settingsForm" class="modal-form">
+        <div class="form-row">
+          <label for="settingsBucketHours">Header Bucket Size</label>
+          <select id="settingsBucketHours">
+            <option value="1">1 Hour</option>
+            <option value="2" selected>2 Hours (Default)</option>
+            <option value="4">4 Hours</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label class="checkbox-label">
+            <input type="checkbox" id="settingsSnapToRuler">
+            <span>Snap to ruler ticks</span>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label for="settingsTickPercent">Tick Size Fraction (% of bucket)</label>
+          <select id="settingsTickPercent">
+            <option value="10">10%</option>
+            <option value="12.5">12.5%</option>
+            <option value="25" selected>25% (Quarter of bucket - Default)</option>
+            <option value="50">50% (Half bucket)</option>
+          </select>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-modal-secondary modal-close-btn">Cancel</button>
+          <button type="submit" class="btn-modal-primary">Save Options</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Context Menu (All Google Icons, Uniform Sizing) -->
+  <div class="context-menu" id="taskContextMenu">
+    <div class="context-menu-item" id="ctxEdit">
+      <span class="material-symbols-outlined">edit</span>
+      <span>Edit Details</span>
+    </div>
+    <div class="context-menu-item" id="ctxToggleLock">
+      <span class="material-symbols-outlined">lock</span>
+      <span>Lock Duration</span>
+    </div>
+    <div class="context-menu-item" id="ctxUnschedule">
+      <span class="material-symbols-outlined">event_busy</span>
+      <span>Remove from Calendar</span>
+    </div>
+    <div class="context-menu-item danger" id="ctxDelete">
+      <span class="material-symbols-outlined" style="color: #ef4444;">delete</span>
+      <span>Delete Task</span>
+    </div>
+  </div>
+
+  <!-- Protected Frontend Scripts -->
+  <script src="/protected/js/api.js"></script>
+  <script src="/protected/js/physics-engine.js"></script>
+  <script src="/protected/js/timeline-canvas.js"></script>
+  <script src="/protected/js/timeline-dom.js"></script>
+  <script src="/protected/js/drag-controller.js"></script>
+  <script src="/protected/js/sidebar.js"></script>
+  <script src="/protected/js/app.js"></script>
+</body>
+</html>

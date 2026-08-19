@@ -1,0 +1,27 @@
+{
+  "name": "klndr",
+  "version": "1.0.0",
+  "description": "Klndr: A Fluid Time-Blocking Workspace",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "add-user": "node scripts/manage-users.js add",
+    "list-users": "node scripts/manage-users.js list",
+    "delete-user": "node scripts/manage-users.js delete"
+  },
+  "keywords": [
+    "calendar",
+    "time-blocking",
+    "productivity",
+    "canvas",
+    "fluid-ui"
+  ],
+  "author": "Yassen",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2"
+  }
+}
