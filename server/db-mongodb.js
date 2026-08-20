@@ -6,7 +6,9 @@ const mongoUri = process.env.MONGODB_URI;
 const databaseName = process.env.MONGODB_DB || "klndr";
 
 if (!mongoUri) {
-  throw new Error("MONGODB_URI must be configured when running on Vercel");
+  throw new Error(
+    "MONGODB_URI must be set (see .env for local development, or Vercel env vars in production)",
+  );
 }
 
 let clientPromise;
