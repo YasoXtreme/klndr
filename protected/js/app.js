@@ -97,8 +97,10 @@ class KlndrApp {
       this.initFloatingBlockEditor();
       this.initSettingsModal();
       this.initCalendarCollapse();
+      this.initAnnouncementsTab();
 
       await this.loadTasks();
+      await this.initMissedAnnouncementsCarousel();
 
     } catch (err) {
       console.error('Failed to initialize Klndr:', err);
@@ -113,6 +115,10 @@ class KlndrApp {
     const adminTabBtn = document.getElementById('tabBtnAdmin');
     if (adminTabBtn) {
       adminTabBtn.style.display = this.user.role === 'admin' ? 'block' : 'none';
+    }
+    const createAnnouncementBtn = document.getElementById('btnCreateAnnouncement');
+    if (createAnnouncementBtn) {
+      createAnnouncementBtn.style.display = this.user.role === 'admin' ? 'flex' : 'none';
     }
   }
 
@@ -165,24 +171,57 @@ class KlndrApp {
   }
 
   initKeyboardListeners() {
+    const isCalendarFocused = () => {
+      const isModalOpen = Boolean(document.querySelector('.modal-container.active, .context-menu.active'));
+      if (isModalOpen) return false;
+
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable)) {
+        return false;
+      }
+
+      const calPane = document.getElementById('calendarPane');
+      if (calPane && calPane.classList.contains('is-collapsed')) return false;
+
+      return true;
+    };
+
     window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        this.closeAllModals();
+        return;
+      }
+
+      if (!isCalendarFocused()) {
+        return;
+      }
+
       if (e.key === 'Shift') {
         this.dragController.setModifiers(true, e.ctrlKey || e.metaKey);
       }
       if (e.key === 'Control' || e.key === 'Meta') {
         this.dragController.setModifiers(e.shiftKey, true);
       }
-      if (e.key === 'Escape') {
-        this.closeAllModals();
-      }
     });
 
     window.addEventListener('keyup', (e) => {
-      if (e.key === 'Shift') {
-        this.dragController.setModifiers(false, e.ctrlKey || e.metaKey);
+      if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Meta') {
+        if (!isCalendarFocused()) {
+          this.dragController.setModifiers(false, false);
+          return;
+        }
+        if (e.key === 'Shift') {
+          this.dragController.setModifiers(false, e.ctrlKey || e.metaKey);
+        }
+        if (e.key === 'Control' || e.key === 'Meta') {
+          this.dragController.setModifiers(e.shiftKey, false);
+        }
       }
-      if (e.key === 'Control' || e.key === 'Meta') {
-        this.dragController.setModifiers(e.shiftKey, false);
+    });
+
+    window.addEventListener('blur', () => {
+      if (this.dragController) {
+        this.dragController.setModifiers(false, false);
       }
     });
   }
@@ -320,23 +359,36 @@ class KlndrApp {
   initAccountModal() {
     const tabBtnSettings = document.getElementById('tabBtnSettings');
     const tabBtnAdmin = document.getElementById('tabBtnAdmin');
+    const tabBtnAnnouncements = document.getElementById('tabBtnAnnouncements');
     const panelSettings = document.getElementById('tabPanelSettings');
     const panelAdmin = document.getElementById('tabPanelAdmin');
+    const panelAnnouncements = document.getElementById('tabPanelAnnouncements');
 
-    if (tabBtnSettings && tabBtnAdmin) {
-      tabBtnSettings.addEventListener('click', () => {
-        tabBtnSettings.classList.add('active');
-        tabBtnAdmin.classList.remove('active');
-        panelSettings.style.display = 'block';
-        panelAdmin.style.display = 'none';
-      });
+    const allTabBtns = [tabBtnSettings, tabBtnAdmin, tabBtnAnnouncements].filter(Boolean);
+    const allPanels = [panelSettings, panelAdmin, panelAnnouncements].filter(Boolean);
 
+    const switchTab = (activeBtn, activePanel) => {
+      allTabBtns.forEach(b => b.classList.remove('active'));
+      allPanels.forEach(p => p.style.display = 'none');
+      activeBtn.classList.add('active');
+      activePanel.style.display = 'block';
+    };
+
+    if (tabBtnSettings) {
+      tabBtnSettings.addEventListener('click', () => switchTab(tabBtnSettings, panelSettings));
+    }
+
+    if (tabBtnAdmin) {
       tabBtnAdmin.addEventListener('click', async () => {
-        tabBtnAdmin.classList.add('active');
-        tabBtnSettings.classList.remove('active');
-        panelAdmin.style.display = 'block';
-        panelSettings.style.display = 'none';
+        switchTab(tabBtnAdmin, panelAdmin);
         await this.loadAdminUsersList();
+      });
+    }
+
+    if (tabBtnAnnouncements) {
+      tabBtnAnnouncements.addEventListener('click', async () => {
+        switchTab(tabBtnAnnouncements, panelAnnouncements);
+        await this.loadAnnouncementsList();
       });
     }
 
@@ -676,6 +728,10 @@ class KlndrApp {
 
   openBlockPreviewModal(task) {
     this.closeAllModals();
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setPlayhead(null);
+      this.canvasRenderer.setSnapGuide(null);
+    }
     this.selectedTask = task;
     this.previewTaskState = {
       icon: task.icon || 'task_alt',
@@ -704,6 +760,10 @@ class KlndrApp {
 
   openAccountModal() {
     this.closeAllModals();
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setPlayhead(null);
+      this.canvasRenderer.setSnapGuide(null);
+    }
     const modal = document.getElementById('accountModal');
     if (modal) {
       document.getElementById('displayCurrentUsername').textContent = this.user.username;
@@ -714,6 +774,10 @@ class KlndrApp {
 
   openSettingsModal() {
     this.closeAllModals();
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setPlayhead(null);
+      this.canvasRenderer.setSnapGuide(null);
+    }
     const modal = document.getElementById('settingsModal');
     if (modal) {
       document.getElementById('settingsBucketHours').value = this.settings.bucketHours || 2;
@@ -725,6 +789,10 @@ class KlndrApp {
 
   openContextMenu(task, clientX, clientY) {
     this.closeAllModals();
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setPlayhead(null);
+      this.canvasRenderer.setSnapGuide(null);
+    }
     this.selectedTask = task;
     const menu = document.getElementById('taskContextMenu');
     if (!menu) return;
@@ -797,9 +865,331 @@ class KlndrApp {
     setTimeout(() => window.addEventListener('click', closeContext), 10);
   }
 
+  // ==========================================
+  // ANNOUNCEMENT HELPERS
+  // ==========================================
+
+  formatDate(unixTs) {
+    const d = new Date(unixTs * 1000);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  }
+
+  formatDateTime(unixTs) {
+    const d = new Date(unixTs * 1000);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}, ${hours}:${minutes} ${ampm}`;
+  }
+
+  // ==========================================
+  // ANNOUNCEMENTS TAB (Settings Modal)
+  // ==========================================
+
+  async loadAnnouncementsList() {
+    const listEl = document.getElementById('announcementsList');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    try {
+      const data = await API.getAnnouncements();
+      const announcements = (data && data.announcements) ? data.announcements : [];
+
+      if (announcements.length === 0) {
+        // The CSS :empty::after pseudo-element will show the "No announcements yet." text
+        return;
+      }
+
+      // Show newest first in the list
+      [...announcements].reverse().forEach(a => {
+        const item = document.createElement('div');
+        item.className = 'announcement-list-item';
+        item.innerHTML = `
+          <span class="announcement-list-item-title">${this._escapeHtml(a.title)}</span>
+          <span class="announcement-list-item-date">${this.formatDate(a.created_at)}</span>
+          <span class="material-symbols-outlined announcement-list-item-chevron" style="font-size: 16px">chevron_right</span>
+        `;
+        item.addEventListener('click', () => this.openAnnouncementViewModal(a));
+        listEl.appendChild(item);
+      });
+    } catch (err) {
+      listEl.innerHTML = `<div style="padding: 16px; color: #ef4444; font-size: 13px; font-weight: 600;">${err.message}</div>`;
+    }
+  }
+
+
+  openAnnouncementViewModal(announcement) {
+    this.closeAllModals();
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setPlayhead(null);
+      this.canvasRenderer.setSnapGuide(null);
+    }
+    const modal = document.getElementById('announcementViewModal');
+    const titleEl = document.getElementById('announcementViewTitle');
+    const metaEl = document.getElementById('announcementViewMeta');
+    const contentEl = document.getElementById('announcementViewContent');
+    const headerImgWrap = document.getElementById('announcementViewHeaderImg');
+    const headerImgEl = document.getElementById('announcementHeaderImgEl');
+
+    if (!modal) return;
+
+    titleEl.textContent = announcement.title;
+    metaEl.textContent = this.formatDateTime(announcement.created_at);
+    contentEl.innerHTML = this.renderMarkdown(announcement.content);
+
+    if (announcement.header_image_url) {
+      headerImgEl.src = announcement.header_image_url;
+      headerImgWrap.style.display = 'block';
+    } else {
+      headerImgWrap.style.display = 'none';
+    }
+
+    modal.classList.add('active');
+  }
+
+  initAnnouncementsTab() {
+    // Wire close buttons for announcement view modal
+    const btnCloseView = document.getElementById('btnCloseAnnouncementView');
+    if (btnCloseView) {
+      btnCloseView.addEventListener('click', () => {
+        this.closeAllModals();
+      });
+    }
+
+    // Wire backdrop click for announcement view modal
+    const viewModal = document.getElementById('announcementViewModal');
+    if (viewModal) {
+      viewModal.querySelector('.modal-backdrop').addEventListener('click', () => {
+        this.closeAllModals();
+      });
+    }
+
+    // Wire "New Announcement" button (admin only)
+    const btnCreate = document.getElementById('btnCreateAnnouncement');
+    if (btnCreate) {
+      btnCreate.addEventListener('click', () => {
+        this.openAnnouncementCreateModal();
+      });
+    }
+
+    // Wire create modal close/cancel buttons
+    const btnCloseCreate = document.getElementById('btnCloseAnnouncementCreate');
+    const btnCancelCreate = document.getElementById('btnCancelAnnouncementCreate');
+    const createModal = document.getElementById('announcementCreateModal');
+
+    if (btnCloseCreate) {
+      btnCloseCreate.addEventListener('click', () => this.closeAllModals());
+    }
+    if (btnCancelCreate) {
+      btnCancelCreate.addEventListener('click', () => this.closeAllModals());
+    }
+    if (createModal) {
+      createModal.querySelector('.modal-backdrop').addEventListener('click', () => {
+        this.closeAllModals();
+      });
+    }
+
+    // Wire create announcement form submission
+    const form = document.getElementById('announcementCreateForm');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('announcementTitleInput').value.trim();
+        const content = document.getElementById('announcementContentInput').value.trim();
+        const msgEl = document.getElementById('announcementCreateStatusMsg');
+
+        try {
+          await API.createAnnouncement(title, content, null);
+          msgEl.textContent = 'Announcement posted successfully.';
+          msgEl.className = 'status-msg success';
+          form.reset();
+          setTimeout(() => {
+            this.closeAllModals();
+            msgEl.className = 'status-msg';
+            // Re-open account modal on announcements tab and refresh list
+            this.openAccountModal();
+            const tabBtnAnnouncements = document.getElementById('tabBtnAnnouncements');
+            const tabPanelAnnouncements = document.getElementById('tabPanelAnnouncements');
+            if (tabBtnAnnouncements && tabPanelAnnouncements) {
+              document.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
+              document.querySelectorAll('.modal-tab-panel').forEach(p => p.style.display = 'none');
+              tabBtnAnnouncements.classList.add('active');
+              tabPanelAnnouncements.style.display = 'block';
+            }
+            this.loadAnnouncementsList();
+          }, 800);
+        } catch (err) {
+          msgEl.textContent = err.message;
+          msgEl.className = 'status-msg error';
+        }
+      });
+    }
+  }
+
+  openAnnouncementCreateModal() {
+    this.closeAllModals();
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setPlayhead(null);
+      this.canvasRenderer.setSnapGuide(null);
+    }
+    const modal = document.getElementById('announcementCreateModal');
+    if (!modal) return;
+    document.getElementById('announcementCreateForm').reset();
+    const msgEl = document.getElementById('announcementCreateStatusMsg');
+    if (msgEl) msgEl.className = 'status-msg';
+    modal.classList.add('active');
+    setTimeout(() => {
+      document.getElementById('announcementTitleInput')?.focus();
+    }, 40);
+  }
+
+  // ==========================================
+  // MISSED ANNOUNCEMENTS CAROUSEL
+  // ==========================================
+
+  async initMissedAnnouncementsCarousel() {
+    try {
+      const missed = await API.getMissedAnnouncements();
+      if (!missed || missed.length === 0) return;
+
+      let currentIndex = 0;
+
+      const modal = document.getElementById('missedAnnouncementsModal');
+      const counterEl = document.getElementById('carouselCounter');
+      const titleEl = document.getElementById('carouselTitle');
+      const metaEl = document.getElementById('carouselMeta');
+      const contentEl = document.getElementById('carouselContent');
+      const headerImgWrap = document.getElementById('carouselHeaderImg');
+      const headerImgEl = document.getElementById('carouselHeaderImgEl');
+      const prevBtn = document.getElementById('carouselPrevBtn');
+      const nextBtn = document.getElementById('carouselNextBtn');
+      const dismissBtn = document.getElementById('carouselDismissBtn');
+
+      if (!modal) return;
+
+      const renderSlide = (index) => {
+        const a = missed[index];
+        counterEl.textContent = `${index + 1} / ${missed.length}`;
+        titleEl.textContent = a.title;
+        metaEl.textContent = this.formatDateTime(a.created_at);
+        contentEl.innerHTML = this.renderMarkdown(a.content);
+
+        if (a.header_image_url) {
+          headerImgEl.src = a.header_image_url;
+          headerImgWrap.style.display = 'block';
+        } else {
+          headerImgWrap.style.display = 'none';
+        }
+
+        prevBtn.disabled = index === 0;
+        nextBtn.disabled = index === missed.length - 1;
+      };
+
+      const dismiss = async () => {
+        modal.classList.remove('active');
+        const lastId = missed[missed.length - 1].id;
+        try {
+          await API.markAnnouncementsSeen(lastId);
+        } catch (e) {
+          console.warn('Could not mark announcements as seen', e);
+        }
+      };
+
+      prevBtn.addEventListener('click', () => {
+        if (currentIndex > 0) {
+          currentIndex--;
+          renderSlide(currentIndex);
+        }
+      });
+
+      nextBtn.addEventListener('click', () => {
+        if (currentIndex < missed.length - 1) {
+          currentIndex++;
+          renderSlide(currentIndex);
+        }
+      });
+
+      dismissBtn.addEventListener('click', dismiss);
+
+      // Backdrop click also dismisses
+      modal.querySelector('.modal-backdrop').addEventListener('click', dismiss);
+
+      renderSlide(0);
+      if (this.canvasRenderer) {
+        this.canvasRenderer.setPlayhead(null);
+        this.canvasRenderer.setSnapGuide(null);
+      }
+      modal.classList.add('active');
+    } catch (err) {
+      console.warn('Could not load missed announcements:', err);
+    }
+  }
+
+  renderMarkdown(rawText) {
+    if (!rawText) return '';
+
+    // First escape HTML entities to prevent XSS
+    const escaped = this._escapeHtml(rawText);
+    const lines = escaped.split(/\r?\n/);
+    const result = [];
+    let inList = false;
+
+    const formatInline = (str) => {
+      return str
+        .replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>')
+        .replace(/_([^_\n]+)_/g, '<em>$1</em>');
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const listMatch = line.match(/^(\s*)\*\s+(.+)$/);
+
+      if (listMatch) {
+        if (!inList) {
+          inList = true;
+          result.push('<ul class="announcement-ul">');
+        }
+        result.push(`<li>${formatInline(listMatch[2])}</li>`);
+      } else {
+        if (inList) {
+          inList = false;
+          result.push('</ul>');
+        }
+        if (line.trim() === '') {
+          result.push('<div class="announcement-spacer"></div>');
+        } else {
+          result.push(`<p class="announcement-p">${formatInline(line)}</p>`);
+        }
+      }
+    }
+
+    if (inList) {
+      result.push('</ul>');
+    }
+
+    return result.join('');
+  }
+
+  _escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   closeAllModals() {
     document.querySelectorAll('.modal-container, .context-menu').forEach(m => m.classList.remove('active'));
     this.selectedTask = null;
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setPlayhead(null);
+      this.canvasRenderer.setSnapGuide(null);
+    }
   }
 
   renderAll() {

@@ -262,6 +262,65 @@ app.put("/api/settings", requireApiAuth, async (req, res) => {
   res.json({ settings });
 });
 
+// Announcements API
+app.get("/api/announcements", requireApiAuth, async (req, res) => {
+  try {
+    const [announcements, userLastSeenId] = await Promise.all([
+      db.getAllAnnouncements(),
+      db.getUserLastSeenAnnouncementId(req.user.id),
+    ]);
+    res.json({ announcements, user_last_seen_id: userLastSeenId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/announcements/missed", requireApiAuth, async (req, res) => {
+  try {
+    const [all, lastSeenId] = await Promise.all([
+      db.getAllAnnouncements(),
+      db.getUserLastSeenAnnouncementId(req.user.id),
+    ]);
+    const missed = all.filter((a) => a.id > lastSeenId);
+    res.json({ announcements: missed });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/announcements", requireApiAuth, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden: Admin access required" });
+  }
+  const { title, content, header_image_url } = req.body;
+  if (!title || !content) {
+    return res.status(400).json({ error: "Title and content are required" });
+  }
+  try {
+    const announcement = await db.createAnnouncement(req.user.id, {
+      title,
+      content,
+      header_image_url,
+    });
+    res.status(201).json({ announcement });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put("/api/announcements/seen", requireApiAuth, async (req, res) => {
+  const { last_seen_id } = req.body;
+  if (last_seen_id === undefined || last_seen_id === null) {
+    return res.status(400).json({ error: "last_seen_id is required" });
+  }
+  try {
+    await db.updateUserLastSeenAnnouncementId(req.user.id, last_seen_id);
+    res.json({ message: "Last seen announcement updated" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Catch-all 404 handler
 app.use((req, res) => {
   if (req.accepts("html")) {

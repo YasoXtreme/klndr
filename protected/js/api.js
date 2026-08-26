@@ -104,5 +104,30 @@ const API = {
       body: JSON.stringify(settings)
     });
     return data.settings;
+  },
+
+  // Announcements APIs
+  async getAnnouncements() {
+    return this.request('/api/announcements');
+  },
+
+  async getMissedAnnouncements() {
+    const data = await this.request('/api/announcements/missed');
+    return data ? data.announcements || [] : [];
+  },
+
+  async createAnnouncement(title, content, headerImageUrl) {
+    const data = await this.request('/api/announcements', {
+      method: 'POST',
+      body: JSON.stringify({ title, content, header_image_url: headerImageUrl || null })
+    });
+    return data ? data.announcement : null;
+  },
+
+  async markAnnouncementsSeen(lastSeenId) {
+    return this.request('/api/announcements/seen', {
+      method: 'PUT',
+      body: JSON.stringify({ last_seen_id: lastSeenId })
+    });
   }
 };

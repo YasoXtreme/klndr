@@ -18,18 +18,66 @@ class DragController {
   }
 
   setModifiers(shift, ctrl) {
-    this.isShiftPressed = Boolean(shift);
-    this.isCtrlPressed = Boolean(ctrl);
-    this.canvas.setShiftMode(this.isShiftPressed);
+    if (!this.isCalendarActiveAndFocused()) {
+      if (this.isShiftPressed || this.isCtrlPressed) {
+        this.isShiftPressed = false;
+        this.isCtrlPressed = false;
+        this.canvas.setShiftMode(false);
+      }
+      return;
+    }
+
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable)) {
+      if (this.isShiftPressed || this.isCtrlPressed) {
+        this.isShiftPressed = false;
+        this.isCtrlPressed = false;
+        this.canvas.setShiftMode(false);
+      }
+      return;
+    }
+
+    const newShift = Boolean(shift);
+    const newCtrl = Boolean(ctrl);
+
+    if (this.isShiftPressed !== newShift || this.isCtrlPressed !== newCtrl) {
+      this.isShiftPressed = newShift;
+      this.isCtrlPressed = newCtrl;
+      this.canvas.setShiftMode(this.isShiftPressed);
+    }
+  }
+
+  isModalOrOverlayActive() {
+    return Boolean(document.querySelector('.modal-container.active, .context-menu.active'));
+  }
+
+  isCalendarActiveAndFocused() {
+    if (this.isModalOrOverlayActive()) return false;
+    const calPane = document.getElementById('calendarPane');
+    if (calPane && calPane.classList.contains('is-collapsed')) return false;
+    return true;
   }
 
   initListeners() {
     const timelineContainer = document.getElementById('timeline-workspace');
     if (!timelineContainer) return;
 
-    // Listen on window for smooth movement everywhere
-    window.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-    window.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+    // Hover playhead on timeline workspace: only when focused and not in modal
+    timelineContainer.addEventListener('mousemove', (e) => {
+      if (this.activeDrag) return;
+      if (!this.isCalendarActiveAndFocused()) {
+        this.canvas.setPlayhead(null);
+        this.canvas.setSnapGuide(null);
+        return;
+      }
+      const canvasRect = this.canvas.canvas.getBoundingClientRect();
+      const relX = e.clientX - canvasRect.left;
+      if (relX >= this.canvas.dayHeaderWidth) {
+        this.canvas.setPlayhead(relX);
+      } else {
+        this.canvas.setPlayhead(null);
+      }
+    });
 
     timelineContainer.addEventListener('mouseleave', () => {
       if (!this.activeDrag) {
@@ -39,10 +87,15 @@ class DragController {
     });
 
     timelineContainer.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+
+    // Window listeners for active drag operations
+    window.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+    window.addEventListener('mouseup', (e) => this.handleMouseUp(e));
   }
 
   handleMouseDown(e) {
     if (e.button !== 0) return;
+    if (this.isModalOrOverlayActive()) return;
 
     const handleEl = e.target.closest('.resize-handle');
     const taskCard = e.target.closest('.timeline-task-card');
@@ -115,6 +168,8 @@ class DragController {
 
   // Sidebar drag initiation
   startSidebarTaskDrag(task, clientX, clientY) {
+    if (this.isModalOrOverlayActive()) return;
+
     const duration = task.default_timing || task.total_duration || 120;
 
     // Create global floating ghost attached to body following cursor anywhere
@@ -153,6 +208,15 @@ class DragController {
   }
 
   handleMouseMove(e) {
+    // If no drag is active, do not execute work on global mousemove
+    if (!this.activeDrag) {
+      return;
+    }
+
+    if (this.isModalOrOverlayActive()) {
+      return;
+    }
+
     const timelineWorkspace = document.getElementById('timeline-workspace');
     const canvasRect = this.canvas.canvas.getBoundingClientRect();
     const workspaceRect = timelineWorkspace ? timelineWorkspace.getBoundingClientRect() : canvasRect;
@@ -163,21 +227,6 @@ class DragController {
       e.clientY >= workspaceRect.top &&
       e.clientY <= workspaceRect.bottom
     );
-
-    // 1. Playhead on timeline when hovering
-    if (!this.activeDrag) {
-      if (isInsideCalendar) {
-        const relX = e.clientX - canvasRect.left;
-        if (relX >= this.canvas.dayHeaderWidth) {
-          this.canvas.setPlayhead(relX);
-        } else {
-          this.canvas.setPlayhead(null);
-        }
-      } else {
-        this.canvas.setPlayhead(null);
-      }
-      return;
-    }
 
     const drag = this.activeDrag;
 

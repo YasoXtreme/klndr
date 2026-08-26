@@ -850,6 +850,7 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  contain: layout;
 }
 
 .modal-container.active {
@@ -864,6 +865,7 @@ body {
   height: 100%;
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(2px);
+  will-change: opacity;
 }
 
 .modal-card {
@@ -879,6 +881,8 @@ body {
   animation: modalPop 0.15s ease-out;
   max-height: 90vh;
   overflow-y: auto;
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
 @keyframes modalPop {
@@ -1195,3 +1199,285 @@ body {
   justify-content: center;
   box-sizing: border-box;
 }
+
+/* ====================================================
+   ANNOUNCEMENT SYSTEM
+   ==================================================== */
+
+/* Tab header row with create button */
+.announcements-tab-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.btn-create-announcement {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+}
+
+/* Scrollable list of announcements */
+.announcements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.announcements-list:empty::after {
+  content: 'No announcements yet.';
+  display: block;
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.announcement-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1.5px solid #e5e7eb;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  user-select: none;
+}
+
+.announcement-list-item:last-child {
+  border-bottom: none;
+}
+
+.announcement-list-item:hover {
+  background: var(--accent-mint);
+}
+
+.announcement-list-item-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #000;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.announcement-list-item-date {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.announcement-list-item-chevron {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+/* Announcement view modal card — slightly wider */
+.announcement-view-card {
+  max-width: 580px !important;
+}
+
+.announcement-view-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Shared meta text (date & time beneath title) */
+.announcement-meta {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-top: 1px;
+}
+
+/* Optional header image banner */
+.announcement-header-img {
+  width: 100%;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid var(--color-border);
+}
+
+.announcement-header-img img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+}
+
+/* Multi-line content body */
+.announcement-content {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.65;
+  color: #111;
+  word-break: break-word;
+  margin-top: 12px;
+}
+
+.announcement-content .announcement-p {
+  margin: 0 0 8px 0;
+}
+
+.announcement-content .announcement-p:last-child {
+  margin-bottom: 0;
+}
+
+.announcement-content .announcement-ul {
+  margin: 6px 0 10px 0;
+  padding-left: 24px;
+  list-style-type: disc;
+}
+
+.announcement-content .announcement-ul li {
+  margin-bottom: 4px;
+  line-height: 1.55;
+}
+
+.announcement-content .announcement-ul li:last-child {
+  margin-bottom: 0;
+}
+
+.announcement-content .announcement-spacer {
+  height: 8px;
+}
+
+.announcement-content strong {
+  font-weight: 800;
+  color: #000;
+}
+
+.announcement-content em {
+  font-style: italic;
+}
+
+/* Create announcement textarea */
+.announcement-create-textarea {
+  width: 100%;
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.55;
+  resize: vertical;
+  outline: none;
+  min-height: 140px;
+  box-sizing: border-box;
+}
+
+.announcement-create-textarea::placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* ---- Missed Announcements Carousel ---- */
+.announcement-carousel-card {
+  max-width: 560px !important;
+  padding-top: 18px !important;
+}
+
+.announcement-carousel-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.carousel-left-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.carousel-campaign-icon {
+  font-size: 22px !important;
+  color: #000;
+}
+
+.carousel-counter {
+  font-size: 13px;
+  font-weight: 700;
+  background: #f3f4f6;
+  border: 1.5px solid var(--color-border);
+  border-radius: 20px;
+  padding: 2px 10px;
+}
+
+.carousel-nav-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-carousel-nav {
+  width: 34px;
+  height: 34px;
+  background: #ffffff;
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.btn-carousel-nav:hover:not(:disabled) {
+  background: var(--accent-mint);
+  transform: translateY(-1px);
+}
+
+.btn-carousel-nav:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-carousel-dismiss {
+  height: 34px;
+  padding: 0 14px;
+  background: #ffffff;
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.12s ease;
+}
+
+.btn-carousel-dismiss:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
+.carousel-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0 0 4px 0;
+}
+
+.carousel-content {
+  max-height: 260px;
+  overflow-y: auto;
+}
+

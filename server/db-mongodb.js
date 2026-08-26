@@ -33,6 +33,9 @@ async function getDatabase() {
       database
         .collection("settings")
         .createIndex({ user_id: 1 }, { unique: true }),
+      database
+        .collection("announcements")
+        .createIndex({ id: 1 }, { unique: true }),
     ]);
   }
   return database;
@@ -59,6 +62,7 @@ async function collections() {
     sessions: db.collection("sessions"),
     tasks: db.collection("tasks"),
     settings: db.collection("settings"),
+    announcements: db.collection("announcements"),
   };
 }
 
@@ -312,6 +316,66 @@ async function updateSettings(userId, newSettings) {
   return values;
 }
 
+// ==========================================
+// ANNOUNCEMENTS
+// ==========================================
+
+async function getLastAnnouncementId() {
+  const { announcements } = await collections();
+  const last = await announcements
+    .find({})
+    .sort({ id: -1 })
+    .limit(1)
+    .toArray();
+  return last.length > 0 ? last[0].id : 0;
+}
+
+async function createAnnouncement(adminUserId, { title, content, header_image_url }) {
+  const { announcements } = await collections();
+  const nextId = (await getLastAnnouncementId()) + 1;
+  const announcement = {
+    id: nextId,
+    title: title || "Untitled Announcement",
+    content: content || "",
+    header_image_url: header_image_url || null,
+    created_by: adminUserId,
+    created_at: Math.floor(Date.now() / 1000),
+  };
+  await announcements.insertOne(announcement);
+  const { _id, ...safe } = announcement;
+  return safe;
+}
+
+async function getAllAnnouncements() {
+  const { announcements } = await collections();
+  const list = await announcements.find({}).sort({ id: 1 }).toArray();
+  return list.map(({ _id, ...a }) => a);
+}
+
+async function getAnnouncementById(id) {
+  const { announcements } = await collections();
+  const a = await announcements.findOne({ id: Number(id) });
+  if (!a) return null;
+  const { _id, ...safe } = a;
+  return safe;
+}
+
+async function getUserLastSeenAnnouncementId(userId) {
+  const { users } = await collections();
+  const user = await users.findOne({ id: userId });
+  return user ? (user.last_seen_announcement_id || 0) : 0;
+}
+
+async function updateUserLastSeenAnnouncementId(userId, announcementId) {
+  const { users } = await collections();
+  await users.updateOne(
+    { id: userId },
+    { $set: { last_seen_announcement_id: Number(announcementId) } }
+  );
+}
+
+
+
 module.exports = {
   ready,
   getUserByUsername,
@@ -333,4 +397,10 @@ module.exports = {
   deleteTask,
   getSettings,
   updateSettings,
+  createAnnouncement,
+  getAllAnnouncements,
+  getAnnouncementById,
+  getLastAnnouncementId,
+  getUserLastSeenAnnouncementId,
+  updateUserLastSeenAnnouncementId,
 };

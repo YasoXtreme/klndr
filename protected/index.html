@@ -400,7 +400,7 @@
         <div class="modal-tabs-header">
           <button
             type="button"
-            class="modal-tab-btn active"
+            class="modal-tab-btn activeS"
             id="tabBtnSettings"
           >
             Account Settings
@@ -412,6 +412,13 @@
             style="display: none"
           >
             Beta Users (Admin)
+          </button>
+          <button
+            type="button"
+            class="modal-tab-btn"
+            id="tabBtnAnnouncements"
+          >
+            Announcements
           </button>
         </div>
 
@@ -588,6 +595,22 @@
             </table>
           </div>
         </div>
+
+        <!-- Tab 3: Announcements -->
+        <div class="modal-tab-panel" id="tabPanelAnnouncements" style="display: none">
+          <div class="announcements-tab-header">
+            <button
+              type="button"
+              class="btn-modal-primary btn-create-announcement"
+              id="btnCreateAnnouncement"
+              style="display: none"
+            >
+              <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">add</span>
+              New Announcement
+            </button>
+          </div>
+          <div id="announcementsList" class="announcements-list"></div>
+        </div>
       </div>
     </div>
 
@@ -730,6 +753,99 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Modal: Announcement View -->
+    <div class="modal-container" id="announcementViewModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card announcement-view-card">
+        <div class="modal-header">
+          <div class="announcement-view-header-text">
+            <h2 id="announcementViewTitle"></h2>
+            <span id="announcementViewMeta" class="announcement-meta"></span>
+          </div>
+          <button type="button" class="modal-close-btn" id="btnCloseAnnouncementView">
+            <span class="material-symbols-outlined" style="font-size: 24px">close</span>
+          </button>
+        </div>
+        <div id="announcementViewHeaderImg" class="announcement-header-img" style="display: none">
+          <img id="announcementHeaderImgEl" src="" alt="Announcement header" />
+        </div>
+        <div id="announcementViewContent" class="announcement-content"></div>
+      </div>
+    </div>
+
+    <!-- Modal: Create Announcement (Admin only) -->
+    <div class="modal-container" id="announcementCreateModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>New Announcement</h2>
+          <button type="button" class="modal-close-btn" id="btnCloseAnnouncementCreate">
+            <span class="material-symbols-outlined" style="font-size: 24px">close</span>
+          </button>
+        </div>
+        <form id="announcementCreateForm" class="modal-form">
+          <div id="announcementCreateStatusMsg" class="status-msg"></div>
+          <div class="form-row">
+            <input
+              type="text"
+              id="announcementTitleInput"
+              placeholder="Announcement title"
+              required
+            />
+          </div>
+          <div class="form-row">
+            <textarea
+              id="announcementContentInput"
+              class="announcement-create-textarea"
+              placeholder="Write your announcement here... (*bold*, _italic_, * list item)"
+              rows="7"
+              required
+            ></textarea>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-modal-secondary" id="btnCancelAnnouncementCreate">
+              Cancel
+            </button>
+            <button type="submit" class="btn-modal-primary">
+              <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">send</span>
+              Post Announcement
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Missed Announcements Carousel -->
+    <div class="modal-container" id="missedAnnouncementsModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card announcement-carousel-card">
+        <div class="announcement-carousel-topbar">
+          <div class="carousel-left-group">
+            <span class="material-symbols-outlined carousel-campaign-icon">campaign</span>
+            <span id="carouselCounter" class="carousel-counter">1 / 1</span>
+          </div>
+          <div class="carousel-nav-btns">
+            <button type="button" class="btn-carousel-nav" id="carouselPrevBtn" title="Previous">
+              <span class="material-symbols-outlined" style="font-size: 20px">chevron_left</span>
+            </button>
+            <button type="button" class="btn-carousel-nav" id="carouselNextBtn" title="Next">
+              <span class="material-symbols-outlined" style="font-size: 20px">chevron_right</span>
+            </button>
+            <button type="button" class="btn-carousel-dismiss" id="carouselDismissBtn">
+              <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">close</span>
+              Dismiss
+            </button>
+          </div>
+        </div>
+        <div id="carouselHeaderImg" class="announcement-header-img" style="display: none">
+          <img id="carouselHeaderImgEl" src="" alt="Announcement header" />
+        </div>
+        <h2 id="carouselTitle" class="carousel-title"></h2>
+        <span id="carouselMeta" class="announcement-meta"></span>
+        <div id="carouselContent" class="announcement-content carousel-content"></div>
       </div>
     </div>
 

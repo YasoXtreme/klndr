@@ -20,6 +20,7 @@ class TimelineCanvas {
     this.isShiftMode = false; // When Shift is pressed, switches to Buckets Mode
     this.hoverPlayheadX = null;
     this.snapGuideX = null;
+    this._rafId = null;
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -28,18 +29,30 @@ class TimelineCanvas {
   setShiftMode(enabled) {
     if (this.isShiftMode !== enabled) {
       this.isShiftMode = enabled;
-      this.render();
+      this.requestRender();
     }
   }
 
   setPlayhead(x) {
-    this.hoverPlayheadX = x;
-    this.render();
+    if (this.hoverPlayheadX !== x) {
+      this.hoverPlayheadX = x;
+      this.requestRender();
+    }
   }
 
   setSnapGuide(x) {
-    this.snapGuideX = x;
-    this.render();
+    if (this.snapGuideX !== x) {
+      this.snapGuideX = x;
+      this.requestRender();
+    }
+  }
+
+  requestRender() {
+    if (this._rafId) return;
+    this._rafId = requestAnimationFrame(() => {
+      this._rafId = null;
+      this.render();
+    });
   }
 
   resize() {
@@ -105,10 +118,22 @@ class TimelineCanvas {
   }
 
   render() {
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
     if (!this.ctx) return;
+
+    // Skip drawing if the calendar pane is collapsed or has zero dimensions
+    const calPane = document.getElementById('calendarPane');
+    if (calPane && calPane.classList.contains('is-collapsed')) {
+      return;
+    }
+
     const ctx = this.ctx;
     const w = this.width;
     const h = this.height;
+    if (!w || !h || w <= 0 || h <= 0) return;
 
     ctx.clearRect(0, 0, w, h);
 
