@@ -105,11 +105,35 @@ const PhysicsEngine = {
     });
 
     // Sort all non-target segments starting at or after the target start time
-    const targetSeg = segments.find(s => s.isTarget);
-    if (!targetSeg) return updates;
+    let targetSeg = segments.find(s => s.isTarget);
 
-    // Filter segments that need checking (starting from target's end boundary)
-    const otherSegments = segments.filter(s => !s.isTarget).sort((a, b) => a.startTime - b.startTime);
+    // The active task may not be on this day yet — dragged in from another day or
+    // straight from the sidebar. Inject it so the destination day still ripples
+    // instead of silently doing nothing.
+    if (!targetSeg) {
+      const activeTask = allTasks.find(t => t.id === activeTaskId);
+      if (!activeTask) return updates;
+
+      targetSeg = {
+        taskId: activeTaskId,
+        segmentIndex: activeSegmentIndex || 0,
+        startTime: newStartTime,
+        duration: newDuration,
+        endTime: newStartTime + newDuration * 60,
+        isLocked: activeTask.is_locked !== false,
+        isTarget: true,
+        taskRef: activeTask
+      };
+      segments.push(targetSeg);
+    }
+
+    // Only segments that reach into or past the target can be displaced. Without
+    // the endTime test a segment sitting hours EARLIER in the day still compares
+    // as "before the push boundary" and gets dragged forward with everything
+    // else, which scrambles the untouched part of the schedule.
+    const otherSegments = segments
+      .filter(s => !s.isTarget && s.endTime > targetSeg.startTime)
+      .sort((a, b) => a.startTime - b.startTime);
 
     let currentPushBoundary = targetSeg.startTime + targetSeg.duration * 60;
 

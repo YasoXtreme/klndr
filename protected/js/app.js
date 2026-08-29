@@ -24,6 +24,46 @@ class KlndrApp {
 
     this.isCalendarCollapsed = false;
     this.isTasksCollapsed = false;
+
+    // Optimistic writes: every local edit bumps a task's revision. A server
+    // response is only allowed to overwrite a task whose revision still matches
+    // the one that request was issued at, so a slow reply can never resurrect
+    // stale values over a newer edit.
+    this.taskRevisions = new Map();
+    this.pendingWrites = 0;
+  }
+
+  bumpRevision(taskId) {
+    const rev = (this.taskRevisions.get(taskId) || 0) + 1;
+    this.taskRevisions.set(taskId, rev);
+    return rev;
+  }
+
+  // Mutate in place rather than replacing the object: an in-flight drag holds a
+  // direct reference to its task, and swapping the object out from under it
+  // would leave the drag editing an orphan.
+  static mergeTask(target, source) {
+    Object.assign(target, source);
+  }
+
+  setPending(delta) {
+    this.pendingWrites = Math.max(0, this.pendingWrites + delta);
+    const chip = document.getElementById('syncStatusChip');
+    if (chip) chip.classList.toggle('is-visible', this.pendingWrites > 0);
+  }
+
+  showToast(message, kind = 'info') {
+    let el = document.getElementById('klndrToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'klndrToast';
+      el.className = 'klndr-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = message;
+    el.className = `klndr-toast is-visible ${kind === 'error' ? 'is-error' : ''}`;
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => el.classList.remove('is-visible'), 4000);
   }
 
   async init() {
@@ -676,20 +716,13 @@ class KlndrApp {
         if (!this.selectedTask) return;
         const newTitle = titleInput.value.trim() || this.selectedTask.title;
 
-        const updated = await API.updateTask(this.selectedTask.id, {
+        this.closeAllModals();
+        await this.optimisticTaskUpdate(this.selectedTask.id, {
           title: newTitle,
           icon: this.previewTaskState.icon,
           color: this.previewTaskState.color,
           category: this.previewTaskState.category
         });
-
-        const idx = this.tasks.findIndex(t => t.id === updated.id);
-        if (idx !== -1) {
-          this.tasks[idx] = updated;
-        }
-
-        this.closeAllModals();
-        this.renderAll();
       });
     }
 
@@ -733,29 +766,148 @@ class KlndrApp {
     this.renderAll();
   }
 
+  /**
+   * Apply a drag's result to the screen immediately, then persist it in the
+   * background. The user never waits on the network to see where their block
+   * landed; if the write fails the affected tasks snap back and say so.
+   */
   async commitTaskUpdates(updatesList) {
-    const updated = await API.batchUpdateTasks(updatesList);
-    updated.forEach(u => {
-      const idx = this.tasks.findIndex(t => t.id === u.id);
-      if (idx !== -1) {
-        this.tasks[idx] = u;
-      } else {
-        this.tasks.push(u);
-      }
+    if (!updatesList || !updatesList.length) return;
+
+    const rollback = new Map();
+    const issuedRevisions = new Map();
+
+    updatesList.forEach(u => {
+      const task = this.tasks.find(t => t.id === u.id);
+      if (!task) return;
+
+      rollback.set(u.id, {
+        start_times: [...task.start_times],
+        durations: [...task.durations],
+        total_duration: task.total_duration
+      });
+
+      KlndrApp.mergeTask(task, {
+        start_times: [...u.start_times],
+        durations: [...u.durations],
+        total_duration: u.total_duration
+      });
+
+      issuedRevisions.set(u.id, this.bumpRevision(u.id));
     });
+
     this.renderAll();
+    this.setPending(1);
+
+    try {
+      const updated = await API.batchUpdateTasks(updatesList);
+
+      let diverged = false;
+      updated.forEach(serverTask => {
+        // A newer local edit already superseded this reply — keep the screen.
+        if (this.taskRevisions.get(serverTask.id) !== issuedRevisions.get(serverTask.id)) return;
+
+        const task = this.tasks.find(t => t.id === serverTask.id);
+        if (!task) {
+          this.tasks.push(serverTask);
+          diverged = true;
+          return;
+        }
+        if (!KlndrApp.sameSchedule(task, serverTask)) diverged = true;
+        KlndrApp.mergeTask(task, serverTask);
+      });
+
+      // Normally the server agrees with what is already drawn, so there is
+      // nothing to repaint. Never repaint mid-drag: render() rebuilds the block
+      // layer and would tear the element out from under the pointer.
+      if (diverged && !(this.dragController && this.dragController.activeDrag)) {
+        this.renderAll();
+      }
+    } catch (err) {
+      console.error('Failed to save schedule change', err);
+
+      rollback.forEach((snapshot, id) => {
+        if (this.taskRevisions.get(id) !== issuedRevisions.get(id)) return;
+        const task = this.tasks.find(t => t.id === id);
+        if (task) KlndrApp.mergeTask(task, snapshot);
+      });
+
+      this.renderAll();
+      this.showToast("Couldn't save that change — reverted.", 'error');
+    } finally {
+      this.setPending(-1);
+    }
+  }
+
+  /**
+   * Single-task edits, applied to the screen first and persisted behind it.
+   * Same revision guard as commitTaskUpdates: a reply may only touch a task that
+   * has not been edited again since that request went out.
+   */
+  async optimisticTaskUpdate(taskId, patch) {
+    const task = this.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const previous = {};
+    Object.keys(patch).forEach(key => { previous[key] = task[key]; });
+
+    KlndrApp.mergeTask(task, patch);
+    const rev = this.bumpRevision(taskId);
+    this.renderAll();
+    this.setPending(1);
+
+    try {
+      const updated = await API.updateTask(taskId, patch);
+      if (updated && this.taskRevisions.get(taskId) === rev) {
+        KlndrApp.mergeTask(task, updated);
+        if (!(this.dragController && this.dragController.activeDrag)) this.renderAll();
+      }
+    } catch (err) {
+      console.error('Failed to save task update', err);
+      if (this.taskRevisions.get(taskId) === rev) {
+        KlndrApp.mergeTask(task, previous);
+        this.renderAll();
+        this.showToast("Couldn't save that change — reverted.", 'error');
+      }
+    } finally {
+      this.setPending(-1);
+    }
+  }
+
+  async optimisticDeleteTask(taskId) {
+    const index = this.tasks.findIndex(t => t.id === taskId);
+    if (index === -1) return;
+
+    const [removed] = this.tasks.splice(index, 1);
+    this.renderAll();
+    this.setPending(1);
+
+    try {
+      await API.deleteTask(taskId);
+    } catch (err) {
+      console.error('Failed to delete task', err);
+      this.tasks.splice(index, 0, removed);
+      this.renderAll();
+      this.showToast("Couldn't delete that task — it's back.", 'error');
+    } finally {
+      this.setPending(-1);
+    }
+  }
+
+  static sameSchedule(a, b) {
+    const starts = b.start_times || [];
+    const durations = b.durations || [];
+    if (a.start_times.length !== starts.length) return false;
+    if (a.durations.length !== durations.length) return false;
+    return starts.every((v, i) => v === a.start_times[i]) &&
+      durations.every((v, i) => v === a.durations[i]);
   }
 
   async handleTaskInteraction(action, payload) {
     switch (action) {
       case 'toggleComplete': {
         const { taskId, completed } = payload;
-        const task = this.tasks.find(t => t.id === taskId);
-        if (task) {
-          task.completed = completed;
-          await API.updateTask(taskId, { completed });
-          this.renderAll();
-        }
+        await this.optimisticTaskUpdate(taskId, { completed });
         break;
       }
 
@@ -882,20 +1034,14 @@ class KlndrApp {
     if (lockOpt) {
       lockOpt.onclick = async () => {
         this.closeAllModals();
-        const updated = await API.updateTask(task.id, { is_locked: !isLocked });
-        const idx = this.tasks.findIndex(t => t.id === updated.id);
-        if (idx !== -1) this.tasks[idx] = updated;
-        this.renderAll();
+        await this.optimisticTaskUpdate(task.id, { is_locked: !isLocked });
       };
     }
 
     if (unscheduleOpt) {
       unscheduleOpt.onclick = async () => {
         this.closeAllModals();
-        const updated = await API.updateTask(task.id, { start_times: [], durations: [] });
-        const idx = this.tasks.findIndex(t => t.id === updated.id);
-        if (idx !== -1) this.tasks[idx] = updated;
-        this.renderAll();
+        await this.optimisticTaskUpdate(task.id, { start_times: [], durations: [] });
       };
     }
 
@@ -903,9 +1049,7 @@ class KlndrApp {
       deleteOpt.onclick = async () => {
         this.closeAllModals();
         if (confirm(`Delete "${task.title}"?`)) {
-          await API.deleteTask(task.id);
-          this.tasks = this.tasks.filter(t => t.id !== task.id);
-          this.renderAll();
+          await this.optimisticDeleteTask(task.id);
         }
       };
     }

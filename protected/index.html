@@ -98,6 +98,11 @@
 
           <!-- Zoom controls & Calendar Options -->
           <div class="calendar-header-right">
+            <!-- Only appears while a background save is in flight; edits are
+                 already on screen by the time it shows. -->
+            <div class="sync-status-chip" id="syncStatusChip">
+              <span class="sync-status-dot"></span>Saving
+            </div>
             <div class="calendar-zoom-group">
               <button
                 type="button"

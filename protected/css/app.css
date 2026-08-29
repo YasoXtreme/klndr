@@ -397,6 +397,60 @@ body {
   pointer-events: none;
 }
 
+/* Ghosts sit under the real blocks so a projected position never hides the
+   block it came from. */
+.timeline-ghost-layer,
+.timeline-block-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.timeline-ghost-layer { z-index: 1; }
+.timeline-block-layer { z-index: 2; }
+
+/* PROJECTION PREVIEW: where an in-flight drag will actually leave things,
+   including every block the physics engine is about to push out of the way. */
+.timeline-ghost-block {
+  position: absolute;
+  display: none;
+  box-sizing: border-box;
+  border: 2.4px dashed rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-block);
+  opacity: 0.5;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.timeline-ghost-block.is-active-task {
+  border-style: solid;
+  opacity: 0.62;
+}
+
+.timeline-ghost-label {
+  position: absolute;
+  left: 7px;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #000000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A block whose ghost now speaks for it fades back, so the eye follows the
+   projected position rather than the stale one. The extra selector outranks the
+   completed-task opacity, which is also !important. */
+.timeline-block-layer .timeline-task-card.is-superseded {
+  opacity: 0.16 !important;
+  filter: grayscale(0.7);
+}
+
 /* ====================================================
    3. TASK CARDS
    ==================================================== */
@@ -599,27 +653,154 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Resize handles are full-height edge zones INSIDE the block. Keeping them
+   inside means touching blocks no longer fight over the same pixels, and hiding
+   them until hover keeps a dense week from looking like a pincushion. */
 .resize-handle {
   position: absolute;
-  top: 50%;
-  width: 12px;
-  height: 12px;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ew-resize;
+  opacity: 0;
+  z-index: 6;
+  transition: opacity 0.12s ease;
+}
+
+.resize-handle-left { left: 0; }
+.resize-handle-right { right: 0; }
+
+.resize-handle-grip {
+  width: 4px;
+  height: 46%;
+  min-height: 12px;
+  background: #ffffff;
+  border: 1.5px solid var(--color-border);
+  border-radius: 3px;
+  pointer-events: none;
+  transition: background-color 0.1s ease, transform 0.1s ease;
+}
+
+.timeline-task-card:hover .resize-handle,
+.timeline-task-card.is-resizing .resize-handle {
+  opacity: 1;
+}
+
+.resize-handle:hover .resize-handle-grip {
+  background: #000000;
+  transform: scaleX(1.4);
+}
+
+/* At a shared boundary the middle ~18px belongs to the seam, so the block's own
+   handle widens and moves its grip outward. Both targets stay comfortably large:
+   the seam in the centre, this block's own handle just beyond it. */
+.timeline-task-card.has-seam-left .resize-handle-left,
+.timeline-task-card.has-seam-right .resize-handle-right {
+  width: 26px;
+}
+
+.timeline-task-card.has-seam-left .resize-handle-left {
+  justify-content: flex-end;
+  padding-right: 3px;
+}
+
+.timeline-task-card.has-seam-right .resize-handle-right {
+  justify-content: flex-start;
+  padding-left: 3px;
+}
+
+/* When the seam pops in, both neighbours reveal their grips too, so it is plain
+   that resizing one block alone is still on the table. */
+.timeline-task-card.is-seam-partner .resize-handle {
+  opacity: 1;
+}
+
+/* Narrow blocks cannot spare 14px on each side. */
+.timeline-task-card.is-xs .resize-handle { width: 9px; }
+.timeline-task-card.is-min .resize-handle { width: 6px; }
+.timeline-task-card.is-min .resize-handle-grip { width: 2px; }
+
+/* The badge must never swallow a click meant for the left handle. */
+.timeline-task-card .task-badge-circle {
+  pointer-events: none;
+}
+
+/* SEAM: the shared boundary between two touching blocks. It is not a permanent
+   fixture — it stays out of the way until the pointer is right on the boundary,
+   then bounces into existence. Dragging it moves the boundary itself: both
+   blocks resize, their combined span unchanged. Either block can still be
+   resized on its own using its own handle, just outside the seam zone. */
+.timeline-seam-handle {
+  position: absolute;
+  width: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  pointer-events: none;
+  z-index: 25;
+}
+
+/* The hit target is full size the instant the seam arms. Only the grip bounces:
+   animating the handle itself would mean a click landing during the animation
+   hits a target smaller than the one the user is aiming at. */
+.timeline-seam-handle.is-armed,
+.timeline-seam-handle.is-active {
+  pointer-events: auto;
+}
+
+.seam-grip {
+  width: 6px;
+  height: 54%;
+  min-height: 16px;
   background: #ffffff;
   border: 2px solid var(--color-border);
-  border-radius: 50%;
-  transform: translateY(-50%);
-  cursor: ew-resize;
-  z-index: 5;
-  transition: transform 0.1s ease, background-color 0.1s ease;
+  border-radius: 4px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.2);
+  transition: background-color 0.1s ease;
 }
 
-.resize-handle:hover {
+.timeline-seam-handle.is-armed .seam-grip,
+.timeline-seam-handle.is-active .seam-grip {
+  opacity: 1;
+  transform: scale(1);
+  animation: seam-bounce-in 0.36s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes seam-bounce-in {
+  0% { opacity: 0; transform: scale(0.2); }
+  45% { opacity: 1; transform: scale(1.28); }
+  68% { transform: scale(0.9); }
+  84% { transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.timeline-seam-handle.is-armed .seam-grip {
+  background: var(--accent-mint);
+}
+
+.timeline-seam-handle.is-active .seam-grip {
   background: #000000;
-  transform: translateY(-50%) scale(1.25);
 }
 
-.resize-handle-left { left: -6px; }
-.resize-handle-right { right: -6px; }
+@media (prefers-reduced-motion: reduce) {
+  .timeline-seam-handle.is-armed .seam-grip,
+  .timeline-seam-handle.is-active .seam-grip {
+    animation: none;
+  }
+}
+
+body.is-seam-dragging,
+body.is-seam-dragging * {
+  cursor: col-resize !important;
+}
 
 .split-connection-dot {
   position: absolute;
@@ -1657,3 +1838,155 @@ body {
   overflow-y: auto;
 }
 
+
+/* ====================================================
+   9. TIMELINE TOOLTIP & DRAG HINT
+   ==================================================== */
+
+/* Shown only for blocks whose size tier has hidden their title or time.
+   Blocks that already show everything get no tooltip at all. */
+.timeline-tooltip {
+  position: fixed;
+  z-index: 3000;
+  max-width: 260px;
+  padding: 8px 12px 9px 17px;
+  background: #ffffff;
+  border: 2.4px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  font-family: inherit;
+}
+
+.timeline-tooltip.is-below {
+  box-shadow: 4px -4px 0 rgba(0, 0, 0, 0.9);
+}
+
+.timeline-tooltip::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  background: var(--tip-accent, var(--color-green));
+  border-right: 2px solid var(--color-border);
+  border-radius: 7px 0 0 7px;
+}
+
+.timeline-tooltip-title {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #000000;
+}
+
+.timeline-tooltip-meta {
+  margin-top: 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.timeline-tooltip-category {
+  margin-top: 6px;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: #6b7280;
+}
+
+/* Tells the user what the drag is about to do before they commit to it. */
+.drag-hint-chip {
+  position: fixed;
+  z-index: 3200;
+  display: none;
+  padding: 6px 11px;
+  background: #000000;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 7px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+}
+
+.drag-hint-chip.is-warning {
+  background: #b45309;
+}
+
+/* ====================================================
+   10. OPTIMISTIC WRITE FEEDBACK
+   Edits land on screen immediately and persist in the background, so the only
+   things left to surface are "still saving" and "that didn't save".
+   ==================================================== */
+
+.sync-status-chip {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  margin-right: 8px;
+  border: 2px solid var(--color-border);
+  border-radius: 999px;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.sync-status-chip.is-visible {
+  display: inline-flex;
+}
+
+.sync-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-mint, #9ae659);
+  animation: sync-pulse 1s ease-in-out infinite;
+}
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+.klndr-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translate(-50%, 14px);
+  z-index: 4000;
+  max-width: 420px;
+  padding: 11px 16px;
+  border: 2.5px solid var(--color-border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 4px 4px 0 var(--color-border);
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.klndr-toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.klndr-toast.is-error {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-status-dot { animation: none; opacity: 1; }
+  .klndr-toast { transition: none; }
+}
