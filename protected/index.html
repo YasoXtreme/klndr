@@ -678,6 +678,10 @@
             placeholder="Task title..."
           />
 
+          <!-- Title, colour, icon and category belong to the task, so editing
+               from one block changes every block of it. Say so. -->
+          <div class="preview-scope-note" id="previewScopeNote"></div>
+
           <div class="preview-controls-row">
             <button
               type="button"
@@ -901,6 +905,14 @@
         <span class="material-symbols-outlined">lock</span>
         <span>Lock Duration</span>
       </div>
+      <div class="context-menu-item" id="ctxSplit">
+        <span class="material-symbols-outlined">content_cut</span>
+        <span>Split here</span>
+      </div>
+      <div class="context-menu-item" id="ctxRemoveBlock">
+        <span class="material-symbols-outlined">scan_delete</span>
+        <span>Remove this block</span>
+      </div>
       <div class="context-menu-item" id="ctxUnschedule">
         <span class="material-symbols-outlined">event_busy</span>
         <span>Remove from Calendar</span>
@@ -915,6 +927,7 @@
 
     <!-- Protected Frontend Scripts -->
     <script src="/protected/js/api.js"></script>
+    <script src="/protected/js/task-model.js"></script>
     <script src="/protected/js/physics-engine.js"></script>
     <script src="/protected/js/timeline-canvas.js"></script>
     <script src="/protected/js/timeline-dom.js"></script>

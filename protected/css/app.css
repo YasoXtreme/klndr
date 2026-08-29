@@ -802,21 +802,6 @@ body.is-seam-dragging * {
   cursor: col-resize !important;
 }
 
-.split-connection-dot {
-  position: absolute;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  background: #ffffff;
-  border: 2px solid #000000;
-  border-radius: 50%;
-  transform: translateY(-50%);
-  z-index: 4;
-}
-
-.split-dot-left { left: -5px; }
-.split-dot-right { right: -5px; }
-
 .task-lock-indicator {
   position: absolute;
   bottom: 4px;
@@ -1989,4 +1974,163 @@ body.is-seam-dragging * {
 @media (prefers-reduced-motion: reduce) {
   .sync-status-dot { animation: none; opacity: 1; }
   .klndr-toast { transition: none; }
+}
+
+/* ====================================================
+   11. SEGMENTS: PILL, FOCUS HIGHLIGHT, CONNECTOR WIRES
+   A task can occupy several blocks. Each block is independent — its own time,
+   its own completion — but they share one task in the panel.
+   ==================================================== */
+
+/* The pill is the completion control AND the position indicator. Fusing them
+   means they never fight for the same pixels on a narrow block, which two
+   separate controls would. Shape carries "am I part of a split": a square
+   stands alone, a capsule belongs to something. Fill carries "am I done" — a
+   value difference, so it survives greyscale and colour blindness. */
+.segment-pill {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  height: 18px;
+  min-width: 18px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 2px solid var(--color-border);
+  color: #111827;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  z-index: 7;
+  transition: background-color 0.12s ease, border-radius 0.18s ease, transform 0.1s ease;
+}
+
+.segment-pill.is-single { border-radius: 5px; }
+.segment-pill.is-segment { border-radius: 9px; }
+
+.segment-pill:hover { transform: scale(1.08); }
+
+.segment-pill.is-done {
+  background: #000000;
+  color: #ffffff;
+}
+
+.segment-pill-check {
+  font-size: 14px;
+  font-weight: 800;
+  color: transparent;
+}
+
+.segment-pill.is-done .segment-pill-check { color: #ffffff; }
+
+.segment-pill-label { pointer-events: none; }
+
+/* Tight blocks: the pill is the last thing to go, and the last thing it gives
+   up is the denominator. Below that only fill state survives. */
+.timeline-task-card.is-xs .segment-pill {
+  top: 4px;
+  right: 3px;
+  height: 16px;
+  padding: 0 3px;
+  font-size: 9px;
+}
+
+.timeline-task-card.is-min .segment-pill {
+  top: 4px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: 11px;
+  min-width: 0;
+  height: 11px;
+  padding: 0;
+  border-width: 2px;
+  font-size: 0;
+}
+
+.timeline-task-card.is-min .segment-pill:hover { transform: translateX(-50%) scale(1.15); }
+.timeline-task-card.is-min .segment-pill .segment-pill-check { display: none; }
+
+/* FOCUS: hovering any block pulls its family forward and pushes the rest back.
+   The dim comes from one class on the container, so a hover never costs a class
+   toggle per block. Opacity only — a greyscale filter would rasterize every
+   card and reads far heavier than intended. */
+.timeline-block-layer .timeline-task-card {
+  transition: opacity 0.14s ease;
+}
+
+.timeline-block-layer.has-focus .timeline-task-card:not(.is-focus):not(.is-sibling) {
+  opacity: 0.6;
+}
+
+.timeline-block-layer .timeline-task-card.is-sibling {
+  box-shadow: 0 0 0 2.5px #000000, var(--shadow-hard, 3px 3px 0 #000);
+}
+
+/* Wires are drawn above the blocks: the old bridges lived under them, so a
+   block between two halves hid the link entirely. */
+.timeline-wire-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.timeline-wire-label {
+  font-size: 9px;
+  font-weight: 800;
+  fill: #111827;
+}
+
+/* A part-done task is neither checked nor unchecked, and must not read as
+   "not started" in the panel. */
+.task-checkbox.is-partial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.task-checkbox-partial {
+  width: 9px;
+  height: 3px;
+  background: #000000;
+  border-radius: 1px;
+}
+
+.timeline-tooltip-session {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4b5563;
+}
+
+/* A menu item that cannot act right now still says why via its title. */
+.context-menu-item.is-disabled {
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-block-layer .timeline-task-card,
+  .segment-pill {
+    transition: none;
+  }
+}
+
+.preview-scope-note {
+  margin-top: 8px;
+  padding: 5px 9px;
+  border: 2px solid var(--color-border);
+  border-radius: 6px;
+  background: #fef9c3;
+  font-size: 11px;
+  font-weight: 700;
+  color: #713f12;
 }

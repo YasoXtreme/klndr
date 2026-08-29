@@ -1,41 +1,14 @@
 // Klndr Physics & Timeline Layout Engine
-// Handles Cascading Ripples, Session Splitting, Collision Detection, and Snapping
+//
+// Everything here works on a flat list of SEGMENTS, not on tasks. A segment is
+// one block on the calendar; a task's own blocks are ordinary obstacles to each
+// other, exactly like anyone else's. That is the whole point of the model — a
+// block is a real thing you can push, split and delete on its own.
+//
+// Entry shape: { taskId, segmentId, startTime, duration, endTime, isLocked, completed }
 
 const PhysicsEngine = {
   MIN_TASK_DURATION_MINUTES: 15,
-
-  /**
-   * Helper: Flatten task into individual segments with reference to parent task
-   */
-  getSegmentsForDay(tasks, dayStartTimestamp, dayEndTimestamp) {
-    const segments = [];
-
-    tasks.forEach(task => {
-      if (!task.start_times || task.start_times.length === 0) return;
-
-      task.start_times.forEach((st, idx) => {
-        const dur = task.durations[idx] || task.total_duration || 60;
-        const et = st + dur * 60;
-
-        // Check if segment is in this day
-        if (st < dayEndTimestamp && et > dayStartTimestamp) {
-          segments.push({
-            taskId: task.id,
-            segmentIndex: idx,
-            startTime: st,
-            duration: dur,
-            endTime: et,
-            isLocked: task.is_locked !== false,
-            taskRef: task
-          });
-        }
-      });
-    });
-
-    // Sort chronologically by start time
-    segments.sort((a, b) => a.startTime - b.startTime);
-    return segments;
-  },
 
   /**
    * Snapping logic: Snap timestamp to resolution (e.g. 15min, 30min, or custom bucket)
@@ -46,231 +19,207 @@ const PhysicsEngine = {
   },
 
   /**
-   * Detect collisions between a target segment and existing segments
+   * Every segment overlapping the given day, in time order. Siblings of the
+   * active task are deliberately included: excluding them is what used to let a
+   * block land on top of its own sibling with no collision detected.
    */
-  findCollisions(targetSegment, existingSegments, excludeTaskId = null) {
-    const collisions = [];
-    const tStart = targetSegment.startTime;
-    const tEnd = tStart + targetSegment.duration * 60;
+  daySegments(tasks, dayStartTimestamp, dayEndTimestamp, excludeSegmentId = null) {
+    const entries = [];
 
-    for (const seg of existingSegments) {
-      if (excludeTaskId && seg.taskId === excludeTaskId) continue;
+    (tasks || []).forEach(task => {
+      (task.segments || []).forEach(segment => {
+        if (segment.id === excludeSegmentId) return;
 
-      const segStart = seg.startTime;
-      const segEnd = seg.endTime;
+        const end = segment.start_time + segment.duration * 60;
+        if (segment.start_time >= dayEndTimestamp || end <= dayStartTimestamp) return;
 
-      // Overlap condition: start < otherEnd && end > otherStart
-      if (tStart < segEnd && tEnd > segStart) {
-        collisions.push(seg);
-      }
-    }
-
-    return collisions;
-  },
-
-  /**
-   * Cascading Ripple Effect:
-   * When targetSegment occupies [tStart, tEnd], any following segment that overlaps gets pushed or compressed.
-   * If is_locked is true, the collided segment is pushed forward by the overlap delta.
-   * If is_locked is false, it is compressed down to MIN_TASK_DURATION_MINUTES before sliding.
-   * Returns a map of taskId -> { start_times, durations, total_duration } with updated values.
-   */
-  calculateRipple(allTasks, dayStartTimestamp, dayEndTimestamp, activeTaskId, activeSegmentIndex, newStartTime, newDuration) {
-    const updates = new Map();
-    const dayTasks = allTasks.filter(t => {
-      if (!t.start_times || t.start_times.length === 0) return false;
-      return t.start_times.some((st, idx) => {
-        const et = st + (t.durations[idx] || 60) * 60;
-        return st < dayEndTimestamp && et > dayStartTimestamp;
-      });
-    });
-
-    // Clone all segments on this day
-    const segments = [];
-    dayTasks.forEach(task => {
-      task.start_times.forEach((st, idx) => {
-        const dur = task.durations[idx] || 60;
-        const isTarget = task.id === activeTaskId && idx === activeSegmentIndex;
-        segments.push({
+        entries.push({
           taskId: task.id,
-          segmentIndex: idx,
-          startTime: isTarget ? newStartTime : st,
-          duration: isTarget ? newDuration : dur,
-          endTime: isTarget ? newStartTime + newDuration * 60 : st + dur * 60,
+          segmentId: segment.id,
+          startTime: segment.start_time,
+          duration: segment.duration,
+          endTime: end,
           isLocked: task.is_locked !== false,
-          isTarget,
-          taskRef: task
+          completed: Boolean(segment.completed)
         });
       });
     });
 
-    // Sort all non-target segments starting at or after the target start time
-    let targetSeg = segments.find(s => s.isTarget);
+    entries.sort((a, b) => a.startTime - b.startTime);
+    return entries;
+  },
 
-    // The active task may not be on this day yet — dragged in from another day or
-    // straight from the sidebar. Inject it so the destination day still ripples
-    // instead of silently doing nothing.
-    if (!targetSeg) {
-      const activeTask = allTasks.find(t => t.id === activeTaskId);
-      if (!activeTask) return updates;
+  /**
+   * Cascading ripple: the target occupies [start, start + duration]; anything
+   * reaching into or past it is pushed forward, compressing first when the task
+   * is unlocked. Returns the entries that actually moved.
+   *
+   * Only segments that END after the target's start can be displaced — without
+   * that test a block sitting hours earlier still compares as "before the push
+   * boundary" and gets dragged along with everything else.
+   */
+  ripple(obstacles, targetStart, targetDuration) {
+    const moved = [];
+    let boundary = targetStart + targetDuration * 60;
 
-      targetSeg = {
-        taskId: activeTaskId,
-        segmentIndex: activeSegmentIndex || 0,
-        startTime: newStartTime,
-        duration: newDuration,
-        endTime: newStartTime + newDuration * 60,
-        isLocked: activeTask.is_locked !== false,
-        isTarget: true,
-        taskRef: activeTask
-      };
-      segments.push(targetSeg);
-    }
-
-    // Only segments that reach into or past the target can be displaced. Without
-    // the endTime test a segment sitting hours EARLIER in the day still compares
-    // as "before the push boundary" and gets dragged forward with everything
-    // else, which scrambles the untouched part of the schedule.
-    const otherSegments = segments
-      .filter(s => !s.isTarget && s.endTime > targetSeg.startTime)
+    const affected = obstacles
+      .filter(entry => entry.endTime > targetStart)
       .sort((a, b) => a.startTime - b.startTime);
 
-    let currentPushBoundary = targetSeg.startTime + targetSeg.duration * 60;
-
-    for (let i = 0; i < otherSegments.length; i++) {
-      const seg = otherSegments[i];
-
-      // If this segment starts before the current pushed boundary and overlaps
-      if (seg.startTime < currentPushBoundary) {
-        const overlapSeconds = currentPushBoundary - seg.startTime;
-        const overlapMinutes = Math.ceil(overlapSeconds / 60);
-
-        if (seg.isLocked) {
-          // Locked: Push forward entirely
-          seg.startTime = currentPushBoundary;
-          seg.endTime = seg.startTime + seg.duration * 60;
-          currentPushBoundary = seg.endTime;
-        } else {
-          // Unlocked: Try compressing first
-          const currentDur = seg.duration;
-          const maxCompressible = currentDur - this.MIN_TASK_DURATION_MINUTES;
-
-          if (overlapMinutes <= maxCompressible) {
-            // Can absorb overlap completely by compressing
-            seg.startTime = currentPushBoundary;
-            seg.duration = currentDur - overlapMinutes;
-            seg.endTime = seg.startTime + seg.duration * 60;
-            currentPushBoundary = seg.endTime;
-          } else {
-            // Compress to min duration and push the rest
-            seg.duration = this.MIN_TASK_DURATION_MINUTES;
-            seg.startTime = currentPushBoundary;
-            seg.endTime = seg.startTime + seg.duration * 60;
-            currentPushBoundary = seg.endTime;
-          }
-        }
-      } else {
-        // If not overlapping, update current boundary to this segment's end if it's beyond
-        currentPushBoundary = Math.max(currentPushBoundary, seg.endTime);
-      }
-    }
-
-    // Build the updates map for tasks whose segments changed
-    segments.forEach(seg => {
-      const task = seg.taskRef;
-      if (!updates.has(task.id)) {
-        updates.set(task.id, {
-          id: task.id,
-          start_times: [...task.start_times],
-          durations: [...task.durations],
-          total_duration: task.total_duration
-        });
+    affected.forEach(entry => {
+      if (entry.startTime >= boundary) {
+        boundary = Math.max(boundary, entry.endTime);
+        return;
       }
 
-      const taskUpdate = updates.get(task.id);
-      taskUpdate.start_times[seg.segmentIndex] = seg.startTime;
-      taskUpdate.durations[seg.segmentIndex] = seg.duration;
-      taskUpdate.total_duration = taskUpdate.durations.reduce((sum, d) => sum + d, 0);
+      const overlapMinutes = Math.ceil((boundary - entry.startTime) / 60);
+
+      if (!entry.isLocked) {
+        // Unlocked blocks give up time before they give up their place.
+        const compressible = entry.duration - this.MIN_TASK_DURATION_MINUTES;
+        entry.duration = overlapMinutes <= compressible
+          ? entry.duration - overlapMinutes
+          : this.MIN_TASK_DURATION_MINUTES;
+      }
+
+      entry.startTime = boundary;
+      entry.endTime = entry.startTime + entry.duration * 60;
+      boundary = entry.endTime;
+      moved.push(entry);
     });
 
-    return updates;
+    return moved;
   },
 
   /**
-   * Session Splitting Engine:
-   * When placing/expanding a task of totalDuration starting at idealStartTime,
-   * if it collides with fixed obstacles (like Breaks or locked tasks),
-   * split it across the available free gaps on the day.
+   * Place `totalMinutes` starting at `idealStart`, flowing around obstacles.
+   * Returns the pieces it had to break into — one entry when it fits whole.
    */
-  calculateSessionSplit(allTasks, dayStartTimestamp, dayEndTimestamp, activeTaskId, idealStartTime, totalDurationMinutes) {
-    // 1. Get all obstacle segments on this day (excluding active task)
-    const existingSegments = this.getSegmentsForDay(allTasks, dayStartTimestamp, dayEndTimestamp)
-      .filter(s => s.taskId !== activeTaskId);
+  placeAround(obstacles, idealStart, totalMinutes, dayEndTimestamp) {
+    const pieces = [];
+    let remaining = totalMinutes;
+    let cursor = idealStart;
+    let guard = 0;
 
-    // 2. Find available time windows starting from idealStartTime
-    let remainingMinutesToPlace = totalDurationMinutes;
-    let currentCursor = idealStartTime;
-    const splitSegments = [];
-
-    // Max loop safeguard
-    let iterations = 0;
-    while (remainingMinutesToPlace > 0 && iterations < 20) {
-      iterations++;
-
-      // Check if currentCursor falls inside any existing segment
-      const obstacleAtCursor = existingSegments.find(s => currentCursor >= s.startTime && currentCursor < s.endTime);
-      if (obstacleAtCursor) {
-        // Jump cursor to after the obstacle
-        currentCursor = obstacleAtCursor.endTime;
+    while (remaining > 0 && guard++ < 40) {
+      const blocking = obstacles.find(o => cursor >= o.startTime && cursor < o.endTime);
+      if (blocking) {
+        cursor = blocking.endTime;
         continue;
       }
 
-      // Find the next upcoming obstacle after currentCursor
-      const nextObstacle = existingSegments
-        .filter(s => s.startTime > currentCursor)
+      const next = obstacles
+        .filter(o => o.startTime > cursor)
         .sort((a, b) => a.startTime - b.startTime)[0];
 
-      if (!nextObstacle) {
-        // No more obstacles! Place all remaining minutes
-        splitSegments.push({
-          startTime: currentCursor,
-          duration: remainingMinutesToPlace
-        });
-        remainingMinutesToPlace = 0;
-      } else {
-        // Available gap between currentCursor and nextObstacle.startTime
-        const availableSeconds = nextObstacle.startTime - currentCursor;
-        const availableMinutes = Math.floor(availableSeconds / 60);
+      const limit = next ? next.startTime : (dayEndTimestamp || Infinity);
+      const availableMinutes = Math.floor((limit - cursor) / 60);
 
-        if (availableMinutes >= this.MIN_TASK_DURATION_MINUTES) {
-          if (remainingMinutesToPlace <= availableMinutes) {
-            // Fits completely in this gap
-            splitSegments.push({
-              startTime: currentCursor,
-              duration: remainingMinutesToPlace
-            });
-            remainingMinutesToPlace = 0;
-          } else {
-            // Partially fits: consume the whole gap, then jump after nextObstacle
-            splitSegments.push({
-              startTime: currentCursor,
-              duration: availableMinutes
-            });
-            remainingMinutesToPlace -= availableMinutes;
-            currentCursor = nextObstacle.endTime;
-          }
-        } else {
-          // Gap is too small (< MIN_TASK_DURATION_MINUTES), jump past obstacle
-          currentCursor = nextObstacle.endTime;
-        }
+      if (!next && !Number.isFinite(limit)) {
+        pieces.push({ startTime: cursor, duration: remaining });
+        remaining = 0;
+        break;
       }
+
+      if (availableMinutes >= remaining) {
+        pieces.push({ startTime: cursor, duration: remaining });
+        remaining = 0;
+        break;
+      }
+
+      if (availableMinutes >= this.MIN_TASK_DURATION_MINUTES) {
+        pieces.push({ startTime: cursor, duration: availableMinutes });
+        remaining -= availableMinutes;
+      }
+
+      if (!next) break;
+      cursor = next.endTime;
     }
 
-    // Return start_times array and durations array
-    return {
-      start_times: splitSegments.map(s => s.startTime),
-      durations: splitSegments.map(s => s.duration),
-      total_duration: totalDurationMinutes
-    };
+    // Nowhere legal to put it: leave it where the user dropped it rather than
+    // silently discarding the block.
+    if (!pieces.length) pieces.push({ startTime: idealStart, duration: totalMinutes });
+    return pieces;
+  },
+
+  /**
+   * A block dragged between two touching blocks of ONE task acts as the divider
+   * between them: the pair's outer edges stay pinned and time transfers from one
+   * side to the other. Moving a break inside a study session is meant to change
+   * where the break falls, not to shove the rest of the day along.
+   *
+   * Returns null unless the moved block genuinely sits between two siblings that
+   * it touches on both sides.
+   */
+  findDivider(obstacles, movedStart, movedEnd) {
+    const before = obstacles
+      .filter(entry => Math.abs(entry.endTime - movedStart) <= 30)
+      .sort((a, b) => b.startTime - a.startTime)[0];
+    if (!before) return null;
+
+    const after = obstacles
+      .filter(entry => Math.abs(entry.startTime - movedEnd) <= 30)
+      .sort((a, b) => a.startTime - b.startTime)[0];
+    if (!after) return null;
+
+    if (before.taskId !== after.taskId) return null;
+    if (before.segmentId === after.segmentId) return null;
+
+    return { left: before, right: after };
+  },
+
+  /**
+   * Apply a divider move. The left block ends where the moved block starts and
+   * the right block begins where it ends; the pair's outer bounds never move.
+   *
+   * A side squeezed past the minimum is marked for removal rather than clamped —
+   * eating a block is a deliberate gesture, and the preview shows it happening
+   * before release. A side that is already COMPLETED is never eaten: the
+   * schedule can be dragged back, a completion cannot.
+   */
+  applyDivider(divider, movedStart, movedEnd) {
+    const { left, right } = divider;
+    const leftOuter = left.startTime;
+    const rightOuter = right.endTime;
+    const floor = this.MIN_TASK_DURATION_MINUTES * 60;
+
+    const result = { changed: [], removed: [], blockedByCompleted: false };
+
+    let start = movedStart;
+    let end = movedEnd;
+
+    if (left.completed && start < leftOuter + floor) {
+      start = leftOuter + floor;
+      end = start + (movedEnd - movedStart);
+      result.blockedByCompleted = true;
+    }
+    if (right.completed && end > rightOuter - floor) {
+      end = rightOuter - floor;
+      start = end - (movedEnd - movedStart);
+      result.blockedByCompleted = true;
+    }
+
+    result.movedStart = start;
+    result.movedEnd = end;
+
+    const leftMinutes = Math.round((start - leftOuter) / 60);
+    if (leftMinutes < this.MIN_TASK_DURATION_MINUTES) {
+      result.removed.push(left);
+    } else {
+      left.duration = leftMinutes;
+      left.endTime = leftOuter + leftMinutes * 60;
+      result.changed.push(left);
+    }
+
+    const rightMinutes = Math.round((rightOuter - end) / 60);
+    if (rightMinutes < this.MIN_TASK_DURATION_MINUTES) {
+      result.removed.push(right);
+    } else {
+      right.startTime = end;
+      right.duration = rightMinutes;
+      result.changed.push(right);
+    }
+
+    return result;
   }
 };

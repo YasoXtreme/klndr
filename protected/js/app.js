@@ -145,6 +145,11 @@ class KlndrApp {
         }
       );
 
+      // Alt-click on a block cuts it where the pointer is, skipping the menu.
+      this.dragController.onSplitSegment = (task, segmentId, timestamp) => {
+        this.splitSegmentAt(task, segmentId, timestamp);
+      };
+
       this.initKeyboardListeners();
       this.initUIEventListeners();
       this.initAccountModal();
@@ -763,6 +768,8 @@ class KlndrApp {
     const startDate = this.days[0].startTimestamp;
     const endDate = this.days[6].endTimestamp;
     this.tasks = await API.getTasks(startDate, endDate);
+    // Records written before segments existed are migrated here, once, on read.
+    this.tasks.forEach(t => TaskModel.ensureSegments(t));
     this.renderAll();
   }
 
@@ -782,16 +789,21 @@ class KlndrApp {
       if (!task) return;
 
       rollback.set(u.id, {
-        start_times: [...task.start_times],
-        durations: [...task.durations],
-        total_duration: task.total_duration
+        segments: TaskModel.cloneSegments(task),
+        total_duration: task.total_duration,
+        completed: task.completed
       });
 
-      KlndrApp.mergeTask(task, {
-        start_times: [...u.start_times],
-        durations: [...u.durations],
-        total_duration: u.total_duration
-      });
+      if (u.segments) {
+        TaskModel.setSegments(task, u.segments.map(seg => ({ ...seg })));
+      } else {
+        KlndrApp.mergeTask(task, {
+          start_times: [...u.start_times],
+          durations: [...u.durations],
+          total_duration: u.total_duration
+        });
+        TaskModel.ensureSegments(task);
+      }
 
       issuedRevisions.set(u.id, this.bumpRevision(u.id));
     });
@@ -815,6 +827,7 @@ class KlndrApp {
         }
         if (!KlndrApp.sameSchedule(task, serverTask)) diverged = true;
         KlndrApp.mergeTask(task, serverTask);
+        TaskModel.ensureSegments(task);
       });
 
       // Normally the server agrees with what is already drawn, so there is
@@ -829,7 +842,10 @@ class KlndrApp {
       rollback.forEach((snapshot, id) => {
         if (this.taskRevisions.get(id) !== issuedRevisions.get(id)) return;
         const task = this.tasks.find(t => t.id === id);
-        if (task) KlndrApp.mergeTask(task, snapshot);
+        if (!task) return;
+        task.total_duration = snapshot.total_duration;
+        task.completed = snapshot.completed;
+        TaskModel.setSegments(task, snapshot.segments);
       });
 
       this.renderAll();
@@ -860,6 +876,7 @@ class KlndrApp {
       const updated = await API.updateTask(taskId, patch);
       if (updated && this.taskRevisions.get(taskId) === rev) {
         KlndrApp.mergeTask(task, updated);
+        TaskModel.ensureSegments(task);
         if (!(this.dragController && this.dragController.activeDrag)) this.renderAll();
       }
     } catch (err) {
@@ -894,6 +911,56 @@ class KlndrApp {
     }
   }
 
+  /**
+   * Build a commit payload from a set of segments WITHOUT touching the live
+   * task, so commitTaskUpdates can still snapshot the pre-edit state for its
+   * rollback. Callers mutate a clone and hand it here.
+   */
+  payloadWithSegments(task, segments) {
+    return TaskModel.payloadFrom(task, segments);
+  }
+
+  /**
+   * Cut one block in two at the point the user right-clicked. The position is
+   * snapped like a drag, then clamped so neither half falls under the minimum —
+   * the cut marker has already shown where it will land.
+   */
+  async splitSegmentAt(task, segmentId, rawTimestamp) {
+    const segments = TaskModel.cloneSegments(task);
+    const segment = segments.find(seg => seg.id === segmentId);
+    if (!segment || segment.duration < TaskModel.MIN_SEGMENT_MINUTES * 2) return;
+
+    const floor = TaskModel.MIN_SEGMENT_MINUTES * 60;
+    const end = segment.start_time + segment.duration * 60;
+
+    let cut = rawTimestamp;
+    const snap = this.dragController ? this.dragController.snapMinutes() : 0;
+    if (snap > 0) cut = PhysicsEngine.snapTimestamp(cut, snap);
+    cut = Math.max(segment.start_time + floor, Math.min(end - floor, cut));
+
+    const leftMinutes = Math.round((cut - segment.start_time) / 60);
+    segments.push({
+      id: TaskModel.newSegmentId(),
+      start_time: segment.start_time + leftMinutes * 60,
+      duration: segment.duration - leftMinutes,
+      completed: segment.completed
+    });
+    segment.duration = leftMinutes;
+
+    await this.commitTaskUpdates([this.payloadWithSegments(task, segments)]);
+  }
+
+  // Removing the last block is an unschedule, not a delete: the task goes back
+  // to the panel rather than disappearing.
+  async removeSegment(task, segmentId) {
+    const segments = TaskModel.cloneSegments(task).filter(seg => seg.id !== segmentId);
+    if (!segments.length) {
+      await this.optimisticTaskUpdate(task.id, { segments: [], start_times: [], durations: [] });
+      return;
+    }
+    await this.commitTaskUpdates([this.payloadWithSegments(task, segments)]);
+  }
+
   static sameSchedule(a, b) {
     const starts = b.start_times || [];
     const durations = b.durations || [];
@@ -905,14 +972,41 @@ class KlndrApp {
 
   async handleTaskInteraction(action, payload) {
     switch (action) {
+      // Ticking the task in the panel drives every one of its blocks.
       case 'toggleComplete': {
         const { taskId, completed } = payload;
-        await this.optimisticTaskUpdate(taskId, { completed });
+        const task = this.tasks.find(t => t.id === taskId);
+        if (!task) break;
+
+        const segments = TaskModel.cloneSegments(task);
+        if (!segments.length) {
+          await this.optimisticTaskUpdate(taskId, { completed });
+          break;
+        }
+        segments.forEach(seg => { seg.completed = completed; });
+        await this.commitTaskUpdates([this.payloadWithSegments(task, segments)]);
+        break;
+      }
+
+      // Ticking one block on the calendar affects only that block; the task
+      // reads as done once every block is.
+      case 'toggleSegmentComplete': {
+        const { taskId, segmentId, completed } = payload;
+        const task = this.tasks.find(t => t.id === taskId);
+        if (!task) break;
+
+        const segments = TaskModel.cloneSegments(task);
+        const segment = segments.find(seg => seg.id === segmentId);
+        if (!segment) break;
+
+        segment.completed = completed;
+        await this.commitTaskUpdates([this.payloadWithSegments(task, segments)]);
         break;
       }
 
       case 'createInlineTask': {
         const newTask = await API.createTask(payload);
+        TaskModel.ensureSegments(newTask);
         this.tasks.push(newTask);
         this.renderAll();
         break;
@@ -924,7 +1018,7 @@ class KlndrApp {
       }
 
       case 'openContextMenu': {
-        this.openContextMenu(payload.task, payload.clientX, payload.clientY);
+        this.openContextMenu(payload);
         break;
       }
     }
@@ -956,6 +1050,15 @@ class KlndrApp {
       badgeIcon.textContent = this.previewTaskState.icon;
       iconBtn.querySelector('.material-symbols-outlined').textContent = this.previewTaskState.icon;
       categoryBtn.title = `Category: ${this.previewTaskState.category}`;
+
+      const scopeNote = document.getElementById('previewScopeNote');
+      if (scopeNote) {
+        const blocks = (task.segments || []).length;
+        scopeNote.textContent = blocks > 1
+          ? `Editing the task — applies to all ${blocks} of its blocks`
+          : '';
+        scopeNote.style.display = blocks > 1 ? 'block' : 'none';
+      }
 
       modal.classList.add('active');
       titleInput.focus();
@@ -991,7 +1094,14 @@ class KlndrApp {
     }
   }
 
-  openContextMenu(task, clientX, clientY) {
+  /**
+   * `payload` carries the block that was right-clicked and the timestamp under
+   * the pointer AT THAT MOMENT. The pointer has to travel to reach the menu, so
+   * the split position must be captured on contextmenu, never read later.
+   */
+  openContextMenu(payload) {
+    const { task, segmentId, splitTimestamp, clientX, clientY } = payload;
+
     this.closeAllModals();
     if (this.canvasRenderer) {
       this.canvasRenderer.setPlayhead(null);
@@ -1003,11 +1113,34 @@ class KlndrApp {
 
     const isScheduled = task.start_times && task.start_times.length > 0;
     const isLocked = task.is_locked !== false;
+    const segment = segmentId ? TaskModel.segmentById(task, segmentId) : null;
+    const canSplit = Boolean(segment) && segment.duration >= TaskModel.MIN_SEGMENT_MINUTES * 2;
 
     const editOpt = document.getElementById('ctxEdit');
     const lockOpt = document.getElementById('ctxToggleLock');
+    const splitOpt = document.getElementById('ctxSplit');
+    const removeBlockOpt = document.getElementById('ctxRemoveBlock');
     const unscheduleOpt = document.getElementById('ctxUnschedule');
     const deleteOpt = document.getElementById('ctxDelete');
+
+    if (splitOpt) {
+      splitOpt.style.display = segment ? 'flex' : 'none';
+      splitOpt.classList.toggle('is-disabled', !canSplit);
+      splitOpt.title = canSplit
+        ? 'Cut this block in two at the marked point'
+        : `A block needs at least ${TaskModel.MIN_SEGMENT_MINUTES * 2} minutes to split`;
+    }
+
+    // Only worth offering once a task has more than one block; with a single
+    // block "remove this block" and "remove from calendar" are the same thing.
+    if (removeBlockOpt) {
+      removeBlockOpt.style.display = segment && TaskModel.isSplit(task) ? 'flex' : 'none';
+    }
+
+    // Show where the cut will land while the menu covers the block.
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setCutMarker(canSplit ? this.cutMarkerXFor(task, segment, splitTimestamp) : null);
+    }
 
     if (lockOpt) {
       lockOpt.innerHTML = `
@@ -1038,10 +1171,25 @@ class KlndrApp {
       };
     }
 
+    if (splitOpt) {
+      splitOpt.onclick = async () => {
+        if (!canSplit) return;
+        this.closeAllModals();
+        await this.splitSegmentAt(task, segmentId, splitTimestamp);
+      };
+    }
+
+    if (removeBlockOpt) {
+      removeBlockOpt.onclick = async () => {
+        this.closeAllModals();
+        await this.removeSegment(task, segmentId);
+      };
+    }
+
     if (unscheduleOpt) {
       unscheduleOpt.onclick = async () => {
         this.closeAllModals();
-        await this.optimisticTaskUpdate(task.id, { start_times: [], durations: [] });
+        await this.optimisticTaskUpdate(task.id, { segments: [], start_times: [], durations: [] });
       };
     }
 
@@ -1056,9 +1204,35 @@ class KlndrApp {
 
     const closeContext = () => {
       menu.classList.remove('active');
+      if (this.canvasRenderer) this.canvasRenderer.setCutMarker(null);
       window.removeEventListener('click', closeContext);
     };
     setTimeout(() => window.addEventListener('click', closeContext), 10);
+  }
+
+  // Mirrors the clamping splitSegmentAt applies, so the marker cannot promise a
+  // cut in a place the split would refuse.
+  cutMarkerXFor(task, segment, rawTimestamp) {
+    if (!segment) return null;
+    const dayIndex = this.days.findIndex(
+      d => segment.start_time >= d.startTimestamp && segment.start_time < d.startTimestamp + 86400
+    );
+    if (dayIndex === -1) return null;
+
+    const floor = TaskModel.MIN_SEGMENT_MINUTES * 60;
+    const end = segment.start_time + segment.duration * 60;
+
+    let cut = rawTimestamp;
+    const snap = this.dragController ? this.dragController.snapMinutes() : 0;
+    if (snap > 0) cut = PhysicsEngine.snapTimestamp(cut, snap);
+    cut = Math.max(segment.start_time + floor, Math.min(end - floor, cut));
+
+    const day = this.days[dayIndex];
+    return {
+      x: this.canvasRenderer.timeToX((cut - day.startTimestamp) / 60),
+      top: this.canvasRenderer.dayIndexToY(dayIndex),
+      height: this.canvasRenderer.rowHeight
+    };
   }
 
   // ==========================================
@@ -1385,6 +1559,9 @@ class KlndrApp {
     if (this.canvasRenderer) {
       this.canvasRenderer.setPlayhead(null);
       this.canvasRenderer.setSnapGuide(null);
+      // Every menu and modal close funnels through here, so the cut marker
+      // cannot outlive the menu that placed it.
+      this.canvasRenderer.setCutMarker(null);
     }
   }
 

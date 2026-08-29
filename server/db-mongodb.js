@@ -226,6 +226,9 @@ async function createTask(userId, taskData) {
       ? taskData.start_times
       : [],
     durations: Array.isArray(taskData.durations) ? taskData.durations : [],
+    // Calendar blocks. Kept alongside start_times/durations, which stay derived
+    // so the date-range query above still works on both old and new records.
+    segments: Array.isArray(taskData.segments) ? taskData.segments : [],
     total_duration: Number(
       taskData.total_duration || taskData.default_timing || 60,
     ),

@@ -258,11 +258,13 @@ class TasksSidebar {
     }
   }
 
-  // Handle task completion with 5-second grace period animation
+  // Handle task completion with 5-second grace period animation.
+  // Ticking here drives every block of the task; a part-done task is treated as
+  // not done, so this always completes it rather than toggling from 'partial'.
   handleTaskCompletionToggle(task) {
     const taskId = task.id;
-    const isNowCompleted = !task.completed;
-    task.completed = isNowCompleted;
+    const isNowCompleted = TaskModel.completionState(task) !== 'all';
+    TaskModel.setAllSegmentsCompleted(task, isNowCompleted);
 
     // Immediately update UI visually
     this.render();
@@ -332,6 +334,7 @@ class TasksSidebar {
 
     const card = document.createElement('div');
     card.className = `sidebar-task-card ${task.completed ? 'is-completed' : ''}`;
+    if (TaskModel.isSplit(task)) card.dataset.blockCount = (task.segments || []).length;
     card.dataset.taskId = task.id;
     card.style.backgroundColor = task.color || '#3ba4f6';
 
@@ -341,14 +344,24 @@ class TasksSidebar {
     badge.innerHTML = `<span class="material-symbols-outlined task-icon-symbol">${task.icon || 'task_alt'}</span>`;
     card.appendChild(badge);
 
-    // Checkbox
+    // Checkbox. A split task has three states, not two: the middle one means
+    // some of its blocks are done, and must not read as "not started".
+    const completionState = TaskModel.completionState(task);
     const checkbox = document.createElement('button');
     checkbox.type = 'button';
-    checkbox.className = `task-checkbox ${task.completed ? 'checked' : ''}`;
-    checkbox.title = task.completed ? 'Mark uncompleted' : 'Mark completed';
-    checkbox.innerHTML = task.completed ? `
+    checkbox.className = [
+      'task-checkbox',
+      completionState === 'all' ? 'checked' : '',
+      completionState === 'partial' ? 'is-partial' : ''
+    ].filter(Boolean).join(' ');
+    checkbox.title = completionState === 'all'
+      ? 'Mark uncompleted'
+      : completionState === 'partial'
+        ? `${(task.segments || []).filter(seg => seg.completed).length} of ${(task.segments || []).length} blocks done — click to finish all`
+        : 'Mark completed';
+    checkbox.innerHTML = completionState === 'all' ? `
       <span class="material-symbols-outlined" style="font-size: 16px; color: #000; font-weight: 800;">check</span>
-    ` : '';
+    ` : completionState === 'partial' ? '<span class="task-checkbox-partial"></span>' : '';
     checkbox.addEventListener('click', (e) => {
       e.stopPropagation();
       this.handleTaskCompletionToggle(task);

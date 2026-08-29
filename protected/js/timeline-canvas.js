@@ -38,6 +38,7 @@ class TimelineCanvas {
     this.isShiftMode = false;
     this.hoverPlayheadX = null;
     this.snapGuideX = null;
+    this.cutMarker = null;
 
     this._rafId = null;
     this._chromeRafId = null;
@@ -97,6 +98,13 @@ class TimelineCanvas {
       this.hoverPlayheadX = x;
       this.requestRender();
     }
+  }
+
+  // Where a "Split here" would cut. Held while the context menu is open, since
+  // the menu covers the block and the pointer has left the cut point.
+  setCutMarker(marker) {
+    this.cutMarker = marker;
+    this.render();
   }
 
   setSnapGuide(x) {
@@ -367,7 +375,6 @@ class TimelineCanvas {
     ctx.clearRect(0, 0, this.width, this.height);
 
     this.drawGrid(ctx);
-    this.drawSplitBridges(ctx);
     this.drawNowLine(ctx);
     this.drawGuides(ctx);
   }
@@ -454,45 +461,6 @@ class TimelineCanvas {
     ctx.restore();
   }
 
-  drawSplitBridges(ctx) {
-    if (!this.state.tasks) return;
-
-    ctx.save();
-    this.state.tasks.forEach(task => {
-      if (!task.start_times || task.start_times.length < 2) return;
-
-      for (let i = 0; i < task.start_times.length - 1; i++) {
-        const st1 = task.start_times[i];
-        const dur1 = task.durations[i] || 60;
-        const et1 = st1 + dur1 * 60;
-        const st2 = task.start_times[i + 1];
-
-        const d1 = new Date(st1 * 1000);
-        const dayIndex1 = this.state.days.findIndex(day =>
-          day.date.getFullYear() === d1.getFullYear() &&
-          day.date.getMonth() === d1.getMonth() &&
-          day.date.getDate() === d1.getDate()
-        );
-        if (dayIndex1 === -1) continue;
-
-        const dayStart1 = this.state.days[dayIndex1].startTimestamp;
-        const x1 = this.timeToX((et1 - dayStart1) / 60);
-        const x2 = this.timeToX((st2 - dayStart1) / 60);
-        const y = this.dayIndexToY(dayIndex1) + this.rowHeight / 2;
-
-        ctx.strokeStyle = task.color || '#9ae659';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.moveTo(x1, y);
-        ctx.quadraticCurveTo((x1 + x2) / 2, y + 24, x2, y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    });
-    ctx.restore();
-  }
-
   drawGuides(ctx) {
     ctx.save();
 
@@ -505,6 +473,33 @@ class TimelineCanvas {
       ctx.lineTo(this.snapGuideX, this.height);
       ctx.stroke();
       ctx.setLineDash([]);
+    }
+
+    if (this.cutMarker) {
+      const { x, top, height } = this.cutMarker;
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([7, 4]);
+      ctx.beginPath();
+      ctx.moveTo(this.crisp(x, 2.5), top + 2);
+      ctx.lineTo(this.crisp(x, 2.5), top + height - 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Notches at both ends so it reads as a cut, not as another guide line.
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.moveTo(x - 5, top + 2);
+      ctx.lineTo(x + 5, top + 2);
+      ctx.lineTo(x, top + 9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x - 5, top + height - 2);
+      ctx.lineTo(x + 5, top + height - 2);
+      ctx.lineTo(x, top + height - 9);
+      ctx.closePath();
+      ctx.fill();
     }
 
     if (this.hoverPlayheadX !== null) {

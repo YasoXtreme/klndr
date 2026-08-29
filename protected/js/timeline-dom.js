@@ -18,6 +18,14 @@ class TimelineDOM {
   // so a block's own handle is always still reachable.
   static SEAM_ARM_RADIUS = 9;
 
+  static TOOLTIP_DELAY_MS = 750;
+  static TOOLTIP_DELAY_COLLAPSED_MS = 250;
+  static TOOLTIP_CLOSE_GRACE_MS = 150;
+
+  // Un-dimming is delayed so sweeping the pointer across a busy row does not
+  // strobe the whole grid on and off.
+  static FOCUS_EXIT_DELAY_MS = 100;
+
   constructor(containerElement, canvasRenderer, state, onTaskInteraction) {
     this.container = containerElement;
     this.canvas = canvasRenderer;
@@ -32,9 +40,17 @@ class TimelineDOM {
     this.ghostLayer = document.createElement('div');
     this.ghostLayer.className = 'timeline-ghost-layer';
 
+    // Connector wires are drawn ABOVE the blocks. The old bridges lived on the
+    // body canvas, underneath, so any block sitting between two halves hid the
+    // link by construction. SVG shares the block layer's coordinate space and
+    // scrolls with it for free.
+    this.wireLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.wireLayer.setAttribute('class', 'timeline-wire-layer');
+
     this.container.innerHTML = '';
     this.container.appendChild(this.ghostLayer);
     this.container.appendChild(this.blockLayer);
+    this.container.appendChild(this.wireLayer);
 
     this.ghostPool = [];
     this.tooltipEl = null;
@@ -45,8 +61,15 @@ class TimelineDOM {
     // drag start: however a drag ends, arming recovers on its own.
     this.isDragActive = () => false;
 
+    this.focusedSegmentId = null;
+    this._focusExitTimer = null;
+    this._tooltipTimer = null;
+    this._tooltipOpen = false;
+    this._tooltipCloseTimer = null;
+
     this.initTooltip();
     this.initSeamArming();
+    this.initFocusHighlight();
   }
 
   static getCategoryIconElement(iconName) {
@@ -64,9 +87,10 @@ class TimelineDOM {
     return 'is-min';
   }
 
-  // Which tiers actually hide something. Only these get a tooltip; a block that
-  // already shows its title and time has nothing to reveal.
-  static tierHidesContent(sizeClass, isShort) {
+
+  // A block in one of these tiers cannot show its own title or time, so its
+  // tooltip is the only way to read it -- that earns a shorter delay.
+  static hidesContent(sizeClass, isShort) {
     return sizeClass === 'is-sm' || sizeClass === 'is-xs' || sizeClass === 'is-min' || isShort;
   }
 
@@ -84,15 +108,51 @@ class TimelineDOM {
     this.blockLayer.addEventListener('mouseover', (e) => {
       const card = e.target.closest('.timeline-task-card[data-tip-title]');
       if (!card || card.classList.contains('is-dragging')) return;
-      this.showTooltip(card);
+      this.queueTooltip(card);
     });
 
     this.blockLayer.addEventListener('mouseout', (e) => {
       const card = e.target.closest('.timeline-task-card');
       if (!card) return;
       if (e.relatedTarget && card.contains(e.relatedTarget)) return;
-      this.hideTooltip();
+      this.queueTooltipClose();
     });
+  }
+
+  /**
+   * A block that already shows its title and time gets the full delay — the
+   * tooltip is supplementary there. A block too small to read gets a short one,
+   * because the tooltip is the only way to read it at all.
+   *
+   * Once a tooltip is open, moving to another block switches almost instantly:
+   * paying the full delay per block makes scanning a row feel broken.
+   */
+  queueTooltip(card) {
+    clearTimeout(this._tooltipTimer);
+    clearTimeout(this._tooltipCloseTimer);
+
+    if (this._tooltipOpen) {
+      this.showTooltip(card);
+      return;
+    }
+
+    const delay = card.dataset.tipCollapsed === 'true'
+      ? TimelineDOM.TOOLTIP_DELAY_COLLAPSED_MS
+      : TimelineDOM.TOOLTIP_DELAY_MS;
+
+    this._tooltipTimer = setTimeout(() => {
+      if (!card.isConnected) return;
+      this._tooltipOpen = true;
+      this.showTooltip(card);
+    }, delay);
+  }
+
+  // A short grace so travelling between two blocks does not re-arm the full
+  // delay, and does not flicker the card closed on the way.
+  queueTooltipClose() {
+    clearTimeout(this._tooltipTimer);
+    clearTimeout(this._tooltipCloseTimer);
+    this._tooltipCloseTimer = setTimeout(() => this.hideTooltip(), TimelineDOM.TOOLTIP_CLOSE_GRACE_MS);
   }
 
   showTooltip(card) {
@@ -108,6 +168,13 @@ class TimelineDOM {
     meta.className = 'timeline-tooltip-meta';
     meta.textContent = card.dataset.tipMeta;
     tip.appendChild(meta);
+
+    if (card.dataset.tipSession) {
+      const session = document.createElement('div');
+      session.className = 'timeline-tooltip-session';
+      session.textContent = card.dataset.tipSession;
+      tip.appendChild(session);
+    }
 
     if (card.dataset.tipCategory) {
       const cat = document.createElement('div');
@@ -138,6 +205,9 @@ class TimelineDOM {
   }
 
   hideTooltip() {
+    clearTimeout(this._tooltipTimer);
+    clearTimeout(this._tooltipCloseTimer);
+    this._tooltipOpen = false;
     if (this.tooltipEl) this.tooltipEl.style.display = 'none';
   }
 
@@ -197,6 +267,164 @@ class TimelineDOM {
   }
 
   // ==========================================
+  // FOCUS HIGHLIGHT + CONNECTOR WIRES
+  // ==========================================
+
+  initFocusHighlight() {
+    this.blockLayer.addEventListener('mouseover', (e) => {
+      const card = e.target.closest('.timeline-task-card');
+      if (!card || this.isDragActive()) return;
+      this.focusSegment(card);
+    });
+
+    this.blockLayer.addEventListener('mouseout', (e) => {
+      const card = e.target.closest('.timeline-task-card');
+      if (!card) return;
+      if (e.relatedTarget && card.contains(e.relatedTarget)) return;
+      this.queueFocusClear();
+    });
+  }
+
+  focusSegment(card) {
+    clearTimeout(this._focusExitTimer);
+    const segmentId = card.dataset.segmentId;
+    if (this.focusedSegmentId === segmentId) return;
+
+    this.focusedSegmentId = segmentId;
+
+    // Only the family gets touched -- the rest of the grid dims from a single
+    // class on the container, so a hover is never O(blocks) of class churn.
+    (this._focusedEls || []).forEach(el => el.classList.remove('is-focus', 'is-sibling'));
+    this._focusedEls = [];
+
+    const family = [...this.blockLayer.querySelectorAll(
+      `.timeline-task-card[data-task-id="${card.dataset.taskId}"]`
+    )];
+    family.forEach(el => {
+      el.classList.add(el.dataset.segmentId === segmentId ? 'is-focus' : 'is-sibling');
+      this._focusedEls.push(el);
+    });
+
+    this.blockLayer.classList.add('has-focus');
+    this.drawWires(card.dataset.taskId);
+  }
+
+  queueFocusClear() {
+    clearTimeout(this._focusExitTimer);
+    this._focusExitTimer = setTimeout(() => this.clearFocus(), TimelineDOM.FOCUS_EXIT_DELAY_MS);
+  }
+
+  clearFocus() {
+    clearTimeout(this._focusExitTimer);
+    this.focusedSegmentId = null;
+    (this._focusedEls || []).forEach(el => el.classList.remove('is-focus', 'is-sibling'));
+    this._focusedEls = [];
+    this.blockLayer.classList.remove('has-focus');
+    this.clearWires();
+  }
+
+  clearWires() {
+    while (this.wireLayer.firstChild) this.wireLayer.removeChild(this.wireLayer.firstChild);
+  }
+
+  /**
+   * Route a wire between consecutive blocks of one task, dropping into the 5px
+   * band below the cards that is always free of blocks. Because wires only ever
+   * draw for the one family under the pointer, there is never more than one in a
+   * row -- which is what makes the lane workable at all.
+   */
+  drawWires(taskId) {
+    this.clearWires();
+
+    const task = (this.state.tasks || []).find(t => t.id === taskId);
+    if (!task || !TaskModel.isSplit(task)) return;
+
+    const cards = new Map();
+    this.blockLayer
+      .querySelectorAll(`.timeline-task-card[data-task-id="${taskId}"]`)
+      .forEach(el => cards.set(el.dataset.segmentId, el));
+
+    const segments = task.segments || [];
+    const color = task.color || '#9ae659';
+
+    for (let i = 0; i < segments.length - 1; i++) {
+      const a = cards.get(segments[i].id);
+      const b = cards.get(segments[i + 1].id);
+      if (!a || !b) continue;
+
+      const aTop = parseFloat(a.style.top);
+      const bTop = parseFloat(b.style.top);
+
+      // Different rows: a wire would have to cut vertically through other days'
+      // blocks, so point at the sibling instead of drawing to it.
+      if (Math.abs(aTop - bTop) > 1) {
+        this.drawCrossDayMarker(a, b, segments[i + 1], color);
+        continue;
+      }
+
+      const bottom = aTop + parseFloat(a.style.height);
+      const lane = bottom + 2.5;
+      const ax = parseFloat(a.style.left) + parseFloat(a.style.width) - 7;
+      const bx = parseFloat(b.style.left) + 7;
+      if (bx - ax < 4) continue;
+
+      const d = `M ${ax} ${bottom - 5} L ${ax} ${lane - 3} Q ${ax} ${lane} ${ax + 5} ${lane}` +
+                ` L ${bx - 5} ${lane} Q ${bx} ${lane} ${bx} ${lane - 3} L ${bx} ${bottom - 5}`;
+
+      this.wireLayer.appendChild(TimelineDOM.wirePath(d, '#ffffff', 6));
+      this.wireLayer.appendChild(TimelineDOM.wirePath(d, color, 2.6));
+    }
+  }
+
+  static wirePath(d, stroke, width) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', stroke);
+    path.setAttribute('stroke-width', width);
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    return path;
+  }
+
+  drawCrossDayMarker(fromCard, toCard, toSegment, color) {
+    const days = this.state.days || [];
+    const date = new Date(toSegment.start_time * 1000);
+    const day = days.find(d =>
+      d.date.getFullYear() === date.getFullYear() &&
+      d.date.getMonth() === date.getMonth() &&
+      d.date.getDate() === date.getDate()
+    );
+
+    const goingDown = parseFloat(toCard.style.top) > parseFloat(fromCard.style.top);
+    const x = parseFloat(fromCard.style.left) + parseFloat(fromCard.style.width) - 12;
+    const top = parseFloat(fromCard.style.top);
+    const y = goingDown ? top + parseFloat(fromCard.style.height) - 4 : top + 4;
+    const dir = goingDown ? 1 : -1;
+
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    arrow.setAttribute('d', `M ${x - 5} ${y} L ${x + 5} ${y} L ${x} ${y + 7 * dir} Z`);
+    arrow.setAttribute('fill', color);
+    arrow.setAttribute('stroke', '#000000');
+    arrow.setAttribute('stroke-width', '1.5');
+    group.appendChild(arrow);
+
+    if (day) {
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', x - 10);
+      label.setAttribute('y', y + 4 * dir);
+      label.setAttribute('text-anchor', 'end');
+      label.setAttribute('class', 'timeline-wire-label');
+      label.textContent = day.name;
+      group.appendChild(label);
+    }
+
+    this.wireLayer.appendChild(group);
+  }
+
+  // ==========================================
   // PLACEMENT
   // ==========================================
 
@@ -208,11 +436,11 @@ class TimelineDOM {
     const placements = [];
 
     tasks.forEach(task => {
-      if (!task.start_times || task.start_times.length === 0) return;
+      const segments = TaskModel.ensureSegments(task);
+      if (!segments.length) return;
 
-      task.start_times.forEach((st, segIdx) => {
-        const dur = task.durations[segIdx] || 60;
-        const segDate = new Date(st * 1000);
+      segments.forEach((segment, segIdx) => {
+        const segDate = new Date(segment.start_time * 1000);
         const dayIdx = days.findIndex(d =>
           d.date.getFullYear() === segDate.getFullYear() &&
           d.date.getMonth() === segDate.getMonth() &&
@@ -220,14 +448,18 @@ class TimelineDOM {
         );
         if (dayIdx === -1) return;
 
-        const startMin = (st - days[dayIdx].startTimestamp) / 60;
+        const startMin = (segment.start_time - days[dayIdx].startTimestamp) / 60;
         placements.push({
           task,
+          segment,
+          // Positional, in time order across the whole task — this is what the
+          // pill shows, so splitting renumbers everything after the cut.
           segIdx,
+          segTotal: segments.length,
           dayIdx,
           startMin,
-          endMin: startMin + dur,
-          duration: dur,
+          endMin: startMin + segment.duration,
+          duration: segment.duration,
           hasLeftSeam: false,
           hasRightSeam: false
         });
@@ -275,9 +507,14 @@ class TimelineDOM {
 
   render() {
     this.hideTooltip();
+    this.clearFocus();
     this.armedSeam = null;
     this.seamRecords = [];
     this.blockLayer.innerHTML = '';
+
+    this.wireLayer.setAttribute('width', this.canvas.width);
+    this.wireLayer.setAttribute('height', this.canvas.height);
+    this.wireLayer.setAttribute('viewBox', `0 0 ${this.canvas.width} ${this.canvas.height}`);
 
     const { placements, seams } = this.computePlacements();
 
@@ -303,32 +540,31 @@ class TimelineDOM {
   }
 
   buildCard(placement) {
-    const { task, segIdx, duration } = placement;
+    const { task, segment, segIdx, segTotal, duration } = placement;
     const geo = this.geometryFor(placement);
 
-    const isSplit = task.start_times.length > 1;
-    const isFirstSegment = segIdx === 0;
-    const isLastSegment = segIdx === task.start_times.length - 1;
-
+    const isSplit = segTotal > 1;
     const startLabel = this.canvas.formatTimeLabel(placement.startMin);
     const endLabel = this.canvas.formatTimeLabel(placement.endMin);
     const sizeClass = TimelineDOM.sizeClassForWidth(geo.width);
     const isShort = geo.height < 58;
+    const collapsed = TimelineDOM.hidesContent(sizeClass, isShort);
 
     const card = document.createElement('div');
     card.className = [
       'timeline-task-card',
       sizeClass,
       isShort ? 'is-short' : '',
-      task.completed ? 'is-completed' : '',
+      // Completion is per block now: one chunk of a split can be done while its
+      // siblings are not.
+      segment.completed ? 'is-completed' : '',
       isSplit ? 'is-split' : '',
-      // A seamed edge widens its handle so the seam zone in the middle does not
-      // eat the whole target.
       placement.hasLeftSeam ? 'has-seam-left' : '',
       placement.hasRightSeam ? 'has-seam-right' : ''
     ].filter(Boolean).join(' ');
 
     card.dataset.taskId = task.id;
+    card.dataset.segmentId = segment.id;
     card.dataset.segmentIndex = segIdx;
     card.style.left = `${geo.left}px`;
     card.style.top = `${geo.top}px`;
@@ -336,31 +572,19 @@ class TimelineDOM {
     card.style.height = `${geo.height}px`;
     card.style.backgroundColor = task.color || '#9ae659';
 
-    // Only blocks that are actually hiding something get a tooltip.
-    if (TimelineDOM.tierHidesContent(sizeClass, isShort)) {
-      card.dataset.tipTitle = task.title || 'Untitled Task';
-      card.dataset.tipMeta = `${startLabel} – ${endLabel} · ${duration}m`;
-      card.dataset.tipColor = task.color || '#9ae659';
-      if (task.category) card.dataset.tipCategory = task.category;
-    }
+    card.dataset.tipTitle = task.title || 'Untitled Task';
+    card.dataset.tipMeta = `${startLabel} – ${endLabel} · ${duration}m`;
+    card.dataset.tipColor = task.color || '#9ae659';
+    card.dataset.tipCollapsed = String(collapsed);
+    if (isSplit) card.dataset.tipSession = `Block ${segIdx + 1} of ${segTotal} · ${task.total_duration}m total`;
+    if (task.category) card.dataset.tipCategory = task.category;
 
     const badge = document.createElement('div');
     badge.className = 'task-badge-circle';
     badge.innerHTML = TimelineDOM.getCategoryIconElement(task.icon);
     card.appendChild(badge);
 
-    const checkbox = document.createElement('button');
-    checkbox.type = 'button';
-    checkbox.className = `task-checkbox ${task.completed ? 'checked' : ''}`;
-    checkbox.title = task.completed ? 'Mark uncompleted' : 'Mark completed';
-    checkbox.innerHTML = task.completed
-      ? '<span class="material-symbols-outlined" style="font-size: 16px; color: #000; font-weight: 800;">check</span>'
-      : '';
-    checkbox.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.onTaskInteraction('toggleComplete', { taskId: task.id, completed: !task.completed });
-    });
-    card.appendChild(checkbox);
+    card.appendChild(this.buildPill(task, segment, segIdx, segTotal));
 
     const content = document.createElement('div');
     content.className = 'task-content-inner';
@@ -383,23 +607,9 @@ class TimelineDOM {
     card.appendChild(TimelineDOM.buildEdgeHandle('left'));
     card.appendChild(TimelineDOM.buildEdgeHandle('right'));
 
-    if (isSplit) {
-      if (!isLastSegment) {
-        const dot = document.createElement('div');
-        dot.className = 'split-connection-dot split-dot-right';
-        card.appendChild(dot);
-      }
-      if (!isFirstSegment) {
-        const dot = document.createElement('div');
-        dot.className = 'split-connection-dot split-dot-left';
-        card.appendChild(dot);
-      }
-    }
-
     if (task.is_locked !== false && !isSplit && task.category !== 'Break') {
       const lockPill = document.createElement('div');
       lockPill.className = 'task-lock-indicator';
-      lockPill.title = 'Locked Duration: pushes neighboring tasks when expanding';
       lockPill.innerHTML = '<span class="material-symbols-outlined" style="font-size: 13px; color: #000;">lock</span>';
       card.appendChild(lockPill);
     }
@@ -412,17 +622,77 @@ class TimelineDOM {
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.onTaskInteraction('openContextMenu', { task, clientX: e.clientX, clientY: e.clientY });
+      this.hideTooltip();
+      this.onTaskInteraction('openContextMenu', {
+        task,
+        segmentId: segment.id,
+        // Captured HERE, while the pointer is still over the cut point. It will
+        // have moved to the menu by the time anything is clicked.
+        splitTimestamp: this.timestampAtClientX(e.clientX, placement.dayIdx),
+        clientX: e.clientX,
+        clientY: e.clientY
+      });
     });
 
     return card;
+  }
+
+  timestampAtClientX(clientX, dayIdx) {
+    const day = (this.state.days || [])[dayIdx];
+    if (!day) return null;
+    const rect = this.canvas.canvas.getBoundingClientRect();
+    return day.startTimestamp + this.canvas.xToMinutes(clientX - rect.left) * 60;
+  }
+
+  /**
+   * One control carrying two signals: the shape says whether this block belongs
+   * to a split (capsule) or stands alone (square), and the fill says whether it
+   * is done. Fusing them means they never compete for the same pixels on a
+   * narrow block — which they would as two separate controls.
+   */
+  buildPill(task, segment, segIdx, segTotal) {
+    const isSplit = segTotal > 1;
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = [
+      'segment-pill',
+      isSplit ? 'is-segment' : 'is-single',
+      segment.completed ? 'is-done' : ''
+    ].filter(Boolean).join(' ');
+
+    if (isSplit) {
+      const label = document.createElement('span');
+      label.className = 'segment-pill-label';
+      label.textContent = `${segIdx + 1}/${segTotal}`;
+      pill.appendChild(label);
+      pill.setAttribute('aria-label',
+        `Block ${segIdx + 1} of ${segTotal}, ${segment.completed ? 'done' : 'not done'}`);
+    } else {
+      pill.innerHTML = '<span class="material-symbols-outlined segment-pill-check">check</span>';
+      pill.setAttribute('aria-label', segment.completed ? 'Mark not done' : 'Mark done');
+    }
+
+    // Must swallow its own pointer events: on a narrow block the pill covers
+    // most of the surface, and a missed click would start a drag instead.
+    pill.addEventListener('mousedown', (e) => e.stopPropagation());
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onTaskInteraction('toggleSegmentComplete', {
+        taskId: task.id,
+        segmentId: segment.id,
+        completed: !segment.completed
+      });
+    });
+
+    return pill;
   }
 
   static buildEdgeHandle(side) {
     const handle = document.createElement('div');
     handle.className = `resize-handle resize-handle-${side}`;
     handle.dataset.handle = side;
-    handle.title = side === 'left' ? 'Drag to adjust start time' : 'Drag to adjust duration';
+    // No native title: the ew-resize cursor and the grip already say what this
+    // does, and an OS tooltip here would fight the styled one on the block.
 
     const grip = document.createElement('span');
     grip.className = 'resize-handle-grip';
@@ -435,9 +705,9 @@ class TimelineDOM {
     el.className = 'timeline-seam-handle';
     el.dataset.seam = 'true';
     el.dataset.leftTaskId = seam.left.task.id;
-    el.dataset.leftSegmentIndex = seam.left.segIdx;
+    el.dataset.leftSegmentId = seam.left.segment.id;
     el.dataset.rightTaskId = seam.right.task.id;
-    el.dataset.rightSegmentIndex = seam.right.segIdx;
+    el.dataset.rightSegmentId = seam.right.segment.id;
     el.dataset.dayIndex = seam.dayIdx;
 
     el.style.left = `${this.canvas.timeToX(seam.boundaryMin)}px`;

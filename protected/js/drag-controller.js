@@ -25,6 +25,8 @@ class DragController {
     this._projectionRaf = null;
 
     this.dom.isDragActive = () => Boolean(this.activeDrag);
+    // Set by the app; Alt-click has nothing to do until it is.
+    this.onSplitSegment = null;
     this.initListeners();
   }
 
@@ -193,23 +195,38 @@ class DragController {
 
     const handleEl = e.target.closest('.resize-handle');
     const taskCard = e.target.closest('.timeline-task-card');
+    if (!taskCard) return;
 
-    if (handleEl && taskCard) {
+    const taskId = taskCard.dataset.taskId;
+    const segmentId = taskCard.dataset.segmentId;
+    const task = this.state.tasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    // Segments carry their own completion, so they are addressed by id. An index
+    // would hand the wrong block to a drag whenever a re-sort landed in between.
+    const segment = TaskModel.segmentById(task, segmentId);
+    if (!segment) return;
+
+    const startTime = segment.start_time;
+    const duration = segment.duration;
+
+    // Alt-click cuts the block under the pointer, no menu. Windows only for now.
+    if (!handleEl && e.altKey && DragController.supportsAltSplit()) {
       e.preventDefault();
       e.stopPropagation();
-      const taskId = taskCard.dataset.taskId;
-      const segmentIndex = parseInt(taskCard.dataset.segmentIndex || '0', 10);
-      const handleType = handleEl.dataset.handle;
-      const task = this.state.tasks.find(t => t.id === taskId);
-      if (!task) return;
+      this.dom.hideTooltip();
+      this.onSplitSegment(task, segmentId, this.timestampAtClientX(e.clientX, startTime));
+      return;
+    }
 
-      const startTime = task.start_times[segmentIndex];
-      const duration = task.durations[segmentIndex] || 60;
+    if (handleEl) {
+      e.preventDefault();
+      e.stopPropagation();
 
       this.activeDrag = {
-        type: handleType === 'left' ? 'resize-left' : 'resize-right',
+        type: handleEl.dataset.handle === 'left' ? 'resize-left' : 'resize-right',
         taskId,
-        segmentIndex,
+        segmentId,
         taskRef: task,
         domElement: taskCard,
         initialClientX: e.clientX,
@@ -227,37 +244,65 @@ class DragController {
       return;
     }
 
-    if (taskCard && !e.target.closest('.task-checkbox')) {
-      e.preventDefault();
-      e.stopPropagation();
-      const taskId = taskCard.dataset.taskId;
-      const segmentIndex = parseInt(taskCard.dataset.segmentIndex || '0', 10);
-      const task = this.state.tasks.find(t => t.id === taskId);
-      if (!task) return;
+    if (e.target.closest('.segment-pill')) return;
 
-      const startTime = task.start_times[segmentIndex];
-      const duration = task.durations[segmentIndex] || 60;
-      const rect = taskCard.getBoundingClientRect();
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = taskCard.getBoundingClientRect();
+    const dayIndex = this.dayIndexForTimestamp(startTime);
 
-      this.activeDrag = {
-        type: 'move',
-        taskId,
-        segmentIndex,
-        taskRef: task,
-        domElement: taskCard,
-        initialClientX: e.clientX,
-        initialClientY: e.clientY,
-        offsetX: e.clientX - rect.left,
-        offsetY: e.clientY - rect.top,
-        initialStartTime: startTime,
-        initialDuration: duration,
-        currentStartTime: startTime,
-        currentDuration: duration,
-        currentDayIndex: this.dayIndexForTimestamp(startTime)
-      };
-      taskCard.classList.add('is-dragging');
-      this.dom.hideTooltip();
-    }
+    this.activeDrag = {
+      type: 'move',
+      taskId,
+      segmentId,
+      taskRef: task,
+      domElement: taskCard,
+      initialClientX: e.clientX,
+      initialClientY: e.clientY,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      initialStartTime: startTime,
+      initialDuration: duration,
+      currentStartTime: startTime,
+      currentDuration: duration,
+      currentDayIndex: dayIndex,
+      // Captured once, at drag start: recomputing the pair every frame would
+      // change what the gesture means halfway through it.
+      divider: this.findDividerAt(task, segment, dayIndex)
+    };
+    taskCard.classList.add('is-dragging');
+    this.dom.hideTooltip();
+  }
+
+  static supportsAltSplit() {
+    return /Win/i.test(navigator.platform || navigator.userAgent || '');
+  }
+
+  timestampAtClientX(clientX, referenceTimestamp) {
+    const dayIndex = this.dayIndexForTimestamp(referenceTimestamp);
+    const day = this.state.days[dayIndex];
+    if (!day) return referenceTimestamp;
+    const rect = this.canvas.canvas.getBoundingClientRect();
+    return day.startTimestamp + this.canvas.xToMinutes(clientX - rect.left) * 60;
+  }
+
+  findDividerAt(task, segment, dayIndex) {
+    const day = this.state.days[dayIndex];
+    if (!day) return null;
+
+    const obstacles = PhysicsEngine.daySegments(
+      this.state.tasks, day.startTimestamp, day.startTimestamp + 86400, segment.id
+    );
+    const found = PhysicsEngine.findDivider(
+      obstacles, segment.start_time, segment.start_time + segment.duration * 60
+    );
+    if (!found) return null;
+
+    return {
+      taskId: found.left.taskId,
+      leftId: found.left.segmentId,
+      rightId: found.right.segmentId
+    };
   }
 
   startSeamDrag(e, seamEl) {
@@ -268,25 +313,21 @@ class DragController {
     const rightTask = this.state.tasks.find(t => t.id === seamEl.dataset.rightTaskId);
     if (!leftTask || !rightTask) return;
 
-    const leftSeg = parseInt(seamEl.dataset.leftSegmentIndex || '0', 10);
-    const rightSeg = parseInt(seamEl.dataset.rightSegmentIndex || '0', 10);
-
-    const leftStart = leftTask.start_times[leftSeg];
-    const leftDur = leftTask.durations[leftSeg] || 60;
-    const rightStart = rightTask.start_times[rightSeg];
-    const rightDur = rightTask.durations[rightSeg] || 60;
+    const leftSegment = TaskModel.segmentById(leftTask, seamEl.dataset.leftSegmentId);
+    const rightSegment = TaskModel.segmentById(rightTask, seamEl.dataset.rightSegmentId);
+    if (!leftSegment || !rightSegment) return;
 
     this.activeDrag = {
       type: 'seam',
       taskId: leftTask.id,
-      segmentIndex: leftSeg,
+      segmentId: leftSegment.id,
       domElement: seamEl,
       initialClientX: e.clientX,
       currentDayIndex: parseInt(seamEl.dataset.dayIndex || '0', 10),
-      left: { task: leftTask, segIdx: leftSeg, start: leftStart, duration: leftDur },
-      right: { task: rightTask, segIdx: rightSeg, start: rightStart, duration: rightDur },
-      initialBoundary: rightStart,
-      currentBoundary: rightStart
+      left: { task: leftTask, segmentId: leftSegment.id, start: leftSegment.start_time, duration: leftSegment.duration },
+      right: { task: rightTask, segmentId: rightSegment.id, start: rightSegment.start_time, duration: rightSegment.duration },
+      initialBoundary: rightSegment.start_time,
+      currentBoundary: rightSegment.start_time
     };
 
     seamEl.classList.add('is-active');
@@ -322,7 +363,7 @@ class DragController {
       type: 'sidebar-drop',
       taskId: task.id,
       taskRef: task,
-      segmentIndex: 0,
+      segmentId: null,
       initialDuration: duration,
       currentDuration: duration,
       initialClientX: clientX,
@@ -350,17 +391,59 @@ class DragController {
   // The ripple engine reports every segment it considered, changed or not. Drop
   // the no-ops so the hint counts only real movement and the commit does not
   // write rows that did not move.
+  // The engines report every segment they considered, changed or not. Drop the
+  // no-ops so the hint counts only real movement and the commit does not write
+  // rows that did not move.
   pruneUnchanged(updates) {
     return updates.filter(update => {
       const task = this.state.tasks.find(t => t.id === update.id);
       if (!task) return true;
-      if (task.start_times.length !== update.start_times.length) return true;
-      if (task.durations.length !== update.durations.length) return true;
 
-      const sameStarts = update.start_times.every((v, i) => Math.abs(v - task.start_times[i]) < 30);
-      const sameDurations = update.durations.every((v, i) => Math.abs(v - (task.durations[i] || 0)) < 0.5);
-      return !(sameStarts && sameDurations);
+      const before = task.segments || [];
+      const after = update.segments || [];
+      if (before.length !== after.length) return true;
+
+      return !after.every((seg, i) => (
+        Math.abs(seg.start_time - before[i].start_time) < 30 &&
+        Math.abs(seg.duration - before[i].duration) < 0.5 &&
+        Boolean(seg.completed) === Boolean(before[i].completed)
+      ));
     });
+  }
+
+  /**
+   * A scratch copy of the segments of every task a drag touches. Mutations land
+   * here, never on live tasks, so the preview can be recomputed every frame and
+   * the commit path can still snapshot the pre-edit state for rollback.
+   */
+  createWorkspace() {
+    const byTask = new Map();
+    const self = this;
+
+    return {
+      segments(taskId) {
+        if (!byTask.has(taskId)) {
+          const task = self.state.tasks.find(t => t.id === taskId);
+          byTask.set(taskId, task ? TaskModel.cloneSegments(task) : []);
+        }
+        return byTask.get(taskId);
+      },
+      set(taskId, segmentId, startTime, duration) {
+        const segment = this.segments(taskId).find(seg => seg.id === segmentId);
+        if (!segment) return;
+        segment.start_time = startTime;
+        if (duration != null) segment.duration = duration;
+      },
+      remove(taskId, segmentId) {
+        byTask.set(taskId, this.segments(taskId).filter(seg => seg.id !== segmentId));
+      },
+      payloads() {
+        return [...byTask.entries()].map(([taskId, segments]) => {
+          const task = self.state.tasks.find(t => t.id === taskId);
+          return TaskModel.payloadFrom(task, segments);
+        }).filter(Boolean);
+      }
+    };
   }
 
   computeDragOutcome(drag) {
@@ -373,85 +456,121 @@ class DragController {
     const startTime = drag.currentStartTime;
     if (startTime === null || startTime === undefined) return [];
 
+    const task = this.state.tasks.find(t => t.id === drag.taskId);
+    if (!task) return [];
+
     const duration = drag.currentDuration || drag.initialDuration;
     const dayStart = day.startTimestamp;
     const dayEnd = dayStart + 86400;
+    const workspace = this.createWorkspace();
+
+    // A resize edits one block in place. It must not re-place the task the way a
+    // move does, or the task's other blocks would be rewritten along with it.
+    if (drag.type === 'resize-left' || drag.type === 'resize-right') {
+      workspace.set(drag.taskId, drag.segmentId, startTime, duration);
+      return workspace.payloads();
+    }
+
+    const obstacles = PhysicsEngine.daySegments(this.state.tasks, dayStart, dayEnd, drag.segmentId);
+
+    // DIVIDER: this block sits between two touching blocks of one task, so it
+    // acts as the boundary between them — time moves from one side to the other
+    // and the pair's outer edges stay put.
+    if (!this.isCtrlPressed && drag.divider) {
+      const resolved = this.resolveDivider(drag, startTime, duration, dayStart, dayEnd);
+      if (resolved) {
+        resolved.changed.forEach(entry => {
+          workspace.set(entry.taskId, entry.segmentId, entry.startTime, entry.duration);
+        });
+        resolved.removed.forEach(entry => workspace.remove(entry.taskId, entry.segmentId));
+        this.placeDraggedSegment(workspace, task, drag, resolved.movedStart, duration);
+        drag.lastOutcome = {
+          kind: 'divider',
+          removed: resolved.removed.length,
+          blockedByCompleted: resolved.blockedByCompleted,
+          taskTitle: resolved.taskTitle
+        };
+        return workspace.payloads();
+      }
+    }
 
     if (this.isCtrlPressed) {
-      const updatesMap = PhysicsEngine.calculateRipple(
-        this.state.tasks, dayStart, dayEnd, drag.taskId, drag.segmentIndex || 0, startTime, duration
-      );
-      if (!updatesMap.has(drag.taskId)) {
-        updatesMap.set(drag.taskId, {
-          id: drag.taskId,
-          start_times: [startTime],
-          durations: [duration],
-          total_duration: duration
-        });
-      }
-      return Array.from(updatesMap.values());
+      const moved = PhysicsEngine.ripple(obstacles, startTime, duration);
+      moved.forEach(entry => {
+        workspace.set(entry.taskId, entry.segmentId, entry.startTime, entry.duration);
+      });
+      this.placeDraggedSegment(workspace, task, drag, startTime, duration);
+      drag.lastOutcome = { kind: 'ripple', moved: moved.length };
+      return workspace.payloads();
     }
 
-    // A resize edits one segment in place; it must not disturb the task's other
-    // segments the way a re-placement would.
-    if (drag.type === 'resize-left' || drag.type === 'resize-right') {
-      const task = drag.taskRef;
-      const start_times = [...task.start_times];
-      const durations = [...task.durations];
-      start_times[drag.segmentIndex] = startTime;
-      durations[drag.segmentIndex] = duration;
-      return [{
-        id: drag.taskId,
-        start_times,
-        durations,
-        total_duration: durations.reduce((sum, d) => sum + d, 0)
-      }];
-    }
-
-    const split = PhysicsEngine.calculateSessionSplit(
-      this.state.tasks, dayStart, dayEnd, drag.taskId, startTime, duration
-    );
-    return [{
-      id: drag.taskId,
-      start_times: split.start_times,
-      durations: split.durations,
-      total_duration: split.total_duration
-    }];
+    // DEFAULT: flow around whatever is in the way, splitting only THIS block.
+    // The task's other blocks are untouched — they are obstacles, not cargo.
+    const pieces = PhysicsEngine.placeAround(obstacles, startTime, duration, dayEnd);
+    this.placeDraggedSegment(workspace, task, drag, startTime, duration, pieces);
+    drag.lastOutcome = { kind: 'split', pieces: pieces.length };
+    return workspace.payloads();
   }
 
-  // The seam always moves both blocks: the pair's outer bounds are fixed and
-  // only the boundary between them travels. Resizing one block alone is done
-  // with that block's own edge handle, which sits just outside the seam zone.
+  /**
+   * Put the dragged block down. The first piece keeps the original segment id so
+   * its completion travels with it; extra pieces are new blocks of the same task.
+   */
+  placeDraggedSegment(workspace, task, drag, startTime, duration, pieces = null) {
+    const segments = workspace.segments(task.id);
+    const index = segments.findIndex(seg => seg.id === drag.segmentId);
+    const completed = index !== -1 ? segments[index].completed : false;
+
+    if (!pieces || pieces.length <= 1) {
+      const only = pieces && pieces.length ? pieces[0] : { startTime, duration };
+      if (index === -1) {
+        segments.push({
+          id: drag.segmentId || TaskModel.newSegmentId(),
+          start_time: only.startTime,
+          duration: only.duration,
+          completed: false
+        });
+      } else {
+        segments[index].start_time = only.startTime;
+        segments[index].duration = only.duration;
+      }
+      return;
+    }
+
+    if (index !== -1) segments.splice(index, 1);
+    pieces.forEach((piece, i) => {
+      segments.push({
+        id: i === 0 && drag.segmentId ? drag.segmentId : TaskModel.newSegmentId(),
+        start_time: piece.startTime,
+        duration: piece.duration,
+        completed
+      });
+    });
+  }
+
+  resolveDivider(drag, startTime, duration, dayStart, dayEnd) {
+    const owner = this.state.tasks.find(t => t.id === drag.divider.taskId);
+    if (!owner) return null;
+
+    const entries = PhysicsEngine.daySegments([owner], dayStart, dayEnd);
+    const left = entries.find(e => e.segmentId === drag.divider.leftId);
+    const right = entries.find(e => e.segmentId === drag.divider.rightId);
+    if (!left || !right) return null;
+
+    const result = PhysicsEngine.applyDivider({ left, right }, startTime, startTime + duration * 60);
+    result.taskTitle = owner.title || 'that task';
+    return result;
+  }
+
   resolveSeamOutcome(drag) {
     const { left, right } = drag;
     const boundary = drag.currentBoundary;
     const rightEnd = right.start + right.duration * 60;
 
-    const leftDuration = Math.round((boundary - left.start) / 60);
-    const rightStart = boundary;
-    const rightDuration = Math.round((rightEnd - boundary) / 60);
-
-    // Both sides may belong to the same task, so merge into one update per task.
-    const byTask = new Map();
-    const apply = (task, segIdx, start, duration) => {
-      if (!byTask.has(task.id)) {
-        byTask.set(task.id, {
-          id: task.id,
-          start_times: [...task.start_times],
-          durations: [...task.durations],
-          total_duration: task.total_duration
-        });
-      }
-      const update = byTask.get(task.id);
-      update.start_times[segIdx] = start;
-      update.durations[segIdx] = duration;
-      update.total_duration = update.durations.reduce((sum, d) => sum + d, 0);
-    };
-
-    apply(left.task, left.segIdx, left.start, leftDuration);
-    apply(right.task, right.segIdx, rightStart, rightDuration);
-
-    return Array.from(byTask.values());
+    const workspace = this.createWorkspace();
+    workspace.set(left.task.id, left.segmentId, left.start, Math.round((boundary - left.start) / 60));
+    workspace.set(right.task.id, right.segmentId, boundary, Math.round((rightEnd - boundary) / 60));
+    return workspace.payloads();
   }
 
   // ==========================================
@@ -478,17 +597,29 @@ class DragController {
       return 'Moving the shared boundary — both blocks, same total time';
     }
 
-    const others = updates.filter(u => u.id !== drag.taskId).length;
+    const outcome = drag.lastOutcome || {};
+
+    if (outcome.kind === 'divider') {
+      if (outcome.removed > 0) {
+        return `Trading time inside ${outcome.taskTitle} — ${outcome.removed} block${outcome.removed > 1 ? 's' : ''} will be removed`;
+      }
+      if (outcome.blockedByCompleted) {
+        return `Trading time inside ${outcome.taskTitle} — stopped at a completed block`;
+      }
+      return `Trading time between the blocks of ${outcome.taskTitle}`;
+    }
+
     if (this.isCtrlPressed) {
+      const others = updates.filter(u => u.id !== drag.taskId).length;
       return others === 0
         ? 'Ripple — nothing else affected'
         : `Ripple — ${others} other task${others > 1 ? 's' : ''} will shift`;
     }
 
-    const self = updates.find(u => u.id === drag.taskId);
-    if (self && self.start_times.length > 1) {
-      return `Splits into ${self.start_times.length} sessions around the blocks in the way`;
+    if (outcome.kind === 'split' && outcome.pieces > 1) {
+      return `Breaks into ${outcome.pieces} blocks around what's in the way`;
     }
+
     if (drag.type === 'move' || drag.type === 'sidebar-drop') {
       return 'Hold Ctrl to push the blocks in the way instead of splitting';
     }
@@ -509,7 +640,11 @@ class DragController {
     }
 
     this.hintChipEl.textContent = text;
-    this.hintChipEl.classList.toggle('is-warning', this.isCtrlPressed && updates.length > 1);
+    const removing = Boolean(drag.lastOutcome && drag.lastOutcome.removed);
+    this.hintChipEl.classList.toggle(
+      'is-warning',
+      removing || (this.isCtrlPressed && updates.length > 1)
+    );
     this.hintChipEl.style.display = 'block';
 
     const x = this._lastPointer ? this._lastPointer.x : 0;
@@ -722,7 +857,7 @@ class DragController {
     const boundaryX = this.canvas.timeToX(boundaryMin);
 
     const leftStartMin = (drag.left.start - day.startTimestamp) / 60;
-    const leftCard = this.cardFor(drag.left.task.id, drag.left.segIdx);
+    const leftCard = this.cardFor(drag.left.segmentId);
     if (leftCard) {
       const x1 = this.canvas.timeToX(leftStartMin);
       this.applyBlockWidth(leftCard, boundaryX - x1);
@@ -730,7 +865,7 @@ class DragController {
       leftCard.classList.add('is-resizing');
     }
 
-    const rightCard = this.cardFor(drag.right.task.id, drag.right.segIdx);
+    const rightCard = this.cardFor(drag.right.segmentId);
     if (rightCard) {
       const rightEndMin = (drag.right.start - day.startTimestamp) / 60 + drag.right.duration;
       const rx1 = this.canvas.timeToX(boundaryMin);
@@ -743,9 +878,9 @@ class DragController {
     if (drag.domElement) drag.domElement.style.left = `${boundaryX}px`;
   }
 
-  cardFor(taskId, segmentIndex) {
+  cardFor(segmentId) {
     return this.dom.blockLayer.querySelector(
-      `.timeline-task-card[data-task-id="${taskId}"][data-segment-index="${segmentIndex}"]`
+      `.timeline-task-card[data-segment-id="${segmentId}"]`
     );
   }
 
