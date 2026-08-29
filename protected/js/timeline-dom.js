@@ -14,6 +14,16 @@ class TimelineDOM {
     return `<span class="material-symbols-outlined task-icon-symbol">${icon}</span>`;
   }
 
+  // Blocks shrink with their duration and the zoom level. Rather than clipping
+  // every element at once, drop them in order of least importance.
+  static sizeClassForWidth(width) {
+    if (width >= 160) return 'is-lg';
+    if (width >= 104) return 'is-md';
+    if (width >= 60) return 'is-sm';
+    if (width >= 30) return 'is-xs';
+    return 'is-min';
+  }
+
   render() {
     this.container.innerHTML = '';
     const tasks = this.state.tasks || [];
@@ -45,19 +55,31 @@ class TimelineDOM {
 
         const x1 = this.canvas.timeToX(minutesFromDayStart);
         const x2 = this.canvas.timeToX(endMinutesFromDayStart);
-        const width = Math.max(16, x2 - x1);
-        const top = this.canvas.headerHeight + (dayIdx * this.canvas.rowHeight) + 6;
-        const height = this.canvas.rowHeight - 12;
+        const width = Math.max(10, x2 - x1);
+        const top = this.canvas.dayIndexToY(dayIdx) + 5;
+        const height = this.canvas.rowHeight - 10;
 
         const isSplit = task.start_times.length > 1;
         const isFirstSegment = segIdx === 0;
         const isLastSegment = segIdx === task.start_times.length - 1;
 
+        const startLabel = this.canvas.formatTimeLabel(minutesFromDayStart);
+        const endLabel = this.canvas.formatTimeLabel(endMinutesFromDayStart);
+        const sizeClass = TimelineDOM.sizeClassForWidth(width);
+
         // Create Task Card DOM element
         const card = document.createElement('div');
-        card.className = `timeline-task-card ${task.completed ? 'is-completed' : ''} ${isSplit ? 'is-split' : ''}`;
+        card.className = [
+          'timeline-task-card',
+          sizeClass,
+          height < 58 ? 'is-short' : '',
+          task.completed ? 'is-completed' : '',
+          isSplit ? 'is-split' : ''
+        ].filter(Boolean).join(' ');
         card.dataset.taskId = task.id;
         card.dataset.segmentIndex = segIdx;
+        // Whatever the tier hides stays reachable on hover.
+        card.title = `${task.title || 'Untitled Task'}\n${startLabel} - ${endLabel} (${dur}m)`;
         card.style.left = `${x1}px`;
         card.style.top = `${top}px`;
         card.style.width = `${width}px`;
@@ -95,8 +117,6 @@ class TimelineDOM {
 
         const metaEl = document.createElement('div');
         metaEl.className = 'task-meta-text';
-        const startLabel = this.canvas.formatTimeLabel(minutesFromDayStart);
-        const endLabel = this.canvas.formatTimeLabel(endMinutesFromDayStart);
         metaEl.textContent = `${startLabel} - ${endLabel} (${dur}m)`;
         content.appendChild(metaEl);
 

@@ -47,6 +47,17 @@ class DragController {
     }
   }
 
+  // Keep a block's legibility tier in step with its live width while dragging, so
+  // it does not sit in a tier it has outgrown until the next full render.
+  applyBlockWidth(element, rawWidth) {
+    const width = Math.max(10, rawWidth);
+    element.style.width = `${width}px`;
+    const next = TimelineDOM.sizeClassForWidth(width);
+    ['is-lg', 'is-md', 'is-sm', 'is-xs', 'is-min'].forEach(cls => {
+      element.classList.toggle(cls, cls === next);
+    });
+  }
+
   isModalOrOverlayActive() {
     return Boolean(document.querySelector('.modal-container.active, .context-menu.active'));
   }
@@ -72,7 +83,7 @@ class DragController {
       }
       const canvasRect = this.canvas.canvas.getBoundingClientRect();
       const relX = e.clientX - canvasRect.left;
-      if (relX >= this.canvas.dayHeaderWidth) {
+      if (relX >= 0 && relX <= this.canvas.totalTimelineWidth) {
         this.canvas.setPlayhead(relX);
       } else {
         this.canvas.setPlayhead(null);
@@ -255,8 +266,7 @@ class DragController {
         const relX = e.clientX - canvasRect.left;
         const relY = e.clientY - canvasRect.top;
 
-        let targetDayIndex = Math.floor((relY - this.canvas.headerHeight) / this.canvas.rowHeight);
-        targetDayIndex = Math.max(0, Math.min(this.state.days.length - 1, targetDayIndex));
+        const targetDayIndex = this.canvas.yToDayIndex(relY);
         const targetDay = this.state.days[targetDayIndex];
 
         let minutesFromStart = this.canvas.xToMinutes(relX);
@@ -298,8 +308,7 @@ class DragController {
       const relX = e.clientX - canvasRect.left;
       const relY = e.clientY - canvasRect.top;
 
-      let targetDayIndex = Math.floor((relY - this.canvas.headerHeight) / this.canvas.rowHeight);
-      targetDayIndex = Math.max(0, Math.min(this.state.days.length - 1, targetDayIndex));
+      const targetDayIndex = this.canvas.yToDayIndex(relY);
       const targetDay = this.state.days[targetDayIndex];
 
       const taskLeftX = relX - (drag.offsetX || 0);
@@ -319,12 +328,12 @@ class DragController {
 
       const x1 = this.canvas.timeToX(clampedMinutes);
       const x2 = this.canvas.timeToX(clampedMinutes + drag.currentDuration);
-      const top = this.canvas.headerHeight + (targetDayIndex * this.canvas.rowHeight) + 6;
+      const top = this.canvas.dayIndexToY(targetDayIndex) + 5;
 
       if (drag.domElement) {
         drag.domElement.style.left = `${x1}px`;
         drag.domElement.style.top = `${top}px`;
-        drag.domElement.style.width = `${Math.max(16, x2 - x1)}px`;
+        this.applyBlockWidth(drag.domElement, x2 - x1);
 
         const metaEl = drag.domElement.querySelector('.task-meta-text');
         if (metaEl) {
@@ -357,7 +366,7 @@ class DragController {
         const startMins = (drag.initialStartTime - targetDay.startTimestamp) / 60;
         const x1 = this.canvas.timeToX(startMins);
         const x2 = this.canvas.timeToX(startMins + newDur);
-        drag.domElement.style.width = `${Math.max(16, x2 - x1)}px`;
+        this.applyBlockWidth(drag.domElement, x2 - x1);
 
         const metaEl = drag.domElement.querySelector('.task-meta-text');
         if (metaEl) {
@@ -394,7 +403,7 @@ class DragController {
           const x1 = this.canvas.timeToX(startMins);
           const x2 = this.canvas.timeToX(startMins + newDur);
           drag.domElement.style.left = `${x1}px`;
-          drag.domElement.style.width = `${Math.max(16, x2 - x1)}px`;
+          this.applyBlockWidth(drag.domElement, x2 - x1);
 
           const metaEl = drag.domElement.querySelector('.task-meta-text');
           if (metaEl) {

@@ -48,6 +48,8 @@ class KlndrApp {
       this.computeWeekDays();
 
       const canvasEl = document.getElementById('timelineCanvas');
+      const rulerCanvasEl = document.getElementById('timelineRulerCanvas');
+      const gutterCanvasEl = document.getElementById('timelineGutterCanvas');
       const scrollContainer = document.getElementById('timeline-workspace');
       const domContainer = document.getElementById('timelineDomOverlay');
       const sidebarContainer = document.getElementById('tasks-sidebar-pane');
@@ -60,7 +62,19 @@ class KlndrApp {
         get tickPercent() { return window.klndr.settings.tickPercent; }
       };
 
-      this.canvasRenderer = new TimelineCanvas(canvasEl, scrollContainer, sharedState);
+      this.canvasRenderer = new TimelineCanvas({
+        bodyCanvas: canvasEl,
+        rulerCanvas: rulerCanvasEl,
+        gutterCanvas: gutterCanvasEl,
+        scrollContainer,
+        viewport: document.getElementById('timelineViewport'),
+        domOverlay: domContainer,
+        state: sharedState,
+        // Geometry and the DOM task blocks must never re-render independently,
+        // or the blocks end up positioned against a grid that no longer exists.
+        onLayoutChange: () => this.renderTimeline()
+      });
+
       this.domRenderer = new TimelineDOM(domContainer, this.canvasRenderer, sharedState, (action, payload) => {
         this.handleTaskInteraction(action, payload);
       });
@@ -151,6 +165,18 @@ class KlndrApp {
     }
 
     this.updateDateRangeUI();
+  }
+
+  updateZoomUI() {
+    if (!this.canvasRenderer) return;
+    const zoom = this.canvasRenderer.zoom;
+    const zoomInBtn = document.getElementById('btnZoomIn');
+    const zoomOutBtn = document.getElementById('btnZoomOut');
+    const zoomFitBtn = document.getElementById('btnZoomFit');
+
+    if (zoomInBtn) zoomInBtn.disabled = zoom >= TimelineCanvas.MAX_ZOOM;
+    if (zoomOutBtn) zoomOutBtn.disabled = zoom <= TimelineCanvas.MIN_ZOOM;
+    if (zoomFitBtn) zoomFitBtn.disabled = zoom === 1;
   }
 
   updateDateRangeUI() {
@@ -252,8 +278,8 @@ class KlndrApp {
 
         // Toggle multi-column full view on task panel
         this.sidebarController.setFullView(this.isCalendarCollapsed);
-
-        setTimeout(() => this.canvasRenderer.resize(), 240);
+        // The canvas relayout is driven by the ResizeObserver, so it lands when
+        // the pane transition actually settles rather than on a guessed timer.
       });
     }
   }
@@ -271,8 +297,7 @@ class KlndrApp {
       if (calIcon) calIcon.textContent = 'chevron_left';
       this.sidebarController.setFullView(false);
     }
-
-    setTimeout(() => this.canvasRenderer.resize(), 240);
+    // Relayout is handled by the ResizeObserver on the timeline scroll container.
   }
 
   // In-list reordering mechanism
@@ -333,6 +358,33 @@ class KlndrApp {
         this.renderAll();
       });
     }
+
+    const zoomInBtn = document.getElementById('btnZoomIn');
+    const zoomOutBtn = document.getElementById('btnZoomOut');
+    const zoomFitBtn = document.getElementById('btnZoomFit');
+
+    if (zoomInBtn) {
+      zoomInBtn.addEventListener('click', () => {
+        this.canvasRenderer.zoomIn();
+        this.updateZoomUI();
+      });
+    }
+
+    if (zoomOutBtn) {
+      zoomOutBtn.addEventListener('click', () => {
+        this.canvasRenderer.zoomOut();
+        this.updateZoomUI();
+      });
+    }
+
+    if (zoomFitBtn) {
+      zoomFitBtn.addEventListener('click', () => {
+        this.canvasRenderer.zoomToFit();
+        this.updateZoomUI();
+      });
+    }
+
+    this.updateZoomUI();
 
     const profilePill = document.getElementById('userProfileTrigger');
     if (profilePill) {
@@ -668,7 +720,7 @@ class KlndrApp {
 
         this.settings = { ...this.settings, ...newSettings };
         this.closeAllModals();
-        this.canvasRenderer.resize();
+        // Bucket size and tick density are draw-time only; geometry is unchanged.
         this.renderAll();
       });
     }
@@ -1192,9 +1244,16 @@ class KlndrApp {
     }
   }
 
-  renderAll() {
+  // Canvas grid and DOM task blocks share one geometry, so they always redraw
+  // as a pair. Anything that changes layout goes through here.
+  renderTimeline() {
     if (this.canvasRenderer) this.canvasRenderer.render();
     if (this.domRenderer) this.domRenderer.render();
+    this.updateZoomUI();
+  }
+
+  renderAll() {
+    this.renderTimeline();
     if (this.sidebarController) this.sidebarController.render();
   }
 }

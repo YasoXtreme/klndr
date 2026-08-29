@@ -136,7 +136,7 @@ body {
 .calendar-pane.is-collapsed .calendar-title,
 .calendar-pane.is-collapsed .calendar-header-center,
 .calendar-pane.is-collapsed .calendar-header-right,
-.calendar-pane.is-collapsed .timeline-workspace-container {
+.calendar-pane.is-collapsed .timeline-viewport {
   display: none !important;
 }
 
@@ -262,12 +262,102 @@ body {
   transform: translateY(-1px);
 }
 
-/* TIMELINE SCROLLABLE WORKSPACE (0-24H) */
-.timeline-workspace-container {
+.calendar-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f9fafb;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  padding: 3px 5px;
+}
+
+.btn-zoom {
+  height: 24px;
+  min-width: 24px;
+  padding: 0 4px;
+  background: #ffffff;
+  border: 1.5px solid var(--color-border);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.btn-zoom:hover:not(:disabled) {
+  background: var(--accent-mint);
+}
+
+.btn-zoom:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-zoom-fit {
+  padding: 0 7px;
+}
+
+/* TIMELINE WORKSPACE (0-24H)
+   The viewport holds three surfaces: a frozen ruler across the top, a frozen
+   day gutter down the left, and the scrolling grid inset behind both. */
+.timeline-viewport {
   flex: 1;
   position: relative;
+  overflow: hidden;
+  background: #ffffff;
+  min-height: 0;
+}
+
+.timeline-corner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--day-header-width);
+  height: var(--header-bucket-height);
+  background: #f9fafb;
+  border-right: 2px solid var(--color-border);
+  border-bottom: 2.2px solid var(--color-border);
+  box-sizing: border-box;
+  z-index: 32;
+}
+
+.timeline-ruler-canvas {
+  position: absolute;
+  top: 0;
+  left: var(--day-header-width);
+  height: var(--header-bucket-height);
+  display: block;
+  z-index: 30;
+}
+
+.timeline-gutter-canvas {
+  position: absolute;
+  top: var(--header-bucket-height);
+  left: 0;
+  width: var(--day-header-width);
+  display: block;
+  z-index: 31;
+}
+
+.timeline-workspace-container {
+  position: absolute;
+  top: var(--header-bucket-height);
+  left: var(--day-header-width);
+  right: 0;
+  bottom: 0;
   overflow: auto;
   background: #ffffff;
+  overscroll-behavior: contain;
 }
 
 .timeline-workspace-container::-webkit-scrollbar,
@@ -315,7 +405,7 @@ body {
   pointer-events: auto;
   border: var(--border-card);
   border-radius: var(--radius-block);
-  padding: 8px 12px 8px 34px;
+  padding: 6px 32px 6px 36px; /* right side clears the status checkbox */
   cursor: grab;
   user-select: none;
   display: flex;
@@ -324,6 +414,92 @@ body {
   box-sizing: border-box;
   transition: box-shadow 0.12s ease, opacity 0.3s ease, transform 0.3s ease;
   z-index: 10;
+}
+
+/* The badge sits INSIDE timeline blocks. Overhanging it collided with the
+   neighbouring row and stole horizontal room from the title. */
+.timeline-task-card .task-badge-circle {
+  top: 50%;
+  left: 5px;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+}
+
+.timeline-task-card .task-badge-circle .task-icon-symbol {
+  font-size: 15px;
+}
+
+/* Size tiers, applied by TimelineDOM from the rendered block width.
+   Each step drops the least important element rather than clipping everything. */
+.timeline-task-card.is-md {
+  padding: 4px 30px 4px 34px;
+}
+
+.timeline-task-card.is-md .task-title-text {
+  -webkit-line-clamp: 1;
+  font-size: 12.5px;
+}
+
+.timeline-task-card.is-md .task-meta-text {
+  font-size: 10px;
+}
+
+/* Too narrow for a start-end range or a checkbox: keep the title only. */
+.timeline-task-card.is-sm {
+  padding: 4px 5px 4px 32px;
+}
+
+.timeline-task-card.is-sm .task-title-text {
+  -webkit-line-clamp: 1;
+  font-size: 12px;
+}
+
+.timeline-task-card.is-sm .task-meta-text,
+.timeline-task-card.is-xs .task-meta-text,
+.timeline-task-card.is-min .task-meta-text {
+  display: none;
+}
+
+/* Icon only. The full title is on the card's tooltip. */
+.timeline-task-card.is-xs {
+  padding: 0;
+  align-items: center;
+}
+
+.timeline-task-card.is-xs .task-content-inner,
+.timeline-task-card.is-min .task-content-inner {
+  display: none;
+}
+
+.timeline-task-card.is-xs .task-badge-circle {
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Narrower than the badge itself: a bare colour block. */
+.timeline-task-card.is-min {
+  padding: 0;
+  border-radius: 5px;
+}
+
+.timeline-task-card.is-min .task-badge-circle,
+.timeline-task-card.is-sm .task-lock-indicator,
+.timeline-task-card.is-xs .task-lock-indicator,
+.timeline-task-card.is-min .task-lock-indicator,
+.timeline-task-card.is-sm .task-checkbox,
+.timeline-task-card.is-xs .task-checkbox,
+.timeline-task-card.is-min .task-checkbox {
+  display: none;
+}
+
+/* Short rows cannot fit a checkbox and two text lines side by side. */
+.timeline-task-card.is-short .task-meta-text {
+  display: none;
+}
+
+.timeline-task-card.is-short .task-title-text {
+  -webkit-line-clamp: 1;
 }
 
 .timeline-task-card:hover {

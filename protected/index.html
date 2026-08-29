@@ -96,8 +96,38 @@
             </div>
           </div>
 
-          <!-- Calendar Options Sliders Icon -->
+          <!-- Zoom controls & Calendar Options -->
           <div class="calendar-header-right">
+            <div class="calendar-zoom-group">
+              <button
+                type="button"
+                class="btn-zoom"
+                id="btnZoomOut"
+                title="Zoom out (Ctrl + scroll)"
+              >
+                <span class="material-symbols-outlined" style="font-size: 18px"
+                  >remove</span
+                >
+              </button>
+              <button
+                type="button"
+                class="btn-zoom btn-zoom-fit"
+                id="btnZoomFit"
+                title="Fit whole day"
+              >
+                Fit
+              </button>
+              <button
+                type="button"
+                class="btn-zoom"
+                id="btnZoomIn"
+                title="Zoom in (Ctrl + scroll)"
+              >
+                <span class="material-symbols-outlined" style="font-size: 18px"
+                  >add</span
+                >
+              </button>
+            </div>
             <button
               type="button"
               class="btn-icon-square"
@@ -113,10 +143,17 @@
           </div>
         </div>
 
-        <!-- Timeline Scrollable Workspace (0-24H) -->
-        <div class="timeline-workspace-container" id="timeline-workspace">
-          <canvas id="timelineCanvas"></canvas>
-          <div id="timelineDomOverlay"></div>
+        <!-- Timeline Workspace (0-24H).
+             The ruler and day gutter are separate canvases outside the scroll
+             container so they stay frozen while the grid scrolls under them. -->
+        <div class="timeline-viewport" id="timelineViewport">
+          <div class="timeline-corner"></div>
+          <canvas id="timelineRulerCanvas" class="timeline-ruler-canvas"></canvas>
+          <canvas id="timelineGutterCanvas" class="timeline-gutter-canvas"></canvas>
+          <div class="timeline-workspace-container" id="timeline-workspace">
+            <canvas id="timelineCanvas"></canvas>
+            <div id="timelineDomOverlay"></div>
+          </div>
         </div>
       </section>
 
@@ -400,7 +437,7 @@
         <div class="modal-tabs-header">
           <button
             type="button"
-            class="modal-tab-btn activeS"
+            class="modal-tab-btn active"
             id="tabBtnSettings"
           >
             Account Settings
