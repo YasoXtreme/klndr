@@ -32,6 +32,9 @@ class KlndrApp {
     this.taskRevisions = new Map();
     this.pendingWrites = 0;
 
+    // One entry per user gesture, holding both sides of every field it touched.
+    this.history = new HistoryStack();
+
     // Tasks created locally that the server has not acknowledged yet. A task can
     // be dragged onto the calendar the instant it appears, and the server drops
     // updates for ids it has never seen, so every write waits here first.
@@ -140,8 +143,8 @@ class KlndrApp {
         this.canvasRenderer,
         this.domRenderer,
         sharedState,
-        async (updatesList) => {
-          await this.commitTaskUpdates(updatesList);
+        async (updatesList, label) => {
+          await this.commitTaskUpdates(updatesList, { label });
         },
         (draggedTaskId, targetTaskId, targetCategory) => {
           this.reorderTasksInList(draggedTaskId, targetTaskId, targetCategory);
@@ -232,6 +235,11 @@ class KlndrApp {
   updateZoomUI() {
     if (!this.canvasRenderer) return;
     const zoom = this.canvasRenderer.zoom;
+    const undoBtn = document.getElementById('btnUndo');
+    const redoBtn = document.getElementById('btnRedo');
+    if (undoBtn) undoBtn.addEventListener('click', () => this.undo());
+    if (redoBtn) redoBtn.addEventListener('click', () => this.redo());
+
     const zoomInBtn = document.getElementById('btnZoomIn');
     const zoomOutBtn = document.getElementById('btnZoomOut');
     const zoomFitBtn = document.getElementById('btnZoomFit');
@@ -274,10 +282,34 @@ class KlndrApp {
       return true;
     };
 
+    // Undo is gated on its own terms, not on isCalendarFocused(): it belongs to
+    // the whole board, so it still works with the calendar pane collapsed. What
+    // it must never do is steal Ctrl+Z from a text field.
+    const isTypingTarget = () => {
+      const el = document.activeElement;
+      return Boolean(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT' || el.isContentEditable));
+    };
+
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         this.closeAllModals();
         return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && !isTypingTarget()) {
+        const key = (e.key || '').toLowerCase();
+        if (key === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) this.redo(); else this.undo();
+          return;
+        }
+        // Ctrl+Y is the other redo people reach for on Windows.
+        if (key === 'y') {
+          e.preventDefault();
+          this.redo();
+          return;
+        }
       }
 
       if (!isCalendarFocused()) {
@@ -311,6 +343,14 @@ class KlndrApp {
       if (this.dragController) {
         this.dragController.setModifiers(false, false);
       }
+    });
+
+    // An async click handler that throws rejects a promise nobody is holding,
+    // so the action silently does nothing at all. Say so instead: a button that
+    // appears to work and doesn't is the worst version of a bug.
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('Unhandled error', e.reason);
+      this.showToast('Something went wrong — that action did not go through.', 'error');
     });
   }
 
@@ -367,9 +407,17 @@ class KlndrApp {
     const draggedIdx = this.tasks.findIndex(t => t.id === draggedTaskId);
     if (draggedIdx === -1) return;
 
+    const orderBefore = this.tasks.map(t => t.id);
+    const changes = [];
+
     const [draggedTask] = this.tasks.splice(draggedIdx, 1);
 
     if (targetCategory && targetCategory !== draggedTask.category) {
+      changes.push({
+        kind: 'update', via: 'patch', id: draggedTask.id,
+        before: { category: draggedTask.category },
+        after: { category: targetCategory }
+      });
       draggedTask.category = targetCategory;
       API.updateTask(draggedTask.id, { category: targetCategory });
     }
@@ -385,7 +433,20 @@ class KlndrApp {
       this.tasks.push(draggedTask);
     }
 
+    changes.push({ kind: 'order', before: orderBefore, after: this.tasks.map(t => t.id) });
+    this.recordHistory({ label: 'Reorder tasks' }, changes);
     this.renderAll();
+  }
+
+  // Rearrange the list to match a recorded order. Anything the order does not
+  // mention (created since) keeps its place at the end rather than vanishing.
+  applyTaskOrder(ids) {
+    const byId = new Map(this.tasks.map(t => [t.id, t]));
+    const known = new Set(ids);
+    this.tasks = [
+      ...ids.map(id => byId.get(id)).filter(Boolean),
+      ...this.tasks.filter(t => !known.has(t.id))
+    ];
   }
 
   initUIEventListeners() {
@@ -735,16 +796,20 @@ class KlndrApp {
 
     if (applyBtn) {
       applyBtn.addEventListener('click', async () => {
-        if (!this.selectedTask) return;
-        const newTitle = titleInput.value.trim() || this.selectedTask.title;
+        // Read everything BEFORE closing: closeAllModals() clears selectedTask,
+        // so reaching for it afterwards throws and the edit is lost in silence.
+        const task = this.selectedTask;
+        if (!task) return;
 
-        this.closeAllModals();
-        await this.optimisticTaskUpdate(this.selectedTask.id, {
-          title: newTitle,
+        const patch = {
+          title: titleInput.value.trim() || task.title,
           icon: this.previewTaskState.icon,
           color: this.previewTaskState.color,
           category: this.previewTaskState.category
-        });
+        };
+
+        this.closeAllModals();
+        await this.optimisticTaskUpdate(task.id, patch, { label: 'Edit task' });
       });
     }
 
@@ -801,7 +866,153 @@ class KlndrApp {
     this.tasks = await API.getTasks(startDate, endDate);
     // Records written before segments existed are migrated here, once, on read.
     this.tasks.forEach(t => TaskModel.ensureSegments(t));
+    // History describes edits to the list that was just replaced.
+    this.history.clear();
+    this.updateHistoryButtons();
     this.renderAll();
+  }
+
+  // ==========================================
+  // UNDO / REDO
+  // ==========================================
+
+  /**
+   * Record one gesture, unless this call IS a replay. Replays pass
+   * `{ record: false }` explicitly rather than setting a flag on the app: a
+   * replay awaits the network, and a flag left standing across those awaits
+   * would swallow whatever the user did in the meantime.
+   */
+  recordHistory(options, changes) {
+    if (!this.history || options.record === false) return;
+    const real = (changes || []).filter(KlndrApp.isRealChange);
+    if (!real.length) return;
+
+    this.history.push({ label: options.label || 'Change', changes: real });
+    this.updateHistoryButtons();
+  }
+
+  // The schedule fields, detached from whatever object they came from. Works on
+  // both a live task and a commit payload, which is what lets a change record
+  // its two sides in the same shape.
+  static scheduleSnapshot(source) {
+    const segments = (source.segments || []).map(seg => ({ ...seg }));
+    return {
+      segments,
+      start_times: [...(source.start_times || [])],
+      durations: [...(source.durations || [])],
+      total_duration: source.total_duration,
+      completed: source.completed
+    };
+  }
+
+  static cloneValue(value) {
+    if (Array.isArray(value)) return value.map(v => KlndrApp.cloneValue(v));
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, KlndrApp.cloneValue(v)]));
+    }
+    return value;
+  }
+
+  // A gesture that changed nothing must not eat a press of Ctrl+Z.
+  static isRealChange(change) {
+    if (!change) return false;
+    if (change.kind !== 'update') return true;
+    return JSON.stringify(change.before) !== JSON.stringify(change.after);
+  }
+
+  async undo() { return this.replayHistory('undo'); }
+  async redo() { return this.replayHistory('redo'); }
+
+  /**
+   * Step one gesture in either direction. Undo and redo run the same code — the
+   * only difference is which side of each change gets applied, so there is no
+   * inverse operation to keep correct separately.
+   */
+  async replayHistory(direction) {
+    // Mid-drag the screen is showing a projection, not committed state; landing
+    // an undo underneath it would commit against a board that is about to move.
+    if (this.dragController && this.dragController.activeDrag) return false;
+
+    const entry = direction === 'undo' ? this.history.undo() : this.history.redo();
+    if (!entry) {
+      this.showToast(direction === 'undo' ? 'Nothing to undo' : 'Nothing to redo');
+      return false;
+    }
+
+    this.updateHistoryButtons();
+    this.showToast(`${direction === 'undo' ? 'Undid' : 'Redid'}: ${entry.label}`);
+
+    // Not awaited: an undo is on screen before the request leaves, like every
+    // other edit. Only the bookkeeping waits for the write.
+    this._historySettled = this.applyHistoryEntry(entry, direction).then(ok => {
+      if (ok) return true;
+      // The write did not land and the operation already reverted itself, so the
+      // step never happened. Put the entry back, or the stacks now describe a
+      // board that never existed.
+      this.history.rollback(direction);
+      this.updateHistoryButtons();
+      return false;
+    });
+
+    return true;
+  }
+
+  async applyHistoryEntry(entry, direction) {
+    const side = direction === 'undo' ? 'before' : 'after';
+    const changes = entry.changes;
+    const results = [];
+
+    // Order first: it only rearranges the list, and doing it before the content
+    // edits means their re-renders already draw the restored positions.
+    const order = changes.find(c => c.kind === 'order');
+    if (order) {
+      this.applyTaskOrder(order[side]);
+      this.renderAll();
+    }
+
+    // Existence next, so a schedule change that belongs to a task being brought
+    // back has something to apply to.
+    for (const change of changes.filter(c => c.kind === 'create' || c.kind === 'delete')) {
+      const shouldExist = (change.kind === 'create') === (direction === 'redo');
+      const present = this.tasks.some(t => t.id === change.id);
+
+      if (shouldExist && !present) {
+        results.push(await this.insertTask(
+          KlndrApp.cloneValue(change.snapshot), change.index, "Couldn't bring that task back."
+        ));
+      } else if (!shouldExist && present) {
+        results.push(await this.optimisticDeleteTask(change.id, { record: false }));
+      }
+    }
+
+    // One request for every schedule change in the gesture: a drag that moved
+    // four blocks undoes as one write, exactly as it was saved.
+    const schedule = changes
+      .filter(c => c.kind === 'update' && c.via === 'schedule')
+      .filter(c => this.tasks.some(t => t.id === c.id))
+      .map(c => ({ id: c.id, ...c[side] }));
+    if (schedule.length) {
+      results.push(await this.commitTaskUpdates(schedule, { record: false }));
+    }
+
+    for (const change of changes.filter(c => c.kind === 'update' && c.via === 'patch')) {
+      if (!this.tasks.some(t => t.id === change.id)) continue;
+      results.push(await this.optimisticTaskUpdate(change.id, change[side], { record: false }));
+    }
+
+    return results.every(Boolean);
+  }
+
+  updateHistoryButtons() {
+    const labels = this.history.peekLabels();
+    const set = (id, enabled, verb, label) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled = !enabled;
+      btn.title = enabled ? `${verb}: ${label}` : `Nothing to ${verb.toLowerCase()}`;
+    };
+    set('btnUndo', this.history.canUndo(), 'Undo', labels.undo);
+    set('btnRedo', this.history.canRedo(), 'Redo', labels.redo);
   }
 
   /**
@@ -809,11 +1020,12 @@ class KlndrApp {
    * background. The user never waits on the network to see where their block
    * landed; if the write fails the affected tasks snap back and say so.
    */
-  async commitTaskUpdates(updatesList) {
-    if (!updatesList || !updatesList.length) return;
+  async commitTaskUpdates(updatesList, options = {}) {
+    if (!updatesList || !updatesList.length) return false;
 
     const rollback = new Map();
     const issuedRevisions = new Map();
+    const changes = [];
 
     updatesList.forEach(u => {
       const task = this.tasks.find(t => t.id === u.id);
@@ -823,6 +1035,16 @@ class KlndrApp {
         segments: TaskModel.cloneSegments(task),
         total_duration: task.total_duration,
         completed: task.completed
+      });
+
+      // Captured before the mutation below, which is the only moment the old
+      // schedule still exists anywhere.
+      changes.push({
+        kind: 'update',
+        via: 'schedule',
+        id: u.id,
+        before: KlndrApp.scheduleSnapshot(task),
+        after: KlndrApp.scheduleSnapshot(u)
       });
 
       if (u.segments) {
@@ -839,6 +1061,7 @@ class KlndrApp {
       issuedRevisions.set(u.id, this.bumpRevision(u.id));
     });
 
+    this.recordHistory(options, changes);
     this.renderAll();
     this.setPending(1);
 
@@ -868,6 +1091,7 @@ class KlndrApp {
       if (diverged && !(this.dragController && this.dragController.activeDrag)) {
         this.renderAll();
       }
+      return true;
     } catch (err) {
       console.error('Failed to save schedule change', err);
 
@@ -882,6 +1106,7 @@ class KlndrApp {
 
       this.renderAll();
       this.showToast("Couldn't save that change — reverted.", 'error');
+      return false;
     } finally {
       this.setPending(-1);
     }
@@ -892,12 +1117,19 @@ class KlndrApp {
    * Same revision guard as commitTaskUpdates: a reply may only touch a task that
    * has not been edited again since that request went out.
    */
-  async optimisticTaskUpdate(taskId, patch) {
+  async optimisticTaskUpdate(taskId, patch, options = {}) {
     const task = this.tasks.find(t => t.id === taskId);
-    if (!task) return;
+    if (!task) return false;
 
+    // Deep-copied: `segments` is an array the task keeps mutating in place, and
+    // a snapshot holding the live reference would silently follow it.
     const previous = {};
-    Object.keys(patch).forEach(key => { previous[key] = task[key]; });
+    Object.keys(patch).forEach(key => { previous[key] = KlndrApp.cloneValue(task[key]); });
+
+    this.recordHistory(options, [{
+      kind: 'update', via: 'patch', id: taskId,
+      before: previous, after: KlndrApp.cloneValue(patch)
+    }]);
 
     KlndrApp.mergeTask(task, patch);
     const rev = this.bumpRevision(taskId);
@@ -912,6 +1144,7 @@ class KlndrApp {
         TaskModel.ensureSegments(task);
         if (!(this.dragController && this.dragController.activeDrag)) this.renderAll();
       }
+      return true;
     } catch (err) {
       console.error('Failed to save task update', err);
       if (this.taskRevisions.get(taskId) === rev) {
@@ -919,14 +1152,18 @@ class KlndrApp {
         this.renderAll();
         this.showToast("Couldn't save that change — reverted.", 'error');
       }
+      return false;
     } finally {
       this.setPending(-1);
     }
   }
 
-  async optimisticDeleteTask(taskId) {
+  async optimisticDeleteTask(taskId, options = {}) {
     const index = this.tasks.findIndex(t => t.id === taskId);
-    if (index === -1) return;
+    if (index === -1) return false;
+
+    const snapshot = KlndrApp.cloneValue(this.tasks[index]);
+    this.recordHistory(options, [{ kind: 'delete', id: taskId, snapshot, index }]);
 
     const [removed] = this.tasks.splice(index, 1);
     this.renderAll();
@@ -935,11 +1172,13 @@ class KlndrApp {
     try {
       await this.awaitCreates([taskId]);
       await API.deleteTask(taskId);
+      return true;
     } catch (err) {
       console.error('Failed to delete task', err);
       this.tasks.splice(index, 0, removed);
       this.renderAll();
       this.showToast("Couldn't delete that task — it's back.", 'error');
+      return false;
     } finally {
       this.setPending(-1);
     }
@@ -958,7 +1197,7 @@ class KlndrApp {
    * Deliberately not awaited by its caller — the point is that the caller does
    * not block.
    */
-  optimisticCreateTask(payload) {
+  optimisticCreateTask(payload, options = {}) {
     const task = {
       id: TaskModel.newTaskId(),
       title: payload.title || 'Untitled Task',
@@ -977,25 +1216,45 @@ class KlndrApp {
       metadata: payload.metadata || {}
     };
 
-    this.tasks.push(task);
+    const index = this.tasks.length;
+    this.recordHistory(options, [{
+      kind: 'create', id: task.id, snapshot: KlndrApp.cloneValue(task), index
+    }]);
+
+    this.insertTask(task, index, "Couldn't create that task — removed.");
+    return task;
+  }
+
+  /**
+   * Put a task into the list and behind it into the database, without waiting.
+   * Shared by first creation and by undoing a delete: both are "this task should
+   * exist, with this id", and the server keeps whatever id it is handed.
+   *
+   * Deliberately not awaited by its callers — the point is that they do not block.
+   */
+  insertTask(task, index, failureMessage) {
+    this.tasks.splice(Math.min(index, this.tasks.length), 0, task);
+    TaskModel.ensureSegments(task);
     this.renderAll();
     this.setPending(1);
 
     const inFlight = (async () => {
       try {
-        const created = await API.createTask({ ...payload, id: task.id });
+        const created = await API.createTask(task);
         // Anything the user changed while the request was in the air outranks
         // the server's echo of what it was first told.
         if (created && !this.taskRevisions.get(task.id)) {
           KlndrApp.mergeTask(task, created);
           TaskModel.ensureSegments(task);
         }
+        return true;
       } catch (err) {
         console.error('Failed to create task', err);
-        const index = this.tasks.findIndex(t => t.id === task.id);
-        if (index !== -1) this.tasks.splice(index, 1);
+        const at = this.tasks.findIndex(t => t.id === task.id);
+        if (at !== -1) this.tasks.splice(at, 1);
         this.renderAll();
-        this.showToast("Couldn't create that task — removed.", 'error');
+        this.showToast(failureMessage, 'error');
+        return false;
       } finally {
         this.pendingCreates.delete(task.id);
         this.setPending(-1);
@@ -1003,7 +1262,7 @@ class KlndrApp {
     })();
 
     this.pendingCreates.set(task.id, inFlight);
-    return task;
+    return inFlight;
   }
 
   /**
@@ -1042,7 +1301,7 @@ class KlndrApp {
     });
     segment.duration = leftMinutes;
 
-    await this.commitTaskUpdates([this.payloadWithSegments(task, segments)]);
+    await this.commitTaskUpdates([this.payloadWithSegments(task, segments)], { label: 'Split block' });
   }
 
   // Removing the last block is an unschedule, not a delete: the task goes back
@@ -1050,10 +1309,12 @@ class KlndrApp {
   async removeSegment(task, segmentId) {
     const segments = TaskModel.cloneSegments(task).filter(seg => seg.id !== segmentId);
     if (!segments.length) {
-      await this.optimisticTaskUpdate(task.id, { segments: [], start_times: [], durations: [] });
+      await this.optimisticTaskUpdate(
+        task.id, { segments: [], start_times: [], durations: [] }, { label: 'Unschedule task' }
+      );
       return;
     }
-    await this.commitTaskUpdates([this.payloadWithSegments(task, segments)]);
+    await this.commitTaskUpdates([this.payloadWithSegments(task, segments)], { label: 'Remove block' });
   }
 
   static sameSchedule(a, b) {
@@ -1075,11 +1336,16 @@ class KlndrApp {
 
         const segments = TaskModel.cloneSegments(task);
         if (!segments.length) {
-          await this.optimisticTaskUpdate(taskId, { completed });
+          await this.optimisticTaskUpdate(
+            taskId, { completed }, { label: completed ? 'Complete task' : 'Uncomplete task' }
+          );
           break;
         }
         segments.forEach(seg => { seg.completed = completed; });
-        await this.commitTaskUpdates([this.payloadWithSegments(task, segments)]);
+        await this.commitTaskUpdates(
+          [this.payloadWithSegments(task, segments)],
+          { label: completed ? 'Complete task' : 'Uncomplete task' }
+        );
         break;
       }
 
@@ -1095,12 +1361,15 @@ class KlndrApp {
         if (!segment) break;
 
         segment.completed = completed;
-        await this.commitTaskUpdates([this.payloadWithSegments(task, segments)]);
+        await this.commitTaskUpdates(
+          [this.payloadWithSegments(task, segments)],
+          { label: completed ? 'Complete block' : 'Uncomplete block' }
+        );
         break;
       }
 
       case 'createInlineTask': {
-        this.optimisticCreateTask(payload);
+        this.optimisticCreateTask(payload, { label: 'Create task' });
         break;
       }
 
@@ -1259,7 +1528,9 @@ class KlndrApp {
     if (lockOpt) {
       lockOpt.onclick = async () => {
         this.closeAllModals();
-        await this.optimisticTaskUpdate(task.id, { is_locked: !isLocked });
+        await this.optimisticTaskUpdate(
+          task.id, { is_locked: !isLocked }, { label: isLocked ? 'Unlock task' : 'Lock task' }
+        );
       };
     }
 
@@ -1281,7 +1552,9 @@ class KlndrApp {
     if (unscheduleOpt) {
       unscheduleOpt.onclick = async () => {
         this.closeAllModals();
-        await this.optimisticTaskUpdate(task.id, { segments: [], start_times: [], durations: [] });
+        await this.optimisticTaskUpdate(
+          task.id, { segments: [], start_times: [], durations: [] }, { label: 'Unschedule task' }
+        );
       };
     }
 
@@ -1289,7 +1562,7 @@ class KlndrApp {
       deleteOpt.onclick = async () => {
         this.closeAllModals();
         if (confirm(`Delete "${task.title}"?`)) {
-          await this.optimisticDeleteTask(task.id);
+          await this.optimisticDeleteTask(task.id, { label: 'Delete task' });
         }
       };
     }

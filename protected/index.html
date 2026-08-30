@@ -103,6 +103,32 @@
             <div class="sync-status-chip" id="syncStatusChip">
               <span class="sync-status-dot"></span>Saving
             </div>
+            <!-- Undo/redo for the whole board. Ctrl+Z / Ctrl+Shift+Z do the
+                 same thing; the titles say what the next press would revert. -->
+            <div class="calendar-zoom-group calendar-history-group">
+              <button
+                type="button"
+                class="btn-zoom"
+                id="btnUndo"
+                title="Nothing to undo"
+                disabled
+              >
+                <span class="material-symbols-outlined" style="font-size: 18px"
+                  >undo</span
+                >
+              </button>
+              <button
+                type="button"
+                class="btn-zoom"
+                id="btnRedo"
+                title="Nothing to redo"
+                disabled
+              >
+                <span class="material-symbols-outlined" style="font-size: 18px"
+                  >redo</span
+                >
+              </button>
+            </div>
             <div class="calendar-zoom-group">
               <button
                 type="button"
@@ -927,6 +953,7 @@
 
     <!-- Protected Frontend Scripts -->
     <script src="/protected/js/api.js"></script>
+    <script src="/protected/js/history.js"></script>
     <script src="/protected/js/task-model.js"></script>
     <script src="/protected/js/physics-engine.js"></script>
     <script src="/protected/js/timeline-canvas.js"></script>

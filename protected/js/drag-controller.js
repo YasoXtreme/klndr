@@ -952,6 +952,19 @@ class DragController {
       return;
     }
 
-    await this.onCommitChanges(updates);
+    await this.onCommitChanges(updates, DragController.historyLabelFor(drag));
+  }
+
+  // What the undo entry for this gesture is called. Named after what the user
+  // did, not after which branch of the physics ran.
+  static historyLabelFor(drag) {
+    if (drag.type === 'seam') return 'Move shared boundary';
+    if (drag.type === 'sidebar-drop') return 'Schedule task';
+
+    const kind = drag.lastOutcome && drag.lastOutcome.kind;
+    if (kind === 'divider') return 'Trade time between blocks';
+
+    if (drag.type === 'resize-left' || drag.type === 'resize-right') return 'Resize block';
+    return 'Move block';
   }
 }
