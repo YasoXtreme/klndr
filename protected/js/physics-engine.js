@@ -143,6 +143,51 @@ const PhysicsEngine = {
   },
 
   /**
+   * Reflect the timeline about zero so a forward algorithm runs backwards.
+   *
+   * Dragging a block's LEFT edge grows it into the past, which is the mirror
+   * image of every rule already written for growing into the future. Mirroring
+   * the input beats keeping a second, subtly different copy of ripple() and
+   * placeAround() in sync with the first.
+   */
+  mirrorEntry(entry) {
+    return { ...entry, startTime: -entry.endTime, endTime: -entry.startTime, _source: entry };
+  },
+
+  // Write a mirrored entry's result back onto the real entry it came from.
+  unmirrorEntry(mirrored) {
+    const source = mirrored._source;
+    source.startTime = -mirrored.endTime;
+    source.duration = mirrored.duration;
+    source.endTime = source.startTime + source.duration * 60;
+    return source;
+  },
+
+  // Ripple into the past: blocks in the way are pushed EARLIER, compressing
+  // first when unlocked, exactly as the forward ripple pushes them later.
+  rippleBackward(obstacles, targetEnd, targetDuration) {
+    const mirrored = obstacles.map(entry => this.mirrorEntry(entry));
+    return this.ripple(mirrored, -targetEnd, targetDuration)
+      .map(entry => this.unmirrorEntry(entry));
+  },
+
+  /**
+   * Place `totalMinutes` ending at `idealEnd`, flowing backwards around
+   * obstacles. The first piece is the one touching `idealEnd` — it is the piece
+   * the user is actually dragging, so it keeps the block's identity.
+   */
+  placeAroundBackward(obstacles, idealEnd, totalMinutes, dayStartTimestamp) {
+    const mirrored = obstacles.map(entry => this.mirrorEntry(entry));
+    const limit = Number.isFinite(dayStartTimestamp) ? -dayStartTimestamp : null;
+
+    return this.placeAround(mirrored, -idealEnd, totalMinutes, limit)
+      .map(piece => ({
+        startTime: -(piece.startTime + piece.duration * 60),
+        duration: piece.duration
+      }));
+  },
+
+  /**
    * A block dragged between two touching blocks of ONE task acts as the divider
    * between them: the pair's outer edges stay pinned and time transfers from one
    * side to the other. Moving a break inside a study session is meant to change

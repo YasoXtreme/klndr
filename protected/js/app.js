@@ -31,6 +31,23 @@ class KlndrApp {
     // stale values over a newer edit.
     this.taskRevisions = new Map();
     this.pendingWrites = 0;
+
+    // Tasks created locally that the server has not acknowledged yet. A task can
+    // be dragged onto the calendar the instant it appears, and the server drops
+    // updates for ids it has never seen, so every write waits here first.
+    this.pendingCreates = new Map();
+  }
+
+  /**
+   * Hold a write until any task it touches has actually been created. Resolves
+   * immediately for tasks the server already knows about, which is all of them
+   * in the normal case.
+   */
+  async awaitCreates(taskIds) {
+    const waits = taskIds
+      .map(id => this.pendingCreates.get(id))
+      .filter(Boolean);
+    if (waits.length) await Promise.allSettled(waits);
   }
 
   bumpRevision(taskId) {
@@ -750,16 +767,30 @@ class KlndrApp {
         const snapToRuler = document.getElementById('settingsSnapToRuler').checked;
         const tickPercent = parseFloat(document.getElementById('settingsTickPercent').value);
 
-        const newSettings = await API.updateSettings({
-          bucketHours,
-          snapToRuler,
-          tickPercent
-        });
+        const previous = { ...this.settings };
+        const patch = { bucketHours, snapToRuler, tickPercent };
 
-        this.settings = { ...this.settings, ...newSettings };
+        // Applied first, saved behind it: these are draw-time only, so the grid
+        // can redraw at the new settings before the write completes.
+        this.settings = { ...this.settings, ...patch };
         this.closeAllModals();
-        // Bucket size and tick density are draw-time only; geometry is unchanged.
         this.renderAll();
+        this.setPending(1);
+
+        try {
+          const saved = await API.updateSettings(patch);
+          if (saved) {
+            this.settings = { ...this.settings, ...saved };
+            this.renderAll();
+          }
+        } catch (err) {
+          console.error('Failed to save settings', err);
+          this.settings = previous;
+          this.renderAll();
+          this.showToast("Couldn't save those settings — reverted.", 'error');
+        } finally {
+          this.setPending(-1);
+        }
       });
     }
   }
@@ -812,6 +843,7 @@ class KlndrApp {
     this.setPending(1);
 
     try {
+      await this.awaitCreates(updatesList.map(u => u.id));
       const updated = await API.batchUpdateTasks(updatesList);
 
       let diverged = false;
@@ -873,6 +905,7 @@ class KlndrApp {
     this.setPending(1);
 
     try {
+      await this.awaitCreates([taskId]);
       const updated = await API.updateTask(taskId, patch);
       if (updated && this.taskRevisions.get(taskId) === rev) {
         KlndrApp.mergeTask(task, updated);
@@ -900,6 +933,7 @@ class KlndrApp {
     this.setPending(1);
 
     try {
+      await this.awaitCreates([taskId]);
       await API.deleteTask(taskId);
     } catch (err) {
       console.error('Failed to delete task', err);
@@ -909,6 +943,67 @@ class KlndrApp {
     } finally {
       this.setPending(-1);
     }
+  }
+
+  /**
+   * Create a task without waiting for the server. The id is minted locally and
+   * sent with the request, so the task that appears on screen IS the task the
+   * server stores — there is no temporary id to swap out afterwards, and nothing
+   * holding a reference to it (a drag, a modal, the calendar) ever sees it
+   * change identity.
+   *
+   * The tradeoff is ordering: until the create lands, the server would drop any
+   * edit naming this id. `pendingCreates` makes every other write wait on it.
+   *
+   * Deliberately not awaited by its caller — the point is that the caller does
+   * not block.
+   */
+  optimisticCreateTask(payload) {
+    const task = {
+      id: TaskModel.newTaskId(),
+      title: payload.title || 'Untitled Task',
+      // The rest of the server's defaults, applied here so the card cannot
+      // change under the user when the real record arrives.
+      start_times: [],
+      durations: [],
+      segments: [],
+      total_duration: Number(payload.total_duration || payload.default_timing || 60),
+      default_timing: Number(payload.default_timing || 60),
+      is_locked: payload.is_locked !== undefined ? Boolean(payload.is_locked) : true,
+      color: payload.color || '#3ba4f6',
+      icon: payload.icon || 'task_alt',
+      category: payload.category || 'General',
+      completed: false,
+      metadata: payload.metadata || {}
+    };
+
+    this.tasks.push(task);
+    this.renderAll();
+    this.setPending(1);
+
+    const inFlight = (async () => {
+      try {
+        const created = await API.createTask({ ...payload, id: task.id });
+        // Anything the user changed while the request was in the air outranks
+        // the server's echo of what it was first told.
+        if (created && !this.taskRevisions.get(task.id)) {
+          KlndrApp.mergeTask(task, created);
+          TaskModel.ensureSegments(task);
+        }
+      } catch (err) {
+        console.error('Failed to create task', err);
+        const index = this.tasks.findIndex(t => t.id === task.id);
+        if (index !== -1) this.tasks.splice(index, 1);
+        this.renderAll();
+        this.showToast("Couldn't create that task — removed.", 'error');
+      } finally {
+        this.pendingCreates.delete(task.id);
+        this.setPending(-1);
+      }
+    })();
+
+    this.pendingCreates.set(task.id, inFlight);
+    return task;
   }
 
   /**
@@ -1005,10 +1100,7 @@ class KlndrApp {
       }
 
       case 'createInlineTask': {
-        const newTask = await API.createTask(payload);
-        TaskModel.ensureSegments(newTask);
-        this.tasks.push(newTask);
-        this.renderAll();
+        this.optimisticCreateTask(payload);
         break;
       }
 

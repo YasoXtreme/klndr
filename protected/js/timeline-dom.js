@@ -26,6 +26,13 @@ class TimelineDOM {
   // strobe the whole grid on and off.
   static FOCUS_EXIT_DELAY_MS = 100;
 
+  // Focus arrives in stages: two pulses on the hovered block's family, then the
+  // full dim. Nothing at all happens before the first, so moving the pointer
+  // across the grid leaves the screen completely still.
+  static FOCUS_FLASH_ONE_MS = 1000;
+  static FOCUS_FLASH_TWO_MS = 2000;
+  static FOCUS_DIM_MS = 3000;
+
   constructor(containerElement, canvasRenderer, state, onTaskInteraction) {
     this.container = containerElement;
     this.canvas = canvasRenderer;
@@ -40,17 +47,9 @@ class TimelineDOM {
     this.ghostLayer = document.createElement('div');
     this.ghostLayer.className = 'timeline-ghost-layer';
 
-    // Connector wires are drawn ABOVE the blocks. The old bridges lived on the
-    // body canvas, underneath, so any block sitting between two halves hid the
-    // link by construction. SVG shares the block layer's coordinate space and
-    // scrolls with it for free.
-    this.wireLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    this.wireLayer.setAttribute('class', 'timeline-wire-layer');
-
     this.container.innerHTML = '';
     this.container.appendChild(this.ghostLayer);
     this.container.appendChild(this.blockLayer);
-    this.container.appendChild(this.wireLayer);
 
     this.ghostPool = [];
     this.tooltipEl = null;
@@ -63,6 +62,7 @@ class TimelineDOM {
 
     this.focusedSegmentId = null;
     this._focusExitTimer = null;
+    this._focusStageTimers = [];
     this._tooltipTimer = null;
     this._tooltipOpen = false;
     this._tooltipCloseTimer = null;
@@ -285,28 +285,61 @@ class TimelineDOM {
     });
   }
 
+  /**
+   * Hover focus is a slow burn, not an instant reaction. Sweeping the pointer
+   * across a busy grid used to repaint half the screen on every card it crossed;
+   * now nothing happens at all until the pointer has settled. Two short pulses
+   * on the family announce that focus is coming, and only then does the rest of
+   * the grid drop away.
+   */
   focusSegment(card) {
     clearTimeout(this._focusExitTimer);
     const segmentId = card.dataset.segmentId;
     if (this.focusedSegmentId === segmentId) return;
 
+    this.cancelFocusStages();
     this.focusedSegmentId = segmentId;
 
     // Only the family gets touched -- the rest of the grid dims from a single
     // class on the container, so a hover is never O(blocks) of class churn.
     (this._focusedEls || []).forEach(el => el.classList.remove('is-focus', 'is-sibling'));
     this._focusedEls = [];
+    this.blockLayer.classList.remove('has-focus');
 
     const family = [...this.blockLayer.querySelectorAll(
       `.timeline-task-card[data-task-id="${card.dataset.taskId}"]`
     )];
+    // Marked now, but inert: every focus style is gated behind `has-focus` on
+    // the container, which does not arrive until the last stage.
     family.forEach(el => {
       el.classList.add(el.dataset.segmentId === segmentId ? 'is-focus' : 'is-sibling');
       this._focusedEls.push(el);
     });
 
-    this.blockLayer.classList.add('has-focus');
-    this.drawWires(card.dataset.taskId);
+    this._focusStageTimers = [
+      setTimeout(() => this.flashFamily(), TimelineDOM.FOCUS_FLASH_ONE_MS),
+      setTimeout(() => this.flashFamily(), TimelineDOM.FOCUS_FLASH_TWO_MS),
+      setTimeout(() => this.blockLayer.classList.add('has-focus'), TimelineDOM.FOCUS_DIM_MS)
+    ];
+  }
+
+  // A single dip-and-return on the family. The class has to come off, force a
+  // reflow, and go back on for the animation to restart on the second pulse --
+  // re-adding a class the element already carries replays nothing.
+  flashFamily() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    (this._focusedEls || []).forEach(el => {
+      el.classList.remove('is-focus-flash');
+      void el.offsetWidth;
+      el.classList.add('is-focus-flash');
+    });
+  }
+
+  cancelFocusStages() {
+    (this._focusStageTimers || []).forEach(clearTimeout);
+    this._focusStageTimers = [];
+    (this._focusedEls || []).forEach(el => el.classList.remove('is-focus-flash'));
   }
 
   queueFocusClear() {
@@ -316,112 +349,11 @@ class TimelineDOM {
 
   clearFocus() {
     clearTimeout(this._focusExitTimer);
+    this.cancelFocusStages();
     this.focusedSegmentId = null;
     (this._focusedEls || []).forEach(el => el.classList.remove('is-focus', 'is-sibling'));
     this._focusedEls = [];
     this.blockLayer.classList.remove('has-focus');
-    this.clearWires();
-  }
-
-  clearWires() {
-    while (this.wireLayer.firstChild) this.wireLayer.removeChild(this.wireLayer.firstChild);
-  }
-
-  /**
-   * Route a wire between consecutive blocks of one task, dropping into the 5px
-   * band below the cards that is always free of blocks. Because wires only ever
-   * draw for the one family under the pointer, there is never more than one in a
-   * row -- which is what makes the lane workable at all.
-   */
-  drawWires(taskId) {
-    this.clearWires();
-
-    const task = (this.state.tasks || []).find(t => t.id === taskId);
-    if (!task || !TaskModel.isSplit(task)) return;
-
-    const cards = new Map();
-    this.blockLayer
-      .querySelectorAll(`.timeline-task-card[data-task-id="${taskId}"]`)
-      .forEach(el => cards.set(el.dataset.segmentId, el));
-
-    const segments = task.segments || [];
-    const color = task.color || '#9ae659';
-
-    for (let i = 0; i < segments.length - 1; i++) {
-      const a = cards.get(segments[i].id);
-      const b = cards.get(segments[i + 1].id);
-      if (!a || !b) continue;
-
-      const aTop = parseFloat(a.style.top);
-      const bTop = parseFloat(b.style.top);
-
-      // Different rows: a wire would have to cut vertically through other days'
-      // blocks, so point at the sibling instead of drawing to it.
-      if (Math.abs(aTop - bTop) > 1) {
-        this.drawCrossDayMarker(a, b, segments[i + 1], color);
-        continue;
-      }
-
-      const bottom = aTop + parseFloat(a.style.height);
-      const lane = bottom + 2.5;
-      const ax = parseFloat(a.style.left) + parseFloat(a.style.width) - 7;
-      const bx = parseFloat(b.style.left) + 7;
-      if (bx - ax < 4) continue;
-
-      const d = `M ${ax} ${bottom - 5} L ${ax} ${lane - 3} Q ${ax} ${lane} ${ax + 5} ${lane}` +
-                ` L ${bx - 5} ${lane} Q ${bx} ${lane} ${bx} ${lane - 3} L ${bx} ${bottom - 5}`;
-
-      this.wireLayer.appendChild(TimelineDOM.wirePath(d, '#ffffff', 6));
-      this.wireLayer.appendChild(TimelineDOM.wirePath(d, color, 2.6));
-    }
-  }
-
-  static wirePath(d, stroke, width) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', stroke);
-    path.setAttribute('stroke-width', width);
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('stroke-linejoin', 'round');
-    return path;
-  }
-
-  drawCrossDayMarker(fromCard, toCard, toSegment, color) {
-    const days = this.state.days || [];
-    const date = new Date(toSegment.start_time * 1000);
-    const day = days.find(d =>
-      d.date.getFullYear() === date.getFullYear() &&
-      d.date.getMonth() === date.getMonth() &&
-      d.date.getDate() === date.getDate()
-    );
-
-    const goingDown = parseFloat(toCard.style.top) > parseFloat(fromCard.style.top);
-    const x = parseFloat(fromCard.style.left) + parseFloat(fromCard.style.width) - 12;
-    const top = parseFloat(fromCard.style.top);
-    const y = goingDown ? top + parseFloat(fromCard.style.height) - 4 : top + 4;
-    const dir = goingDown ? 1 : -1;
-
-    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-
-    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    arrow.setAttribute('d', `M ${x - 5} ${y} L ${x + 5} ${y} L ${x} ${y + 7 * dir} Z`);
-    arrow.setAttribute('fill', color);
-    arrow.setAttribute('stroke', '#000000');
-    arrow.setAttribute('stroke-width', '1.5');
-    group.appendChild(arrow);
-
-    if (day) {
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.setAttribute('x', x - 10);
-      label.setAttribute('y', y + 4 * dir);
-      label.setAttribute('text-anchor', 'end');
-      label.setAttribute('class', 'timeline-wire-label');
-      label.textContent = day.name;
-      group.appendChild(label);
-    }
-
-    this.wireLayer.appendChild(group);
   }
 
   // ==========================================
@@ -511,10 +443,6 @@ class TimelineDOM {
     this.armedSeam = null;
     this.seamRecords = [];
     this.blockLayer.innerHTML = '';
-
-    this.wireLayer.setAttribute('width', this.canvas.width);
-    this.wireLayer.setAttribute('height', this.canvas.height);
-    this.wireLayer.setAttribute('viewBox', `0 0 ${this.canvas.width} ${this.canvas.height}`);
 
     const { placements, seams } = this.computePlacements();
 
@@ -742,6 +670,7 @@ class TimelineDOM {
 
       (update.start_times || []).forEach((st, segIdx) => {
         const dur = update.durations[segIdx] || 60;
+        const segId = (update.segments || [])[segIdx]?.id;
         const segDate = new Date(st * 1000);
         const dayIdx = days.findIndex(d =>
           d.date.getFullYear() === segDate.getFullYear() &&
@@ -754,9 +683,14 @@ class TimelineDOM {
         const geo = this.geometryFor({ startMin, endMin: startMin + dur, dayIdx });
 
         // If a card is already sitting exactly here, the user can see it; no ghost.
-        const card = this.blockLayer.querySelector(
-          `.timeline-task-card[data-task-id="${update.id}"][data-segment-index="${segIdx}"]`
-        );
+        // Matched by segment id, not position: an outcome that splits a block
+        // renumbers everything after it, and index matching would then compare
+        // each piece against the wrong card.
+        const card = segId
+          ? this.blockLayer.querySelector(`.timeline-task-card[data-segment-id="${segId}"]`)
+          : this.blockLayer.querySelector(
+              `.timeline-task-card[data-task-id="${update.id}"][data-segment-index="${segIdx}"]`
+            );
         if (card &&
             Math.abs(parseFloat(card.style.left) - geo.left) < 0.5 &&
             Math.abs(parseFloat(card.style.width) - geo.width) < 0.5 &&

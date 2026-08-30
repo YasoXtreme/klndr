@@ -223,6 +223,8 @@ class DragController {
       e.preventDefault();
       e.stopPropagation();
 
+      const resizeDayIndex = this.dayIndexForTimestamp(startTime);
+
       this.activeDrag = {
         type: handleEl.dataset.handle === 'left' ? 'resize-left' : 'resize-right',
         taskId,
@@ -237,7 +239,11 @@ class DragController {
         // Without this the resize maths falls back to day 0, which throws the
         // block off the right-hand edge of the grid for any task not on the
         // first day of the week.
-        currentDayIndex: this.dayIndexForTimestamp(startTime)
+        currentDayIndex: resizeDayIndex,
+        // A resize runs the same physics as a move, so it needs the same
+        // sandwich check: an edge dragged into a sibling pair trades time inside
+        // the pair rather than shoving the day around.
+        divider: this.findDividerAt(task, segment, resizeDayIndex)
       };
       taskCard.classList.add('is-resizing');
       this.dom.hideTooltip();
@@ -462,14 +468,14 @@ class DragController {
     const duration = drag.currentDuration || drag.initialDuration;
     const dayStart = day.startTimestamp;
     const dayEnd = dayStart + 86400;
+    const endTime = startTime + duration * 60;
     const workspace = this.createWorkspace();
 
-    // A resize edits one block in place. It must not re-place the task the way a
-    // move does, or the task's other blocks would be rewritten along with it.
-    if (drag.type === 'resize-left' || drag.type === 'resize-right') {
-      workspace.set(drag.taskId, drag.segmentId, startTime, duration);
-      return workspace.payloads();
-    }
+    // Resizing is moving: an edge dragged into another block has to negotiate
+    // with it, not sit on top of it. The only difference is which way the block
+    // grows -- a left edge grows into the past, so obstacles are pushed earlier
+    // and overflow flows backwards. Everything below is otherwise shared.
+    const backwards = drag.type === 'resize-left';
 
     const obstacles = PhysicsEngine.daySegments(this.state.tasks, dayStart, dayEnd, drag.segmentId);
 
@@ -495,7 +501,9 @@ class DragController {
     }
 
     if (this.isCtrlPressed) {
-      const moved = PhysicsEngine.ripple(obstacles, startTime, duration);
+      const moved = backwards
+        ? PhysicsEngine.rippleBackward(obstacles, endTime, duration)
+        : PhysicsEngine.ripple(obstacles, startTime, duration);
       moved.forEach(entry => {
         workspace.set(entry.taskId, entry.segmentId, entry.startTime, entry.duration);
       });
@@ -506,7 +514,9 @@ class DragController {
 
     // DEFAULT: flow around whatever is in the way, splitting only THIS block.
     // The task's other blocks are untouched — they are obstacles, not cargo.
-    const pieces = PhysicsEngine.placeAround(obstacles, startTime, duration, dayEnd);
+    const pieces = backwards
+      ? PhysicsEngine.placeAroundBackward(obstacles, endTime, duration, dayStart)
+      : PhysicsEngine.placeAround(obstacles, startTime, duration, dayEnd);
     this.placeDraggedSegment(workspace, task, drag, startTime, duration, pieces);
     drag.lastOutcome = { kind: 'split', pieces: pieces.length };
     return workspace.payloads();
@@ -592,7 +602,7 @@ class DragController {
     });
   }
 
-  hintTextFor(drag, updates) {
+  hintTextFor(drag) {
     if (drag.type === 'seam') {
       return 'Moving the shared boundary — both blocks, same total time';
     }
@@ -609,11 +619,14 @@ class DragController {
       return `Trading time between the blocks of ${outcome.taskTitle}`;
     }
 
-    if (this.isCtrlPressed) {
-      const others = updates.filter(u => u.id !== drag.taskId).length;
-      return others === 0
+    if (outcome.kind === 'ripple') {
+      // Counted in blocks, not tasks. A resize that pushes the task's own later
+      // blocks along displaces nothing "other" -- and reporting that as "nothing
+      // affected" while three of its blocks slide across the day is a lie.
+      const moved = outcome.moved || 0;
+      return moved === 0
         ? 'Ripple — nothing else affected'
-        : `Ripple — ${others} other task${others > 1 ? 's' : ''} will shift`;
+        : `Ripple — ${moved} block${moved > 1 ? 's' : ''} will shift`;
     }
 
     if (outcome.kind === 'split' && outcome.pieces > 1) {
@@ -627,7 +640,7 @@ class DragController {
   }
 
   updateHint(drag, updates) {
-    const text = this.hintTextFor(drag, updates);
+    const text = this.hintTextFor(drag);
     if (!text) {
       this.hideHint();
       return;

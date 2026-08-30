@@ -2056,37 +2056,54 @@ body.is-seam-dragging * {
 .timeline-task-card.is-min .segment-pill:hover { transform: translateX(-50%) scale(1.15); }
 .timeline-task-card.is-min .segment-pill .segment-pill-check { display: none; }
 
-/* FOCUS: hovering any block pulls its family forward and pushes the rest back.
-   The dim comes from one class on the container, so a hover never costs a class
-   toggle per block. Opacity only — a greyscale filter would rasterize every
-   card and reads far heavier than intended. */
+/* FOCUS: hovering a block eventually pulls its family forward and pushes the
+   rest back. Deliberately slow to arm -- an instant reaction meant the whole
+   grid moved under a pointer that was only passing through. Two pulses on the
+   family lead into it, then everything else drops away hard.
+
+   Every focus style hangs off `has-focus` on the container, so marking the
+   family early costs nothing on screen: one class toggle at the end does the
+   work, never one per block. Opacity only -- a greyscale or brightness filter
+   would rasterize every card and reads far heavier than intended. */
 .timeline-block-layer .timeline-task-card {
-  transition: opacity 0.14s ease;
+  transition: opacity 0.25s ease;
+}
+
+/* Dimming in is slower than coming back out: the browser picks up the
+   transition declared for the state being entered. */
+.timeline-block-layer.has-focus .timeline-task-card {
+  transition: opacity 0.5s ease;
 }
 
 .timeline-block-layer.has-focus .timeline-task-card:not(.is-focus):not(.is-sibling) {
-  opacity: 0.6;
+  opacity: 0.12;
 }
 
-.timeline-block-layer .timeline-task-card.is-sibling {
+.timeline-block-layer.has-focus .timeline-task-card.is-sibling {
   box-shadow: 0 0 0 2.5px #000000, var(--shadow-hard, 3px 3px 0 #000);
 }
 
-/* Wires are drawn above the blocks: the old bridges lived under them, so a
-   block between two halves hid the link entirely. */
-.timeline-wire-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  overflow: visible;
-  pointer-events: none;
-  z-index: 3;
+/* The pulse. Runs on the hovered block and its siblings while the rest of the
+   grid is still untouched, so it reads as "these belong together" rather than
+   as the screen changing.
+
+   Kept shallow on purpose: this is a nudge toward the family, not an event of
+   its own. A deep dip reads as a blink and pulls more attention than the dim it
+   is only meant to introduce. */
+.timeline-block-layer .timeline-task-card.is-focus-flash {
+  animation: focus-family-pulse 460ms ease-in-out;
 }
 
-.timeline-wire-label {
-  font-size: 9px;
-  font-weight: 800;
-  fill: #111827;
+@keyframes focus-family-pulse {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.74; }
+  100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-block-layer .timeline-task-card.is-focus-flash { animation: none; }
+  .timeline-block-layer .timeline-task-card,
+  .timeline-block-layer.has-focus .timeline-task-card { transition: none; }
 }
 
 /* A part-done task is neither checked nor unchecked, and must not read as

@@ -22,6 +22,14 @@ const TaskModel = {
     return `seg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   },
 
+  // Task ids are minted here, not on the server, so a new task can appear on
+  // screen and be edited before the create request has even been sent. The
+  // server keeps whatever id it is handed, so nothing has to be reconciled
+  // afterwards. Same prefix the server would have used.
+  newTaskId() {
+    return `tsk_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  },
+
   /**
    * Normalise a task in place and return its segments. Records written before
    * segments existed are migrated on read: every block inherits the task-level
