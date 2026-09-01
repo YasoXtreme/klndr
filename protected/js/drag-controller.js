@@ -272,12 +272,33 @@ class DragController {
       currentStartTime: startTime,
       currentDuration: duration,
       currentDayIndex: dayIndex,
+      initialDayIndex: dayIndex,
       // Captured once, at drag start: recomputing the pair every frame would
       // change what the gesture means halfway through it.
       divider: this.findDividerAt(task, segment, dayIndex)
     };
     taskCard.classList.add('is-dragging');
     this.dom.hideTooltip();
+  }
+
+  /**
+   * Which way a ripple pushes. The blocks in the way are shoved AHEAD of the
+   * gesture, so the answer is simply: whichever way you are dragging.
+   *
+   * Pushing forward regardless is what made dragging a block earlier shove its
+   * neighbour later — past the block you were dragging, reordering the day in
+   * the opposite direction to the gesture that asked for it.
+   */
+  static ripplesBackward(drag) {
+    if (drag.type === 'resize-left') return true;
+    if (drag.type !== 'move') return false;
+
+    // A drop from the sidebar has no previous position, and a block arriving
+    // from another day has none within the day it landed in. "Insert here and
+    // push down" is the only meaning available.
+    if (drag.currentDayIndex !== drag.initialDayIndex) return false;
+
+    return drag.currentStartTime < drag.initialStartTime;
   }
 
   static supportsAltSplit() {
@@ -410,7 +431,7 @@ class DragController {
       if (before.length !== after.length) return true;
 
       return !after.every((seg, i) => (
-        Math.abs(seg.start_time - before[i].start_time) < 30 &&
+        Math.abs(seg.start_time - before[i].start_time) < PhysicsEngine.NEGLIGIBLE_SECONDS &&
         Math.abs(seg.duration - before[i].duration) < 0.5 &&
         Boolean(seg.completed) === Boolean(before[i].completed)
       ));
@@ -471,11 +492,14 @@ class DragController {
     const endTime = startTime + duration * 60;
     const workspace = this.createWorkspace();
 
-    // Resizing is moving: an edge dragged into another block has to negotiate
-    // with it, not sit on top of it. The only difference is which way the block
-    // grows -- a left edge grows into the past, so obstacles are pushed earlier
-    // and overflow flows backwards. Everything below is otherwise shared.
-    const backwards = drag.type === 'resize-left';
+    // Two different questions, deliberately answered separately.
+    //
+    // Which way does the block GROW? Only a left edge grows into the past, so
+    // only a left edge makes its overflow flow backwards.
+    const growsBackward = drag.type === 'resize-left';
+    // Which way is the gesture PLOWING? A ripple shoves what is in front of it,
+    // and "in front" is the direction you are dragging.
+    const pushesBackward = DragController.ripplesBackward(drag);
 
     const obstacles = PhysicsEngine.daySegments(this.state.tasks, dayStart, dayEnd, drag.segmentId);
 
@@ -501,20 +525,20 @@ class DragController {
     }
 
     if (this.isCtrlPressed) {
-      const moved = backwards
+      const moved = pushesBackward
         ? PhysicsEngine.rippleBackward(obstacles, endTime, duration)
         : PhysicsEngine.ripple(obstacles, startTime, duration);
       moved.forEach(entry => {
         workspace.set(entry.taskId, entry.segmentId, entry.startTime, entry.duration);
       });
       this.placeDraggedSegment(workspace, task, drag, startTime, duration);
-      drag.lastOutcome = { kind: 'ripple', moved: moved.length };
+      drag.lastOutcome = { kind: 'ripple', moved: moved.length, backward: pushesBackward };
       return workspace.payloads();
     }
 
     // DEFAULT: flow around whatever is in the way, splitting only THIS block.
     // The task's other blocks are untouched — they are obstacles, not cargo.
-    const pieces = backwards
+    const pieces = growsBackward
       ? PhysicsEngine.placeAroundBackward(obstacles, endTime, duration, dayStart)
       : PhysicsEngine.placeAround(obstacles, startTime, duration, dayEnd);
     this.placeDraggedSegment(workspace, task, drag, startTime, duration, pieces);
@@ -624,9 +648,9 @@ class DragController {
       // blocks along displaces nothing "other" -- and reporting that as "nothing
       // affected" while three of its blocks slide across the day is a lie.
       const moved = outcome.moved || 0;
-      return moved === 0
-        ? 'Ripple — nothing else affected'
-        : `Ripple — ${moved} block${moved > 1 ? 's' : ''} will shift`;
+      if (moved === 0) return 'Ripple — nothing else affected';
+      const where = outcome.backward ? 'earlier' : 'later';
+      return `Ripple — ${moved} block${moved > 1 ? 's' : ''} pushed ${where}`;
     }
 
     if (outcome.kind === 'split' && outcome.pieces > 1) {

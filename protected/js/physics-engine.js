@@ -10,6 +10,12 @@
 const PhysicsEngine = {
   MIN_TASK_DURATION_MINUTES: 15,
 
+  // Below this, a shift is not a move. Without snapping on, a drop carries
+  // arbitrary seconds, and the block after it in a cascade gets nudged by a
+  // fraction of a minute -- invisible on screen, not worth a write, and not
+  // something to count out loud. The commit path prunes at the same threshold.
+  NEGLIGIBLE_SECONDS: 30,
+
   /**
    * Snapping logic: Snap timestamp to resolution (e.g. 15min, 30min, or custom bucket)
    */
@@ -73,6 +79,8 @@ const PhysicsEngine = {
       }
 
       const overlapMinutes = Math.ceil((boundary - entry.startTime) / 60);
+      const wasStart = entry.startTime;
+      const wasDuration = entry.duration;
 
       if (!entry.isLocked) {
         // Unlocked blocks give up time before they give up their place.
@@ -84,8 +92,13 @@ const PhysicsEngine = {
 
       entry.startTime = boundary;
       entry.endTime = entry.startTime + entry.duration * 60;
+      // The cascade always advances past this block, but a sub-minute nudge is
+      // not a displacement and must not be reported as one.
       boundary = entry.endTime;
-      moved.push(entry);
+      if (Math.abs(entry.startTime - wasStart) >= this.NEGLIGIBLE_SECONDS ||
+          entry.duration !== wasDuration) {
+        moved.push(entry);
+      }
     });
 
     return moved;
