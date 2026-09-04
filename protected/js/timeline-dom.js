@@ -535,7 +535,11 @@ class TimelineDOM {
     card.appendChild(TimelineDOM.buildEdgeHandle('left'));
     card.appendChild(TimelineDOM.buildEdgeHandle('right'));
 
-    if (task.is_locked !== false && !isSplit && task.category !== 'Break') {
+    // No category name carries behaviour any more. This used to exempt a
+    // category literally called "Break"; categories are the person's now and
+    // klndr ships none, so that rule would have to be a property on the
+    // category record rather than a name match.
+    if (task.is_locked !== false && !isSplit) {
       const lockPill = document.createElement('div');
       lockPill.className = 'task-lock-indicator';
       lockPill.innerHTML = '<span class="material-symbols-outlined" style="font-size: 13px; color: #000;">lock</span>';

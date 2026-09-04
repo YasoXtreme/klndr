@@ -106,6 +106,38 @@ const API = {
     return data.settings;
   },
 
+  // Categories APIs
+  //
+  // Tasks store a category by name, so these only ever move the category
+  // records themselves; the server cascades a rename or a delete onto tasks.
+  async getCategories() {
+    const data = await this.request('/api/categories');
+    return data.categories;
+  },
+
+  async createCategory(category) {
+    const data = await this.request('/api/categories', {
+      method: 'POST',
+      body: JSON.stringify(category)
+    });
+    return data.category;
+  },
+
+  // Returns { category, renamedFrom, retagged, recoloured } - the counts say
+  // what the cascade actually touched, including tasks this client never held.
+  async updateCategory(id, patch) {
+    return this.request(`/api/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch)
+    });
+  },
+
+  async deleteCategory(id) {
+    return this.request(`/api/categories/${id}`, {
+      method: 'DELETE'
+    });
+  },
+
   // Announcements APIs
   async getAnnouncements() {
     return this.request('/api/announcements');
@@ -129,5 +161,45 @@ const API = {
       method: 'PUT',
       body: JSON.stringify({ last_seen_id: lastSeenId })
     });
+  },
+
+  // Integrations APIs
+  //
+  // The provider is always a parameter, never baked into a URL, so these work
+  // unchanged for anything added to the server-side connector registry.
+  // Connecting is deliberately absent: it is a full-page navigation to
+  // /api/integrations/<provider>/connect, because it redirects off-site and a
+  // fetch cannot follow that.
+  async getIntegrations() {
+    const data = await this.request('/api/integrations');
+    return data ? data.providers || [] : [];
+  },
+
+  async syncIntegration(provider, force = false) {
+    const data = await this.request(`/api/integrations/${provider}/sync`, {
+      method: 'POST',
+      body: JSON.stringify({ force })
+    });
+    return data ? data.result : null;
+  },
+
+  async disconnectIntegration(provider) {
+    return this.request(`/api/integrations/${provider}`, { method: 'DELETE' });
+  },
+
+  async undismissIntegration(provider) {
+    const data = await this.request(`/api/integrations/${provider}/undismiss`, {
+      method: 'POST'
+    });
+    return data ? data.result : null;
+  },
+
+  // Fire-and-forget: the next sync reconciles anything that fails, so a
+  // background push must never surface an error or block the UI.
+  pushIntegrationCompletion(provider, taskId) {
+    return this.request(`/api/integrations/${provider}/push`, {
+      method: 'POST',
+      body: JSON.stringify({ taskId })
+    }).catch(() => null);
   }
 };

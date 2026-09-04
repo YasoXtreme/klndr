@@ -2,6 +2,8 @@
 // Handles single-column and multi-column category views, 5-second completed task grace period,
 // filter tabs (default: Uncompleted & Unscheduled), inline task creation with dynamic background color.
 
+const UNCATEGORIZED = CategoryPicker.UNCATEGORIZED;
+
 class TasksSidebar {
   constructor(containerElement, state, onTaskInteraction, onDragStart, onToggleCollapse) {
     this.container = containerElement;
@@ -19,35 +21,45 @@ class TasksSidebar {
     // 5-second grace period timeouts map for completed tasks: taskId -> timeoutId
     this.completedGraceTimeouts = new Map();
 
+    // A fresh draft carries no category. klndr ships none, so there is nothing
+    // to fall back to and nothing to pretend with.
     this.newTaskState = {
-      icon: 'task_alt',
-      color: '#3ba4f6',
-      category: 'General'
+      icon: KlndrPalette.DEFAULT_ICON,
+      color: KlndrPalette.DEFAULT_COLOR,
+      category: null
     };
 
-    // 20 Curated Google Icons
-    this.availableIcons = [
-      'square_foot', 'balance', 'science', 'bolt', 'menu_book',
-      'code', 'psychology', 'fitness_center', 'calculate', 'draw',
-      'palette', 'music_note', 'laptop_mac', 'history_edu', 'biotech',
-      'functions', 'auto_stories', 'school', 'edit_note', 'task_alt'
-    ];
-
-    // 20 Curated Palette Colors
-    this.availableColors = [
-      '#3ba4f6', '#9ae659', '#d985f5', '#d1d5db', '#fb923c',
-      '#fde047', '#38bdf8', '#4ade80', '#e879f9', '#f472b6',
-      '#a78bfa', '#fb7185', '#facc15', '#67e8f9', '#86efac',
-      '#fbcfe8', '#fed7aa', '#e2e8f0', '#a5f3fc', '#c7d2fe'
-    ];
-
-    // Categories including new ones requested
-    this.availableCategories = [
-      'Mathematics', 'Arabic', 'French', 'German', 'Biology',
-      'Geology', 'Mechanics', 'Physics', 'Chemistry', 'Break', 'General'
-    ];
+    this.availableIcons = KlndrPalette.icons;
+    this.availableColors = KlndrPalette.colors;
 
     this.initControls();
+  }
+
+  // The categories this person owns, in their own order.
+  get categories() {
+    return this.state.categories || [];
+  }
+
+  /**
+   * Every category the board must be able to show a column for: the ones the
+   * person owns, plus any name still sitting on a task that no category covers.
+   *
+   * The union is not decoration. The multi-column view iterates categories, not
+   * tasks, so a name missing from this list is a task that silently disappears,
+   * and a stale name stays reachable: a rename whose cascade half-failed, a
+   * second tab that renamed it, a task belonging to a week this client never
+   * loaded. Orphans render without a swatch, which is the visible tell that
+   * something needs re-tagging.
+   */
+  get categoryColumns() {
+    const owned = this.categories;
+    const known = new Set(owned.map(cat => cat.name));
+    const orphans = [...new Set(
+      (this.state.tasks || [])
+        .map(task => task.category)
+        .filter(name => name && !known.has(name))
+    )];
+    return [...owned, ...orphans.map(name => ({ id: null, name, color: null, icon: null }))];
   }
 
   setFullView(isFull) {
@@ -95,16 +107,21 @@ class TasksSidebar {
       });
     }
 
-    // Filter pills
-    const filterPills = document.querySelectorAll('.category-filter-pill');
-    filterPills.forEach(pill => {
-      pill.addEventListener('click', () => {
-        filterPills.forEach(p => p.classList.remove('active'));
+    // Filter pills. Delegated rather than bound per pill: the category pills are
+    // rebuilt whenever the category list changes, and per-pill handlers would go
+    // with them.
+    const filterBar = document.getElementById('sidebarFilterBar');
+    if (filterBar) {
+      filterBar.addEventListener('click', (e) => {
+        const pill = e.target.closest('.category-filter-pill');
+        if (!pill || !filterBar.contains(pill)) return;
+        filterBar.querySelectorAll('.category-filter-pill')
+          .forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         this.activeCategoryFilter = pill.dataset.category || 'UNCOMPLETED_UNSCHEDULED';
         this.render();
       });
-    });
+    }
 
     this.initInlineCreationBar();
   }
@@ -168,23 +185,32 @@ class TasksSidebar {
       });
     }
 
-    // Populate Category Popup
-    if (categoryPopup) {
-      categoryPopup.innerHTML = '';
-      this.availableCategories.forEach(cat => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'picker-item-category';
-        item.textContent = cat;
-        item.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.newTaskState.category = cat;
-          categoryBtn.title = `Category: ${cat}`;
+    // The category popup is built on OPEN, not here. It has to show whatever
+    // the person owns right now, and this runs before the categories have even
+    // been fetched.
+    this.renderCategoryPopup = () => {
+      CategoryPicker.render(categoryPopup, {
+        categories: this.categories,
+        selectedName: this.newTaskState.category,
+        onPick: (category) => {
+          this.applyCategoryToDraft(this.newTaskState, category, createBox);
+          categoryBtn.title = KlndrApp.categoryButtonTitle(this.newTaskState.category);
+          if (iconBtn) {
+            iconBtn.querySelector('.material-symbols-outlined').textContent =
+              this.newTaskState.icon;
+          }
           closeAllPopups();
-        });
-        categoryPopup.appendChild(item);
+        },
+        onEdit: (category) => {
+          closeAllPopups();
+          this.onTaskInteraction('editCategory', { category });
+        },
+        onCreate: () => {
+          closeAllPopups();
+          this.onTaskInteraction('createCategory', {});
+        }
       });
-    }
+    };
 
     if (iconBtn) {
       iconBtn.addEventListener('click', (e) => {
@@ -209,7 +235,9 @@ class TasksSidebar {
         e.stopPropagation();
         const isOpen = categoryPopup.style.display === 'flex';
         closeAllPopups();
-        categoryPopup.style.display = isOpen ? 'none' : 'flex';
+        if (isOpen) return;
+        this.renderCategoryPopup();
+        categoryPopup.style.display = 'flex';
       });
     }
 
@@ -228,7 +256,7 @@ class TasksSidebar {
             total_duration: 120,
             icon: this.newTaskState.icon || 'task_alt',
             color: this.newTaskState.color || '#3ba4f6',
-            category: this.newTaskState.category || 'General',
+            category: this.newTaskState.category || null,
             is_locked: true,
             start_times: [],
             durations: []
@@ -239,6 +267,25 @@ class TasksSidebar {
         }
       });
     }
+  }
+
+  /**
+   * Give a draft the look of the category it just joined.
+   *
+   * The early-out is the whole rule the person asked for: picking a category
+   * hands over its default colour and icon, but re-picking the one already
+   * selected must not undo a colour they deliberately chose afterwards. Nothing
+   * else re-applies a category's defaults, so a manual pick always wins from
+   * there on and no "has the user touched this?" bookkeeping is needed.
+   */
+  applyCategoryToDraft(draft, category, createBox) {
+    const nextName = category.name || null;
+    if (nextName === draft.category) return;
+
+    draft.category = nextName;
+    if (category.color) draft.color = category.color;
+    if (category.icon) draft.icon = category.icon;
+    if (createBox) createBox.style.backgroundColor = draft.color;
   }
 
   toggleCollapse() {
@@ -321,6 +368,9 @@ class TasksSidebar {
       }
       if (this.activeCategoryFilter === 'UNSCHEDULED') {
         return !isScheduled;
+      }
+      if (this.activeCategoryFilter === UNCATEGORIZED) {
+        return !task.category;
       }
       if (this.activeCategoryFilter !== 'ALL') {
         return task.category === this.activeCategoryFilter;
@@ -407,10 +457,52 @@ class TasksSidebar {
     return card;
   }
 
+  /**
+   * One pill per category, after the five status pills that live in the markup.
+   *
+   * Rebuilt from scratch on every render because a category can be added,
+   * renamed or deleted from three different places. If the active filter names
+   * a category that has just gone, fall back to the default rather than leaving
+   * the panel filtered to nothing with no pill to explain why.
+   */
+  renderCategoryFilterPills() {
+    const bar = document.getElementById('sidebarFilterBar');
+    if (!bar) return;
+
+    bar.querySelectorAll('.category-filter-pill.is-category').forEach(p => p.remove());
+
+    const names = this.categoryColumns.map(cat => cat.name);
+    const hasLoose = (this.state.tasks || []).some(task => !task.category);
+    const entries = names.map(name => ({ value: name, label: name }));
+    if (hasLoose) entries.push({ value: UNCATEGORIZED, label: 'Uncategorized' });
+
+    const stillThere = entries.some(entry => entry.value === this.activeCategoryFilter);
+    const isStatusFilter = ['ALL', 'UNCOMPLETED_UNSCHEDULED', 'UNCOMPLETED', 'COMPLETED', 'UNSCHEDULED']
+      .includes(this.activeCategoryFilter);
+    if (!isStatusFilter && !stillThere) {
+      this.activeCategoryFilter = 'UNCOMPLETED_UNSCHEDULED';
+    }
+
+    entries.forEach(entry => {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'category-filter-pill is-category';
+      pill.dataset.category = entry.value;
+      pill.textContent = entry.label;
+      bar.appendChild(pill);
+    });
+
+    bar.querySelectorAll('.category-filter-pill').forEach(pill => {
+      pill.classList.toggle('active', pill.dataset.category === this.activeCategoryFilter);
+    });
+  }
+
   render() {
     const listEl = document.getElementById('sidebarTasksList');
     const multicolumnEl = document.getElementById('tasksMulticolumnContainer');
     if (!listEl) return;
+
+    this.renderCategoryFilterPills();
 
     const allTasks = this.state.tasks || [];
     const filteredTasks = this.filterTasks(allTasks);
@@ -430,37 +522,75 @@ class TasksSidebar {
       multicolumnEl.style.display = 'flex';
       multicolumnEl.innerHTML = '';
 
-      // Determine active categories to render columns for
-      const categoriesToRender = this.availableCategories;
+      const columns = this.categoryColumns.map(category => ({
+        category,
+        key: category.name,
+        tasks: sortedTasks.filter(t => t.category === category.name)
+      }));
 
-      categoriesToRender.forEach(cat => {
-        const catTasks = sortedTasks.filter(t => (t.category || 'General') === cat);
+      // Uncategorised only earns a column when something is actually in it -
+      // an always-present empty bucket is noise on a board that starts with no
+      // categories at all. It is still a drop target once it is there, which is
+      // how a task gets un-filed.
+      const loose = sortedTasks.filter(t => !t.category);
+      if (loose.length) {
+        columns.push({
+          category: { id: null, name: 'Uncategorized', color: null, icon: null },
+          key: UNCATEGORIZED,
+          tasks: loose
+        });
+      }
 
+      if (!columns.length) {
+        const empty = document.createElement('div');
+        empty.className = 'sidebar-empty-state multicolumn-empty-state';
+        empty.innerHTML = `
+          <p>No categories yet</p>
+          <span>Add one from Account &amp; Settings, or from the category picker below</span>
+        `;
+        multicolumnEl.appendChild(empty);
+        return;
+      }
+
+      columns.forEach(({ category, key, tasks }) => {
         const col = document.createElement('div');
         col.className = 'task-category-column';
 
         const header = document.createElement('div');
         header.className = 'category-column-header';
-        header.innerHTML = `
-          <span>${cat}</span>
-          <span class="category-column-count">${catTasks.length}</span>
-        `;
+
+        // A column with no swatch is the visible tell that its name is on tasks
+        // but has no category record behind it any more.
+        const swatch = document.createElement('span');
+        swatch.className = `category-column-swatch ${category.color ? '' : 'is-blank'}`.trim();
+        if (category.color) swatch.style.backgroundColor = category.color;
+        if (category.icon) {
+          swatch.innerHTML = `<span class="material-symbols-outlined">${category.icon}</span>`;
+        }
+        header.appendChild(swatch);
+
+        const label = document.createElement('span');
+        label.className = 'category-column-name';
+        label.textContent = category.name;
+        header.appendChild(label);
+
+        const count = document.createElement('span');
+        count.className = 'category-column-count';
+        count.textContent = tasks.length;
+        header.appendChild(count);
         col.appendChild(header);
 
         const body = document.createElement('div');
         body.className = 'category-column-body';
-        body.dataset.category = cat;
+        body.dataset.category = key;
 
-        if (catTasks.length === 0) {
+        if (tasks.length === 0) {
           const empty = document.createElement('div');
-          empty.style.fontSize = '12px';
-          empty.style.color = '#9ca3af';
-          empty.style.textAlign = 'center';
-          empty.style.padding = '20px 0';
+          empty.className = 'category-column-empty';
           empty.textContent = 'No tasks in this category';
           body.appendChild(empty);
         } else {
-          catTasks.forEach(task => {
+          tasks.forEach(task => {
             body.appendChild(this.createTaskCardElement(task));
           });
         }

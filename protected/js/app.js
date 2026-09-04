@@ -4,6 +4,9 @@ class KlndrApp {
   constructor() {
     this.user = null;
     this.tasks = [];
+    // The person's categories. Empty is the honest starting point: klndr ships
+    // none, and an existing user's are migrated server-side on first read.
+    this.categories = [];
     this.settings = {
       bucketHours: 2,
       snapToRuler: false,
@@ -105,6 +108,14 @@ class KlndrApp {
         console.warn('Using default settings', e);
       }
 
+      // Before the controllers are built: the sidebar renders its filter pills
+      // and its kanban columns from this, and both run during construction.
+      try {
+        this.categories = await API.getCategories() || [];
+      } catch (e) {
+        console.warn('Could not load categories', e);
+      }
+
       this.computeWeekDays();
 
       const canvasEl = document.getElementById('timelineCanvas');
@@ -116,6 +127,7 @@ class KlndrApp {
 
       const sharedState = {
         get tasks() { return window.klndr.tasks; },
+        get categories() { return window.klndr.categories; },
         get days() { return window.klndr.days; },
         get bucketHours() { return window.klndr.settings.bucketHours; },
         get snapToRuler() { return window.klndr.settings.snapToRuler; },
@@ -180,9 +192,76 @@ class KlndrApp {
 
       await this.loadTasks();
       await this.initMissedAnnouncementsCarousel();
+      this.handleIntegrationRedirect();
+      // After the first paint, so a slow source app never delays the calendar.
+      // Throttled server-side, so calling it on every load is cheap.
+      void this.syncIntegrationsInBackground();
 
     } catch (err) {
       console.error('Failed to initialize Klndr:', err);
+    }
+  }
+
+  /**
+   * Reads the `?integration=` the OAuth callback comes back with, says how it
+   * went, then strips it so a reload does not repeat the message.
+   */
+  handleIntegrationRedirect() {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get('integration');
+    if (!outcome) return;
+
+    const detail = params.get('detail');
+    const messages = {
+      connected: ['Connected. Your outstanding work is in the tasks panel.', 'success'],
+      denied: ['Connection cancelled.', 'error'],
+      bad_state: ['That connection attempt expired. Try again.', 'error'],
+      unknown_provider: ['That integration does not exist.', 'error']
+    };
+    const [text, kind] = messages[outcome] || [detail || 'Connection failed.', 'error'];
+    this.showToast(text, kind);
+
+    params.delete('integration');
+    params.delete('detail');
+    const query = params.toString();
+    window.history.replaceState({}, '', query ? `/?${query}` : '/');
+  }
+
+  /**
+   * Pulls fresh work from every connected app on load.
+   *
+   * Silent by design: nobody asked for it, so a source app being down is a
+   * console line, not a toast. The tasks panel only repaints when something
+   * actually changed, and never through loadTasks(), which would clear undo.
+   */
+  async syncIntegrationsInBackground() {
+    try {
+      const providers = await API.getIntegrations();
+      const connected = providers.filter(p => p.connected && p.status !== 'reauth_required');
+      if (!connected.length) return;
+
+      let changed = false;
+      for (const provider of connected) {
+        try {
+          const result = await API.syncIntegration(provider.id, false);
+          if (result && !result.skipped) {
+            changed = changed || Boolean(
+              result.created || result.updated || result.removed || result.detached
+            );
+          }
+        } catch (err) {
+          console.error(`Background sync failed for ${provider.id}:`, err.message);
+        }
+      }
+
+      // A sync can invent categories as well as tasks - a subject klndr has
+      // never seen becomes one - so the list has to be re-read too.
+      if (changed) {
+        await this.refreshCategories();
+        await this.reloadTasksPreservingHistory();
+      }
+    } catch (err) {
+      console.error('Could not check integrations:', err.message);
     }
   }
 
@@ -193,7 +272,9 @@ class KlndrApp {
     }
     const adminTabBtn = document.getElementById('tabBtnAdmin');
     if (adminTabBtn) {
-      adminTabBtn.style.display = this.user.role === 'admin' ? 'block' : 'none';
+      // '' not 'block': the nav item is a flex row of icon and label, and an
+      // inline display would flatten it.
+      adminTabBtn.style.display = this.user.role === 'admin' ? '' : 'none';
     }
     const createAnnouncementBtn = document.getElementById('btnCreateAnnouncement');
     if (createAnnouncementBtn) {
@@ -293,6 +374,9 @@ class KlndrApp {
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        // A stacked modal dismisses only itself, so escaping out of the
+        // category editor leaves the block editor underneath still open.
+        if (this.closeTopModal()) return;
         this.closeAllModals();
         return;
       }
@@ -412,14 +496,20 @@ class KlndrApp {
 
     const [draggedTask] = this.tasks.splice(draggedIdx, 1);
 
-    if (targetCategory && targetCategory !== draggedTask.category) {
+    // The uncategorised column hands back a sentinel rather than an empty
+    // string, so that dropping into it reads as a real target here instead of
+    // as "no column was under the pointer".
+    const nextCategory =
+      targetCategory === CategoryPicker.UNCATEGORIZED ? null : targetCategory;
+
+    if (targetCategory !== null && nextCategory !== draggedTask.category) {
       changes.push({
         kind: 'update', via: 'patch', id: draggedTask.id,
         before: { category: draggedTask.category },
-        after: { category: targetCategory }
+        after: { category: nextCategory }
       });
-      draggedTask.category = targetCategory;
-      API.updateTask(draggedTask.id, { category: targetCategory });
+      draggedTask.category = nextCategory;
+      API.updateTask(draggedTask.id, { category: nextCategory });
     }
 
     if (targetTaskId && targetTaskId !== draggedTaskId) {
@@ -524,48 +614,62 @@ class KlndrApp {
     }
 
     document.querySelectorAll('.modal-close-btn, .modal-backdrop').forEach(el => {
-      el.addEventListener('click', () => this.closeAllModals());
+      el.addEventListener('click', () => {
+        // Same reason as Escape: closeAllModals() also nulls selectedTask,
+        // which would leave the block editor on screen editing nothing.
+        if (el.closest('.modal-container.modal-layer-top')) this.closeTopModal();
+        else this.closeAllModals();
+      });
     });
   }
 
   // ==========================================
   // TABBED ACCOUNT MODAL
   // ==========================================
-  initAccountModal() {
-    const tabBtnSettings = document.getElementById('tabBtnSettings');
-    const tabBtnAdmin = document.getElementById('tabBtnAdmin');
-    const tabBtnAnnouncements = document.getElementById('tabBtnAnnouncements');
-    const panelSettings = document.getElementById('tabPanelSettings');
-    const panelAdmin = document.getElementById('tabPanelAdmin');
-    const panelAnnouncements = document.getElementById('tabPanelAnnouncements');
+  /**
+   * Show one section of the account modal.
+   *
+   * Driven by the markup - each nav button names its panel and its heading in
+   * data attributes - rather than by two parallel arrays that had to be edited
+   * in step. Adding a section is now a button in index.html and nothing here.
+   */
+  switchAccountTab(btnOrId) {
+    const btn = typeof btnOrId === 'string'
+      ? document.getElementById(btnOrId)
+      : btnOrId;
+    if (!btn) return;
 
-    const allTabBtns = [tabBtnSettings, tabBtnAdmin, tabBtnAnnouncements].filter(Boolean);
-    const allPanels = [panelSettings, panelAdmin, panelAnnouncements].filter(Boolean);
+    const panel = document.getElementById(btn.dataset.panel);
+    if (!panel) return;
 
-    const switchTab = (activeBtn, activePanel) => {
-      allTabBtns.forEach(b => b.classList.remove('active'));
-      allPanels.forEach(p => p.style.display = 'none');
-      activeBtn.classList.add('active');
-      activePanel.style.display = 'block';
+    document.querySelectorAll('#accountModal .modal-tab-btn')
+      .forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#accountModal .modal-tab-panel')
+      .forEach(p => (p.style.display = 'none'));
+
+    btn.classList.add('active');
+    panel.style.display = 'block';
+
+    const heading = document.getElementById('accountPanelTitle');
+    if (heading) heading.textContent = btn.dataset.title || '';
+
+    // Sections that need data fetch it on the way in, not on every modal open.
+    const loaders = {
+      tabBtnAdmin: () => this.loadAdminUsersList(),
+      tabBtnIntegrations: () => this.loadIntegrationsList(),
+      tabBtnAnnouncements: () => this.loadAnnouncementsList(),
+      tabBtnCategories: () => this.loadCategoriesTab()
     };
+    const load = loaders[btn.id];
+    if (load) void load();
+  }
 
-    if (tabBtnSettings) {
-      tabBtnSettings.addEventListener('click', () => switchTab(tabBtnSettings, panelSettings));
-    }
+  initAccountModal() {
+    document.querySelectorAll('#accountModal .modal-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.switchAccountTab(btn));
+    });
 
-    if (tabBtnAdmin) {
-      tabBtnAdmin.addEventListener('click', async () => {
-        switchTab(tabBtnAdmin, panelAdmin);
-        await this.loadAdminUsersList();
-      });
-    }
-
-    if (tabBtnAnnouncements) {
-      tabBtnAnnouncements.addEventListener('click', async () => {
-        switchTab(tabBtnAnnouncements, panelAnnouncements);
-        await this.loadAnnouncementsList();
-      });
-    }
+    this.initCategoriesTab();
 
     // Change Username Form
     const changeUserForm = document.getElementById('changeUsernameForm');
@@ -647,6 +751,251 @@ class KlndrApp {
     }
   }
 
+  // ==========================================
+  // INTEGRATIONS
+  // ==========================================
+
+  /**
+   * Renders one row per provider from the server's connector registry. Nothing
+   * here names a particular app, so a new integration appears on its own.
+   */
+  async loadIntegrationsList() {
+    const listEl = document.getElementById('integrationsList');
+    const msgEl = document.getElementById('integrationsStatusMsg');
+    if (!listEl) return;
+
+    listEl.innerHTML = '<div style="padding:12px 0;font-size:13px;color:#6b7280;">Loading…</div>';
+    if (msgEl) { msgEl.textContent = ''; msgEl.className = 'status-msg'; }
+
+    let providers;
+    try {
+      providers = await API.getIntegrations();
+    } catch (err) {
+      listEl.innerHTML = '';
+      if (msgEl) {
+        msgEl.textContent = err.message;
+        msgEl.className = 'status-msg error';
+      }
+      return;
+    }
+
+    listEl.innerHTML = '';
+    if (!providers.length) {
+      listEl.innerHTML = '<div style="padding:12px 0;font-size:13px;color:#6b7280;">No integrations available.</div>';
+      return;
+    }
+
+    providers.forEach(provider => {
+      listEl.appendChild(this.buildIntegrationRow(provider, msgEl));
+    });
+  }
+
+  buildIntegrationRow(provider, msgEl) {
+    const row = document.createElement('div');
+    row.style.cssText =
+      'display:flex;align-items:flex-start;gap:12px;padding:12px;border:1.5px solid #000;' +
+      'border-radius:10px;margin-bottom:10px;background:#fff;';
+
+    const icon = document.createElement('span');
+    icon.className = 'material-symbols-outlined';
+    icon.style.cssText = 'font-size:24px;flex-shrink:0;margin-top:2px;';
+    icon.textContent = provider.icon || 'extension';
+    row.appendChild(icon);
+
+    const body = document.createElement('div');
+    body.style.cssText = 'flex:1;min-width:0;';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:700;font-size:14px;';
+    title.textContent = provider.label;
+    body.appendChild(title);
+
+    const status = document.createElement('div');
+    status.style.cssText = 'font-size:12.5px;color:#4b5563;margin-top:2px;line-height:1.45;';
+    status.textContent = this.integrationStatusText(provider);
+    body.appendChild(status);
+    row.appendChild(body);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;';
+
+    if (!provider.available) {
+      // Say so rather than offering a button that fails: the only symptom of a
+      // missing environment variable is otherwise a dead click.
+      const note = document.createElement('span');
+      note.style.cssText = 'font-size:12px;color:#9ca3af;';
+      note.textContent = 'Not configured';
+      actions.appendChild(note);
+    } else if (!provider.connected) {
+      // A real navigation, not a fetch: this 302s off to the other app.
+      const connect = document.createElement('a');
+      connect.href = `/api/integrations/${provider.id}/connect`;
+      connect.className = 'btn-modal-primary';
+      connect.style.cssText = 'height:34px;display:inline-flex;align-items:center;text-decoration:none;';
+      connect.textContent = 'Connect';
+      actions.appendChild(connect);
+    } else {
+      const sync = document.createElement('button');
+      sync.type = 'button';
+      sync.className = 'btn-modal-secondary';
+      sync.style.height = '34px';
+      sync.textContent = 'Sync now';
+      sync.addEventListener('click', async () => {
+        sync.disabled = true;
+        sync.textContent = 'Syncing…';
+        try {
+          const result = await API.syncIntegration(provider.id, true);
+          await this.reloadTasksPreservingHistory();
+          if (msgEl) {
+            msgEl.textContent = this.syncSummary(result);
+            msgEl.className = 'status-msg success';
+          }
+        } catch (err) {
+          if (msgEl) {
+            msgEl.textContent = err.message;
+            msgEl.className = 'status-msg error';
+          }
+        } finally {
+          await this.loadIntegrationsList();
+        }
+      });
+      actions.appendChild(sync);
+
+      if (provider.dismissed_count > 0) {
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.className = 'btn-modal-secondary';
+        restore.style.height = '34px';
+        restore.textContent = `Restore ${provider.dismissed_count}`;
+        restore.title = 'Bring back imported tasks you deleted here';
+        restore.addEventListener('click', async () => {
+          restore.disabled = true;
+          try {
+            await API.undismissIntegration(provider.id);
+            await this.reloadTasksPreservingHistory();
+          } catch (err) {
+            if (msgEl) {
+              msgEl.textContent = err.message;
+              msgEl.className = 'status-msg error';
+            }
+          } finally {
+            await this.loadIntegrationsList();
+          }
+        });
+        actions.appendChild(restore);
+      }
+
+      const disconnect = document.createElement('button');
+      disconnect.type = 'button';
+      disconnect.className = 'btn-modal-danger';
+      disconnect.style.height = '34px';
+      disconnect.textContent = 'Disconnect';
+      disconnect.addEventListener('click', async () => {
+        const ok = window.confirm(
+          `Disconnect ${provider.label}?\n\n` +
+            'Imported tasks you have already placed on the calendar stay, as ordinary ' +
+            'klndr tasks. Ones still waiting in the tasks panel are removed.'
+        );
+        if (!ok) return;
+        disconnect.disabled = true;
+        try {
+          const result = await API.disconnectIntegration(provider.id);
+          await this.reloadTasksPreservingHistory();
+          if (msgEl) {
+            msgEl.textContent = `Disconnected. Kept ${result.kept} scheduled task${result.kept === 1 ? '' : 's'}, removed ${result.deleted}.`;
+            msgEl.className = 'status-msg success';
+          }
+        } catch (err) {
+          if (msgEl) {
+            msgEl.textContent = err.message;
+            msgEl.className = 'status-msg error';
+          }
+        } finally {
+          await this.loadIntegrationsList();
+        }
+      });
+      actions.appendChild(disconnect);
+    }
+
+    row.appendChild(actions);
+    return row;
+  }
+
+  integrationStatusText(provider) {
+    if (!provider.available) {
+      return 'This integration is not set up on the server yet.';
+    }
+    if (!provider.connected) return 'Not connected.';
+    if (provider.status === 'reauth_required') {
+      return 'The connection expired. Disconnect and connect again to resume syncing.';
+    }
+
+    const parts = [];
+    parts.push(provider.account_label ? `Connected as ${provider.account_label}` : 'Connected');
+    if (provider.last_synced_at) {
+      parts.push(`synced ${KlndrApp.relativeTime(provider.last_synced_at)}`);
+    }
+    if (provider.last_sync_error) parts.push(`last error: ${provider.last_sync_error}`);
+    return parts.join(' · ');
+  }
+
+  syncSummary(result) {
+    if (!result) return 'Sync finished.';
+    if (result.skipped) return 'Already up to date.';
+    const bits = [];
+    if (result.created) bits.push(`${result.created} imported`);
+    if (result.updated) bits.push(`${result.updated} updated`);
+    if (result.removed) bits.push(`${result.removed} removed`);
+    if (result.completionPushed) bits.push(`${result.completionPushed} pushed`);
+    return bits.length ? `Sync finished: ${bits.join(', ')}.` : 'Sync finished, nothing changed.';
+  }
+
+  static relativeTime(unixSeconds) {
+    const seconds = Math.max(0, Math.floor(Date.now() / 1000) - unixSeconds);
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  }
+
+  /**
+   * Re-fetch the week after a sync without calling loadTasks(), which clears
+   * the undo stack. A sync is a background event and must not silently throw
+   * away work the person could still undo.
+   */
+  async reloadTasksPreservingHistory() {
+    const startDate = this.days[0].startTimestamp;
+    const endDate = this.days[6].endTimestamp;
+    const tasks = await API.getTasks(startDate, endDate);
+    tasks.forEach(t => TaskModel.ensureSegments(t));
+    this.tasks = tasks;
+    this.renderAll();
+  }
+
+  /**
+   * Tells a source app that an imported task's completion changed.
+   *
+   * Completion reaches the server by two different paths - a task with no
+   * segments goes through optimisticTaskUpdate, one with segments through
+   * commitTaskUpdates - so this is called from both rather than living inside
+   * either. Failures are ignored on purpose: the next sync reconciles, and a
+   * toast about a background push would be noise.
+   */
+  pushSourceCompletion(taskIds) {
+    const seen = new Set();
+    taskIds.forEach(id => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      const task = this.tasks.find(t => t.id === id);
+      if (!task || !task.source_app) return;
+      if (Boolean(task.completed) === Boolean(task.source_completed)) return;
+      task.source_completed = Boolean(task.completed);
+      API.pushIntegrationCompletion(task.source_app, task.id);
+    });
+  }
+
   async loadAdminUsersList() {
     const listContainer = document.getElementById('adminUsersTableBody');
     if (!listContainer) return;
@@ -715,9 +1064,9 @@ class KlndrApp {
       if (categoryPopup) categoryPopup.style.display = 'none';
     };
 
-    if (iconPopup && this.sidebarController) {
+    if (iconPopup) {
       iconPopup.innerHTML = '';
-      this.sidebarController.availableIcons.forEach(iconName => {
+      KlndrPalette.icons.forEach(iconName => {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'picker-item-icon';
@@ -733,9 +1082,9 @@ class KlndrApp {
       });
     }
 
-    if (colorPopup && this.sidebarController) {
+    if (colorPopup) {
       colorPopup.innerHTML = '';
-      this.sidebarController.availableColors.forEach(colorHex => {
+      KlndrPalette.colors.forEach(colorHex => {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'picker-item-color';
@@ -750,22 +1099,26 @@ class KlndrApp {
       });
     }
 
-    if (categoryPopup && this.sidebarController) {
-      categoryPopup.innerHTML = '';
-      this.sidebarController.availableCategories.forEach(cat => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'picker-item-category';
-        item.textContent = cat;
-        item.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.previewTaskState.category = cat;
-          categoryBtn.title = `Category: ${cat}`;
+    // Built on open rather than here: this runs before the first task load, so
+    // anything populated now would be a snapshot of nothing.
+    const renderCategoryPopup = () => {
+      CategoryPicker.render(categoryPopup, {
+        categories: this.categories,
+        selectedName: this.previewTaskState && this.previewTaskState.category,
+        onPick: (category) => {
+          this.applyCategoryToPreview(category, previewCard, iconBtn);
           closePopups();
-        });
-        categoryPopup.appendChild(item);
+        },
+        onEdit: (category) => {
+          closePopups();
+          this.openCategoryEditModal(category);
+        },
+        onCreate: () => {
+          closePopups();
+          this.openCategoryEditModal(null);
+        }
       });
-    }
+    };
 
     if (iconBtn) {
       iconBtn.addEventListener('click', (e) => {
@@ -790,9 +1143,16 @@ class KlndrApp {
         e.stopPropagation();
         const isOpen = categoryPopup.style.display === 'flex';
         closePopups();
-        categoryPopup.style.display = isOpen ? 'none' : 'flex';
+        if (isOpen) return;
+        renderCategoryPopup();
+        categoryPopup.style.display = 'flex';
       });
     }
+
+    // The sidebar's pickers have always closed on any outside click; this one
+    // never did, so a popup could be left hanging over the card.
+    const card = document.getElementById('previewCardElement');
+    if (card) card.addEventListener('click', () => closePopups());
 
     if (applyBtn) {
       applyBtn.addEventListener('click', async () => {
@@ -818,6 +1178,299 @@ class KlndrApp {
         this.closeAllModals();
       });
     }
+  }
+
+  // ==========================================
+  // CATEGORIES
+  // ==========================================
+
+  initCategoriesTab() {
+    const createBtn = document.getElementById('btnCreateCategory');
+    if (createBtn) {
+      createBtn.addEventListener('click', () => this.openCategoryEditModal(null));
+    }
+
+    const form = document.getElementById('categoryEditForm');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        void this.saveCategoryEdit();
+      });
+    }
+
+    const cancelBtn = document.getElementById('btnCancelCategoryEdit');
+    if (cancelBtn) cancelBtn.addEventListener('click', () => this.closeTopModal());
+
+    const deleteBtn = document.getElementById('btnDeleteCategory');
+    if (deleteBtn) deleteBtn.addEventListener('click', () => void this.deleteEditedCategory());
+  }
+
+  /**
+   * Open the category editor ON TOP of whatever is already open.
+   *
+   * No closeAllModals() here, unlike every other open*Modal: this is reachable
+   * from the pencil inside the block editor's category picker, and closing that
+   * would discard the block being edited along with it.
+   */
+  openCategoryEditModal(category) {
+    const modal = document.getElementById('categoryEditModal');
+    if (!modal) return;
+
+    this.editingCategory = category;
+    this.categoryDraft = {
+      color: (category && category.color) || KlndrPalette.colors[0],
+      icon: (category && category.icon) || KlndrPalette.DEFAULT_ICON
+    };
+
+    document.getElementById('categoryEditTitle').textContent =
+      category ? 'Edit Category' : 'New Category';
+
+    const nameInput = document.getElementById('categoryNameInput');
+    nameInput.value = category ? category.name : '';
+
+    const msg = document.getElementById('categoryEditStatusMsg');
+    msg.textContent = '';
+    msg.className = 'status-msg';
+
+    const deleteBtn = document.getElementById('btnDeleteCategory');
+    if (deleteBtn) deleteBtn.style.display = category ? '' : 'none';
+
+    this.renderCategorySwatchGrids();
+
+    modal.classList.add('active');
+    nameInput.focus();
+    nameInput.select();
+  }
+
+  // The colour and icon grids are inline rather than pop-ups: a popup inside a
+  // stacked modal is a third layer for no gain, and both fit on one row of ten.
+  renderCategorySwatchGrids() {
+    const colorGrid = document.getElementById('categoryColorGrid');
+    const iconGrid = document.getElementById('categoryIconGrid');
+
+    if (colorGrid) {
+      colorGrid.innerHTML = '';
+      KlndrPalette.colors.forEach(colorHex => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'picker-item-color';
+        item.style.backgroundColor = colorHex;
+        item.title = colorHex;
+        item.classList.toggle('is-selected', colorHex === this.categoryDraft.color);
+        item.addEventListener('click', () => {
+          this.categoryDraft.color = colorHex;
+          this.renderCategorySwatchGrids();
+        });
+        colorGrid.appendChild(item);
+      });
+    }
+
+    if (iconGrid) {
+      iconGrid.innerHTML = '';
+      KlndrPalette.icons.forEach(iconName => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'picker-item-icon';
+        item.title = iconName;
+        item.innerHTML = `<span class="material-symbols-outlined">${iconName}</span>`;
+        item.classList.toggle('is-selected', iconName === this.categoryDraft.icon);
+        item.addEventListener('click', () => {
+          this.categoryDraft.icon = iconName;
+          this.renderCategorySwatchGrids();
+        });
+        iconGrid.appendChild(item);
+      });
+    }
+  }
+
+  async saveCategoryEdit() {
+    const msg = document.getElementById('categoryEditStatusMsg');
+    const name = document.getElementById('categoryNameInput').value.trim();
+    const { color, icon } = this.categoryDraft;
+    const editing = this.editingCategory;
+
+    try {
+      if (!editing) {
+        await API.createCategory({ name, color, icon });
+        await this.refreshCategories();
+        this.closeTopModal();
+        this.renderAll();
+        void this.loadCategoriesTab();
+        return;
+      }
+
+      // The colour and icon are defaults for the NEXT task that picks this
+      // category. Pushing them onto tasks that already carry it is a separate,
+      // destructive thing, so it is asked for rather than assumed - and the
+      // count comes from the server, because this client only ever holds the
+      // current week plus whatever is unscheduled.
+      const restyled = color !== editing.color || icon !== editing.icon;
+      let applyToTasks = false;
+      if (restyled && editing.task_count > 0) {
+        applyToTasks = window.confirm(
+          `Apply the new colour and icon to all ${editing.task_count} ` +
+          `task${editing.task_count === 1 ? '' : 's'} in "${editing.name}"? ` +
+          'This cannot be undone.'
+        );
+      }
+
+      const result = await API.updateCategory(editing.id, { name, color, icon, applyToTasks });
+      await this.refreshCategories();
+      this.closeTopModal();
+
+      // A rename or a mass recolour rewrote tasks this client never loaded, so
+      // re-read the week rather than trying to patch it in place.
+      if (result.renamedFrom || result.recoloured) {
+        await this.afterCategoryCascade(result.renamedFrom, result.category.name);
+      } else {
+        this.renderAll();
+      }
+      void this.loadCategoriesTab();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'status-msg error';
+    }
+  }
+
+  async deleteEditedCategory() {
+    const category = this.editingCategory;
+    if (!category) return;
+
+    const owned = category.task_count || 0;
+    const warning = owned
+      ? `Delete "${category.name}"? Its ${owned} task${owned === 1 ? '' : 's'} ` +
+        'will become uncategorised - they are not deleted.'
+      : `Delete "${category.name}"?`;
+    if (!window.confirm(warning)) return;
+
+    const msg = document.getElementById('categoryEditStatusMsg');
+    try {
+      await API.deleteCategory(category.id);
+      await this.refreshCategories();
+      this.closeTopModal();
+      await this.afterCategoryCascade(category.name);
+      void this.loadCategoriesTab();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'status-msg error';
+      this.showToast(err.message, 'error');
+    }
+  }
+
+  /**
+   * Settle the board after the server rewrote tasks behind our back.
+   *
+   * `goneName` is the name that no longer exists; `newName` is what it became,
+   * or null when it was deleted outright. Everything still holding the old name
+   * has to be caught here - the tasks are re-read, but the filter and the two
+   * half-written drafts are only in memory and would otherwise keep pointing at
+   * a category nothing can resolve.
+   *
+   * The undo stack has to go too: its entries describe a list that no longer
+   * exists, and one holding `{ category: 'OldName' }` would put a dead name
+   * back onto a task. Same reasoning as loadTasks().
+   */
+  async afterCategoryCascade(goneName, newName = null) {
+    if (goneName) {
+      const sidebar = this.sidebarController;
+      if (sidebar) {
+        // A rename keeps you where you were; a delete has nowhere to keep you,
+        // and leaving the filter there would empty the panel with no pill to
+        // explain why.
+        if (sidebar.activeCategoryFilter === goneName) {
+          sidebar.activeCategoryFilter = newName || 'UNCOMPLETED_UNSCHEDULED';
+        }
+        if (sidebar.newTaskState.category === goneName) {
+          sidebar.newTaskState.category = newName;
+        }
+      }
+      if (this.previewTaskState && this.previewTaskState.category === goneName) {
+        this.previewTaskState.category = newName;
+        const categoryBtn = document.getElementById('btnPreviewCategory');
+        if (categoryBtn) categoryBtn.title = KlndrApp.categoryButtonTitle(newName);
+      }
+    }
+
+    await this.reloadTasksPreservingHistory();
+    this.history.clear();
+    this.updateHistoryButtons();
+  }
+
+  async refreshCategories() {
+    this.categories = (await API.getCategories()) || [];
+    return this.categories;
+  }
+
+  async loadCategoriesTab() {
+    const listEl = document.getElementById('categoriesList');
+    if (!listEl) return;
+
+    const msg = document.getElementById('categoriesStatusMsg');
+    try {
+      await this.refreshCategories();
+    } catch (err) {
+      if (msg) {
+        msg.textContent = err.message;
+        msg.className = 'status-msg error';
+      }
+      return;
+    }
+
+    listEl.innerHTML = '';
+
+    if (!this.categories.length) {
+      const empty = document.createElement('div');
+      empty.className = 'categories-empty-state';
+      empty.innerHTML = `
+        <p>You have no categories yet.</p>
+        <span>Add one and it shows up in every category picker, in the filter
+        bar and as a column on the board.</span>
+      `;
+      listEl.appendChild(empty);
+      return;
+    }
+
+    this.categories.forEach(category => {
+      const row = document.createElement('div');
+      row.className = 'category-row';
+
+      const swatch = document.createElement('span');
+      swatch.className = 'category-row-swatch';
+      swatch.style.backgroundColor = category.color;
+      swatch.innerHTML = `<span class="material-symbols-outlined">${category.icon}</span>`;
+      row.appendChild(swatch);
+
+      const name = document.createElement('span');
+      name.className = 'category-row-name';
+      name.textContent = category.name;
+      row.appendChild(name);
+
+      const count = document.createElement('span');
+      count.className = 'category-row-count';
+      count.textContent = `${category.task_count} task${category.task_count === 1 ? '' : 's'}`;
+      row.appendChild(count);
+
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'category-row-action';
+      edit.title = `Edit ${category.name}`;
+      edit.innerHTML = '<span class="material-symbols-outlined">edit</span>';
+      edit.addEventListener('click', () => this.openCategoryEditModal(category));
+      row.appendChild(edit);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'category-row-action is-danger';
+      remove.title = `Delete ${category.name}`;
+      remove.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+      remove.addEventListener('click', () => {
+        this.editingCategory = category;
+        void this.deleteEditedCategory();
+      });
+      row.appendChild(remove);
+
+      listEl.appendChild(row);
+    });
   }
 
   // ==========================================
@@ -1091,6 +1744,10 @@ class KlndrApp {
       if (diverged && !(this.dragController && this.dragController.activeDrag)) {
         this.renderAll();
       }
+
+      // Ticking a scheduled task's blocks arrives here, not in
+      // optimisticTaskUpdate, so the source app has to be told from both.
+      this.pushSourceCompletion(updatesList.map(u => u.id));
       return true;
     } catch (err) {
       console.error('Failed to save schedule change', err);
@@ -1144,6 +1801,10 @@ class KlndrApp {
         TaskModel.ensureSegments(task);
         if (!(this.dragController && this.dragController.activeDrag)) this.renderAll();
       }
+
+      // The other half of the completion push: an unscheduled task carries the
+      // flag itself and never goes through commitTaskUpdates.
+      if ('completed' in patch) this.pushSourceCompletion([taskId]);
       return true;
     } catch (err) {
       console.error('Failed to save task update', err);
@@ -1211,7 +1872,7 @@ class KlndrApp {
       is_locked: payload.is_locked !== undefined ? Boolean(payload.is_locked) : true,
       color: payload.color || '#3ba4f6',
       icon: payload.icon || 'task_alt',
-      category: payload.category || 'General',
+      category: payload.category || null,
       completed: false,
       metadata: payload.metadata || {}
     };
@@ -1378,11 +2039,56 @@ class KlndrApp {
         break;
       }
 
+      // Raised by the category picker in the tasks panel: the pencil on a row,
+      // and the "New category" entry at the bottom of the list.
+      case 'editCategory': {
+        this.openCategoryEditModal(payload.category);
+        break;
+      }
+
+      case 'createCategory': {
+        this.openCategoryEditModal(null);
+        break;
+      }
+
       case 'openContextMenu': {
         this.openContextMenu(payload);
         break;
       }
     }
+  }
+
+  // "Category: null" is not a tooltip.
+  static categoryButtonTitle(name) {
+    return name ? `Category: ${name}` : 'Category: none';
+  }
+
+  /**
+   * Give the block being edited the look of the category just picked.
+   *
+   * Mirrors TasksSidebar.applyCategoryToDraft, including its early-out:
+   * re-picking the category already selected must not throw away a colour the
+   * person chose by hand afterwards.
+   */
+  applyCategoryToPreview(category, previewCard, iconBtn) {
+    const nextName = category.name || null;
+    const categoryBtn = document.getElementById('btnPreviewCategory');
+    const badgeIcon = document.getElementById('previewCardBadgeIcon');
+
+    if (nextName !== this.previewTaskState.category) {
+      this.previewTaskState.category = nextName;
+      if (category.color) this.previewTaskState.color = category.color;
+      if (category.icon) this.previewTaskState.icon = category.icon;
+
+      if (previewCard) previewCard.style.backgroundColor = this.previewTaskState.color;
+      if (badgeIcon) badgeIcon.textContent = this.previewTaskState.icon;
+      if (iconBtn) {
+        iconBtn.querySelector('.material-symbols-outlined').textContent =
+          this.previewTaskState.icon;
+      }
+    }
+
+    if (categoryBtn) categoryBtn.title = KlndrApp.categoryButtonTitle(nextName);
   }
 
   openBlockPreviewModal(task) {
@@ -1393,9 +2099,9 @@ class KlndrApp {
     }
     this.selectedTask = task;
     this.previewTaskState = {
-      icon: task.icon || 'task_alt',
-      color: task.color || '#3ba4f6',
-      category: task.category || 'General'
+      icon: task.icon || KlndrPalette.DEFAULT_ICON,
+      color: task.color || KlndrPalette.DEFAULT_COLOR,
+      category: task.category || null
     };
 
     const modal = document.getElementById('blockPreviewModal');
@@ -1410,7 +2116,7 @@ class KlndrApp {
       previewCard.style.backgroundColor = this.previewTaskState.color;
       badgeIcon.textContent = this.previewTaskState.icon;
       iconBtn.querySelector('.material-symbols-outlined').textContent = this.previewTaskState.icon;
-      categoryBtn.title = `Category: ${this.previewTaskState.category}`;
+      categoryBtn.title = KlndrApp.categoryButtonTitle(this.previewTaskState.category);
 
       const scopeNote = document.getElementById('previewScopeNote');
       if (scopeNote) {
@@ -1746,17 +2452,10 @@ class KlndrApp {
           setTimeout(() => {
             this.closeAllModals();
             msgEl.className = 'status-msg';
-            // Re-open account modal on announcements tab and refresh list
+            // Re-open account modal on announcements tab; switchAccountTab
+            // refreshes the list on the way in.
             this.openAccountModal();
-            const tabBtnAnnouncements = document.getElementById('tabBtnAnnouncements');
-            const tabPanelAnnouncements = document.getElementById('tabPanelAnnouncements');
-            if (tabBtnAnnouncements && tabPanelAnnouncements) {
-              document.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
-              document.querySelectorAll('.modal-tab-panel').forEach(p => p.style.display = 'none');
-              tabBtnAnnouncements.classList.add('active');
-              tabPanelAnnouncements.style.display = 'block';
-            }
-            this.loadAnnouncementsList();
+            this.switchAccountTab('tabBtnAnnouncements');
           }, 800);
         } catch (err) {
           msgEl.textContent = err.message;
@@ -1916,6 +2615,19 @@ class KlndrApp {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  /**
+   * Dismiss the topmost stacked modal, if one is open, and say whether it did.
+   *
+   * Deliberately does NOT touch selectedTask or the canvas overlays: whatever
+   * is underneath is still open and still being edited.
+   */
+  closeTopModal() {
+    const top = document.querySelector('.modal-container.modal-layer-top.active');
+    if (!top) return false;
+    top.classList.remove('active');
+    return true;
   }
 
   closeAllModals() {

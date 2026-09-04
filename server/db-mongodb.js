@@ -30,12 +30,22 @@ async function getDatabase() {
         .collection("sessions")
         .createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
       database.collection("tasks").createIndex({ user_id: 1 }),
+      // Imported tasks are looked up by where they came from on every sync.
+      // Sparse because every task predating integrations lacks these fields
+      // and would otherwise pile up under the same (null, null) key.
+      database
+        .collection("tasks")
+        .createIndex({ user_id: 1, source_app: 1, source_id: 1 }, { sparse: true }),
       database
         .collection("settings")
         .createIndex({ user_id: 1 }, { unique: true }),
       database
         .collection("announcements")
         .createIndex({ id: 1 }, { unique: true }),
+      // One connection per person per provider.
+      database
+        .collection("integrations")
+        .createIndex({ user_id: 1, provider: 1 }, { unique: true }),
     ]);
   }
   return database;
@@ -63,6 +73,7 @@ async function collections() {
     tasks: db.collection("tasks"),
     settings: db.collection("settings"),
     announcements: db.collection("announcements"),
+    integrations: db.collection("integrations"),
   };
 }
 
@@ -237,12 +248,38 @@ async function createTask(userId, taskData) {
     default_timing: Number(taskData.default_timing || 60),
     color: taskData.color || "#3ba4f6",
     icon: taskData.icon || "task_alt",
-    category: taskData.category || "General",
+    // No category is a real state, not a hole to plug: klndr ships none, so
+    // there is nothing to default to.
+    category: taskData.category || null,
     completed: Boolean(taskData.completed),
     metadata: taskData.metadata || {},
+    // Where this task came from, when it was not made here. Deliberately
+    // generic: `source_app` is a provider id, not a hardcoded name, so a
+    // second integration needs no schema change.
+    //
+    // These MUST be listed here. This object is an allowlist - anything not
+    // named is dropped - and every create path goes through it, including
+    // undoing a delete (app.js replays the snapshot through API.createTask).
+    // Leaving them out would silently sever an undone task from its source,
+    // and the next sync would import a duplicate.
+    source_app: taskData.source_app || null,
+    source_id: taskData.source_id || null,
+    source_url: taskData.source_url || null,
+    source_revision: taskData.source_revision || null,
+    // What the source last said about completion, so the next sync can tell
+    // which side changed rather than guessing.
+    source_completed: Boolean(taskData.source_completed),
     updated_at: Math.floor(Date.now() / 1000),
   };
   await tasks.insertOne(newTask);
+
+  // Recreating an imported task clears its tombstone. Undo goes through here,
+  // so without this an undone delete would leave the task on screen while the
+  // integration still considered it dismissed.
+  if (newTask.source_app && newTask.source_id) {
+    await undismissSourceItem(userId, newTask.source_app, newTask.source_id);
+  }
+
   return newTask;
 }
 
@@ -290,8 +327,131 @@ async function batchUpdateTasks(userId, taskUpdatesList) {
 
 async function deleteTask(userId, taskId) {
   const { tasks } = await collections();
+
+  // An imported task has to leave a tombstone on the way out. There is no soft
+  // delete here, so without one the next sync would see the source item, find
+  // no matching task, and import it straight back - which reads as the delete
+  // button being broken.
+  const existing = await tasks.findOne({ id: taskId, user_id: userId });
+  if (existing && existing.source_app && existing.source_id) {
+    await dismissSourceItem(userId, existing.source_app, existing.source_id);
+  }
+
   const result = await tasks.deleteOne({ id: taskId, user_id: userId });
   return result.deletedCount === 1;
+}
+
+// Every task this person has imported from one provider, keyed by source id.
+async function getTasksBySource(userId, provider) {
+  const { tasks } = await collections();
+  return tasks.find({ user_id: userId, source_app: provider }).toArray();
+}
+
+// ==========================================
+// INTEGRATIONS
+// ==========================================
+
+async function getIntegration(userId, provider) {
+  const { integrations } = await collections();
+  return integrations.findOne({ user_id: userId, provider });
+}
+
+async function listIntegrations(userId) {
+  const { integrations } = await collections();
+  return integrations.find({ user_id: userId }).toArray();
+}
+
+async function upsertIntegration(userId, provider, values) {
+  const { integrations } = await collections();
+  await integrations.updateOne(
+    { user_id: userId, provider },
+    {
+      $set: { user_id: userId, provider, ...values },
+      $setOnInsert: { connected_at: Math.floor(Date.now() / 1000), dismissed_ids: [] },
+    },
+    { upsert: true },
+  );
+  return getIntegration(userId, provider);
+}
+
+async function updateIntegration(userId, provider, values) {
+  const { integrations } = await collections();
+  await integrations.updateOne(
+    { user_id: userId, provider },
+    { $set: values },
+  );
+  return getIntegration(userId, provider);
+}
+
+async function deleteIntegration(userId, provider) {
+  const { integrations } = await collections();
+  const result = await integrations.deleteOne({ user_id: userId, provider });
+  return result.deletedCount === 1;
+}
+
+/**
+ * Claims the right to refresh this connection's tokens.
+ *
+ * Compare-and-swap on the refresh token we saw, plus a short lease. On Vercel
+ * two concurrent invocations can both find the access token expired; without
+ * this they would both spend the same rotating refresh token, and the second
+ * one to arrive would be treated as a replay. Exactly one caller wins here and
+ * the other waits for the result.
+ *
+ * The lease is short and is always released, because a serverless invocation
+ * can be killed mid-flight and a lease that only ever expired by timeout would
+ * strand the connection.
+ */
+async function claimIntegrationRefresh(userId, provider, seenRefreshToken, leaseSeconds) {
+  const { integrations } = await collections();
+  const now = Math.floor(Date.now() / 1000);
+  const result = await integrations.findOneAndUpdate(
+    {
+      user_id: userId,
+      provider,
+      refresh_token: seenRefreshToken,
+      $or: [
+        { refresh_lock_until: { $exists: false } },
+        { refresh_lock_until: null },
+        { refresh_lock_until: { $lt: now } },
+      ],
+    },
+    { $set: { refresh_lock_until: now + leaseSeconds } },
+    { returnDocument: "after" },
+  );
+  return result || null;
+}
+
+async function releaseIntegrationRefresh(userId, provider, values = {}) {
+  const { integrations } = await collections();
+  await integrations.updateOne(
+    { user_id: userId, provider },
+    { $set: values, $unset: { refresh_lock_until: "" } },
+  );
+}
+
+async function dismissSourceItem(userId, provider, sourceId) {
+  const { integrations } = await collections();
+  await integrations.updateOne(
+    { user_id: userId, provider },
+    { $addToSet: { dismissed_ids: sourceId } },
+  );
+}
+
+async function undismissSourceItem(userId, provider, sourceId) {
+  const { integrations } = await collections();
+  await integrations.updateOne(
+    { user_id: userId, provider },
+    { $pull: { dismissed_ids: sourceId } },
+  );
+}
+
+async function clearDismissedSourceItems(userId, provider) {
+  const { integrations } = await collections();
+  await integrations.updateOne(
+    { user_id: userId, provider },
+    { $set: { dismissed_ids: [] } },
+  );
 }
 
 async function getSettings(userId) {
@@ -317,6 +477,78 @@ async function updateSettings(userId, newSettings) {
     { upsert: true },
   );
   return values;
+}
+
+// ==========================================
+// CATEGORIES
+// ==========================================
+//
+// A category list lives in the settings document, under `values.categories`.
+// The absence of that key is load-bearing: it means "this user has never been
+// migrated", and server/categories.js reads it to decide whether to derive a
+// list from the categories their tasks already carry. An empty array means the
+// opposite - migrated, and they deliberately have none - so the two must never
+// be conflated, and `categories` must stay OUT of the getSettings defaults.
+
+/**
+ * Write the first category list a user ever gets, and only the first.
+ *
+ * Compare-and-set rather than a plain write, because two callers can reach the
+ * migration at once: the client asks for its categories on boot, and the
+ * background integration sync starts moments later and ensures the categories
+ * its subjects need. Both would read "undefined" and both would write a whole
+ * array, and the loser's work would vanish without a trace. Whoever gets there
+ * second matches nothing, writes nothing, and reads back the winner's list.
+ */
+async function initCategoriesIfAbsent(userId, list) {
+  const { settings } = await collections();
+  await settings.updateOne(
+    { user_id: userId, "values.categories": { $exists: false } },
+    { $set: { user_id: userId, "values.categories": list } },
+    { upsert: true },
+  );
+  const document = await settings.findOne({ user_id: userId });
+  return (document && document.values && document.values.categories) || [];
+}
+
+// A rename cascades to every task carrying the old name, in one write. The
+// client only holds the current week plus everything unscheduled, so it cannot
+// do this itself without leaving older tasks pointing at a name that is gone.
+async function retagTasksByCategory(userId, fromName, toName) {
+  const { tasks } = await collections();
+  const result = await tasks.updateMany(
+    { user_id: userId, category: fromName },
+    { $set: { category: toName, updated_at: Math.floor(Date.now() / 1000) } },
+  );
+  return result.modifiedCount;
+}
+
+// Push a category's new defaults onto the tasks already wearing it. Same reason
+// as above: this has to reach tasks this client has never seen.
+async function recolourTasksByCategory(userId, name, { color, icon }) {
+  const { tasks } = await collections();
+  const fields = { updated_at: Math.floor(Date.now() / 1000) };
+  if (color) fields.color = color;
+  if (icon) fields.icon = icon;
+  const result = await tasks.updateMany(
+    { user_id: userId, category: name },
+    { $set: fields },
+  );
+  return result.modifiedCount;
+}
+
+// { categoryName: taskCount }, over ALL of a user's tasks. The count shown
+// before a destructive apply has to be the true one, not the one visible in the
+// week that happens to be on screen.
+async function countTasksByCategory(userId) {
+  const { tasks } = await collections();
+  const rows = await tasks
+    .aggregate([
+      { $match: { user_id: userId, category: { $nin: [null, ""] } } },
+      { $group: { _id: "$category", count: { $sum: 1 } } },
+    ])
+    .toArray();
+  return Object.fromEntries(rows.map((row) => [row._id, row.count]));
 }
 
 // ==========================================
@@ -398,8 +630,23 @@ module.exports = {
   updateTask,
   batchUpdateTasks,
   deleteTask,
+  getTasksBySource,
+  getIntegration,
+  listIntegrations,
+  upsertIntegration,
+  updateIntegration,
+  deleteIntegration,
+  claimIntegrationRefresh,
+  releaseIntegrationRefresh,
+  dismissSourceItem,
+  undismissSourceItem,
+  clearDismissedSourceItems,
   getSettings,
   updateSettings,
+  initCategoriesIfAbsent,
+  retagTasksByCategory,
+  recolourTasksByCategory,
+  countTasksByCategory,
   createAnnouncement,
   getAllAnnouncements,
   getAnnouncementById,

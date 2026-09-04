@@ -254,7 +254,10 @@
           />
         </div>
 
-        <!-- Expandable Filter Bar (All is leftmost, Uncompleted & Unscheduled is default) -->
+        <!-- Expandable Filter Bar (All is leftmost, Uncompleted & Unscheduled is
+             default). Only the five status pills are markup; one pill per
+             category is appended by sidebar.js, because the categories belong
+             to the person and klndr ships none. -->
         <div
           class="sidebar-filter-bar"
           id="sidebarFilterBar"
@@ -294,83 +297,6 @@
             data-category="UNSCHEDULED"
           >
             Unscheduled
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="Mathematics"
-          >
-            Mathematics
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="Arabic"
-          >
-            Arabic
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="French"
-          >
-            French
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="German"
-          >
-            German
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="Biology"
-          >
-            Biology
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="Geology"
-          >
-            Geology
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="Mechanics"
-          >
-            Mechanics
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="Physics"
-          >
-            Physics
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="Chemistry"
-          >
-            Chemistry
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="Break"
-          >
-            Break
-          </button>
-          <button
-            type="button"
-            class="category-filter-pill"
-            data-category="General"
-          >
-            General
           </button>
         </div>
 
@@ -452,233 +378,321 @@
        3. MODALS & FLOATING EDITOR
        ==================================================== -->
 
-    <!-- Modal 1: Tabbed Account Modal -->
+    <!-- Modal 1: Account & Settings.
+         Dual panel, like the calendar and the tasks panel it sits over: the
+         active section on the left, the section list pinned down the right. -->
     <div class="modal-container" id="accountModal">
       <div class="modal-backdrop"></div>
-      <div class="modal-card">
-        <div class="modal-header">
-          <h2>Account & Profile</h2>
-          <button type="button" class="modal-close-btn">
-            <span class="material-symbols-outlined" style="font-size: 24px"
-              >close</span
-            >
-          </button>
-        </div>
-
-        <div class="modal-tabs-header">
-          <button
-            type="button"
-            class="modal-tab-btn active"
-            id="tabBtnSettings"
-          >
-            Account Settings
-          </button>
-          <button
-            type="button"
-            class="modal-tab-btn"
-            id="tabBtnAdmin"
-            style="display: none"
-          >
-            Beta Users (Admin)
-          </button>
-          <button
-            type="button"
-            class="modal-tab-btn"
-            id="tabBtnAnnouncements"
-          >
-            Announcements
-          </button>
-        </div>
-
-        <!-- Tab 1: Account Settings -->
-        <div class="modal-tab-panel" id="tabPanelSettings">
-          <div
-            style="
-              margin-bottom: 16px;
-              background: #f9fafb;
-              padding: 10px 14px;
-              border: 1.5px solid #000;
-              border-radius: 8px;
-              font-size: 13.5px;
-            "
-          >
-            <div>
-              Logged in as: <strong id="displayCurrentUsername">user</strong>
-            </div>
-            <div>
-              Role:
-              <span
-                id="displayCurrentRole"
-                style="font-weight: 700; text-transform: uppercase"
-                >user</span
-              >
-            </div>
+      <div class="modal-card modal-card-dual">
+        <!-- LEFT PANE: the active section -->
+        <section class="modal-content-pane">
+          <div class="modal-pane-header">
+            <h3 id="accountPanelTitle">Account Settings</h3>
           </div>
+          <div class="modal-pane-body">
+            <!-- Tab 1: Account Settings -->
+            <div class="modal-tab-panel" id="tabPanelSettings">
+              <div
+                style="
+                  margin-bottom: 16px;
+                  background: #f9fafb;
+                  padding: 10px 14px;
+                  border: 1.5px solid #000;
+                  border-radius: 8px;
+                  font-size: 13.5px;
+                "
+              >
+                <div>
+                  Logged in as: <strong id="displayCurrentUsername">user</strong>
+                </div>
+                <div>
+                  Role:
+                  <span
+                    id="displayCurrentRole"
+                    style="font-weight: 700; text-transform: uppercase"
+                    >user</span
+                  >
+                </div>
+              </div>
 
-          <!-- Change Username -->
-          <form
-            id="changeUsernameForm"
-            class="modal-form"
-            style="margin-bottom: 18px"
-          >
-            <div id="usernameStatusMsg" class="status-msg"></div>
-            <div class="form-row">
-              <label for="inputNewUsername">Change Username</label>
-              <div style="display: flex; gap: 8px">
-                <input
-                  type="text"
-                  id="inputNewUsername"
-                  required
-                  placeholder="New username"
-                  style="flex: 1"
-                />
+              <!-- Change Username -->
+              <form
+                id="changeUsernameForm"
+                class="modal-form"
+                style="margin-bottom: 18px"
+              >
+                <div id="usernameStatusMsg" class="status-msg"></div>
+                <div class="form-row">
+                  <label for="inputNewUsername">Change Username</label>
+                  <div style="display: flex; gap: 8px">
+                    <input
+                      type="text"
+                      id="inputNewUsername"
+                      required
+                      placeholder="New username"
+                      style="flex: 1"
+                    />
+                    <button
+                      type="submit"
+                      class="btn-modal-primary"
+                      style="height: 38px"
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              <!-- Change Password -->
+              <form id="changePasswordForm" class="modal-form">
+                <div id="passwordStatusMsg" class="status-msg"></div>
+                <div class="form-row">
+                  <label for="inputCurrentPassword">Current Password</label>
+                  <input
+                    type="password"
+                    id="inputCurrentPassword"
+                    required
+                    placeholder="••••••••"
+                  />
+                </div>
+                <div class="form-row-group">
+                  <div class="form-row">
+                    <label for="inputNewPassword">New Password</label>
+                    <input
+                      type="password"
+                      id="inputNewPassword"
+                      required
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div class="form-row">
+                    <label for="inputConfirmPassword">Confirm New Password</label>
+                    <input
+                      type="password"
+                      id="inputConfirmPassword"
+                      required
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+                <div class="modal-actions" style="justify-content: space-between">
+                  <button
+                    type="button"
+                    class="btn-modal-danger"
+                    id="btnAccountLogout"
+                  >
+                    <span
+                      class="material-symbols-outlined"
+                      style="font-size: 16px; margin-right: 4px"
+                      >logout</span
+                    >
+                    Log Out
+                  </button>
+                  <button type="submit" class="btn-modal-primary">
+                    Change Password
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Tab: Integrations. Rows are rendered by app.js from
+                 GET /api/integrations, one per provider in the connector registry,
+                 so adding an integration needs no markup here. -->
+            <div
+              class="modal-tab-panel"
+              id="tabPanelIntegrations"
+              style="display: none"
+            >
+              <div id="integrationsStatusMsg" class="status-msg"></div>
+              <p
+                style="
+                  margin: 0 0 14px;
+                  font-size: 13px;
+                  color: #4b5563;
+                  line-height: 1.5;
+                "
+              >
+                Connect another app to pull its outstanding work into your tasks
+                panel. Imported work arrives unscheduled — drag it onto the week
+                yourself, and ticking it off updates the other app too.
+              </p>
+              <div id="integrationsList"></div>
+            </div>
+
+            <!-- Tab 2: Admin Beta Users Manager -->
+            <div class="modal-tab-panel" id="tabPanelAdmin" style="display: none">
+              <form
+                id="adminAddUserForm"
+                class="modal-form"
+                style="margin-bottom: 20px"
+              >
+                <div id="adminUserStatusMsg" class="status-msg"></div>
+                <div class="form-row">
+                  <label for="adminNewUsername">New Beta Username</label>
+                  <input
+                    type="text"
+                    id="adminNewUsername"
+                    required
+                    placeholder="e.g. john"
+                  />
+                </div>
+                <div class="form-row-group">
+                  <div class="form-row">
+                    <label for="adminNewPassword">Password</label>
+                    <input
+                      type="password"
+                      id="adminNewPassword"
+                      required
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div class="form-row">
+                    <label for="adminNewRole">Role</label>
+                    <select id="adminNewRole">
+                      <option value="user">Beta Tester</option>
+                      <option value="admin">Administrator</option>
+                    </select>
+                  </div>
+                </div>
                 <button
                   type="submit"
                   class="btn-modal-primary"
-                  style="height: 38px"
+                  style="align-self: flex-end"
                 >
-                  Update
+                  Add User
+                </button>
+              </form>
+
+              <h3 style="font-size: 15px; font-weight: 800; margin-bottom: 8px">
+                Active Beta Accounts
+              </h3>
+              <div
+                style="
+                  max-height: 180px;
+                  overflow-y: auto;
+                  border: 1.5px solid #000;
+                  border-radius: 8px;
+                "
+              >
+                <table class="admin-users-table">
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Role</th>
+                      <th>Created</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="adminUsersTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Tab 3: Announcements -->
+            <div class="modal-tab-panel" id="tabPanelAnnouncements" style="display: none">
+              <div class="announcements-tab-header">
+                <button
+                  type="button"
+                  class="btn-modal-primary btn-create-announcement"
+                  id="btnCreateAnnouncement"
+                  style="display: none"
+                >
+                  <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">add</span>
+                  New Announcement
                 </button>
               </div>
+              <div id="announcementsList" class="announcements-list"></div>
             </div>
-          </form>
 
-          <!-- Change Password -->
-          <form id="changePasswordForm" class="modal-form">
-            <div id="passwordStatusMsg" class="status-msg"></div>
-            <div class="form-row">
-              <label for="inputCurrentPassword">Current Password</label>
-              <input
-                type="password"
-                id="inputCurrentPassword"
-                required
-                placeholder="••••••••"
-              />
-            </div>
-            <div class="form-row-group">
-              <div class="form-row">
-                <label for="inputNewPassword">New Password</label>
-                <input
-                  type="password"
-                  id="inputNewPassword"
-                  required
-                  placeholder="••••••••"
-                />
-              </div>
-              <div class="form-row">
-                <label for="inputConfirmPassword">Confirm New Password</label>
-                <input
-                  type="password"
-                  id="inputConfirmPassword"
-                  required
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-            <div class="modal-actions" style="justify-content: space-between">
-              <button
-                type="button"
-                class="btn-modal-danger"
-                id="btnAccountLogout"
-              >
-                <span
-                  class="material-symbols-outlined"
-                  style="font-size: 16px; margin-right: 4px"
-                  >logout</span
+            <!-- Tab: Categories. Rows are rendered by app.js from
+                 GET /api/categories. klndr ships no categories at all, so an empty
+                 list here is the normal starting state, not an error. -->
+            <div class="modal-tab-panel" id="tabPanelCategories" style="display: none">
+              <div id="categoriesStatusMsg" class="status-msg"></div>
+              <div class="categories-tab-header">
+                <p class="categories-tab-blurb">
+                  A category carries a default colour and icon. Picking it when you
+                  write a task hands those over, and you can still change them on
+                  that task afterwards.
+                </p>
+                <button
+                  type="button"
+                  class="btn-modal-primary"
+                  id="btnCreateCategory"
                 >
-                Log Out
-              </button>
-              <button type="submit" class="btn-modal-primary">
-                Change Password
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <!-- Tab 2: Admin Beta Users Manager -->
-        <div class="modal-tab-panel" id="tabPanelAdmin" style="display: none">
-          <form
-            id="adminAddUserForm"
-            class="modal-form"
-            style="margin-bottom: 20px"
-          >
-            <div id="adminUserStatusMsg" class="status-msg"></div>
-            <div class="form-row">
-              <label for="adminNewUsername">New Beta Username</label>
-              <input
-                type="text"
-                id="adminNewUsername"
-                required
-                placeholder="e.g. john"
-              />
-            </div>
-            <div class="form-row-group">
-              <div class="form-row">
-                <label for="adminNewPassword">Password</label>
-                <input
-                  type="password"
-                  id="adminNewPassword"
-                  required
-                  placeholder="••••••••"
-                />
+                  <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">add</span>
+                  New Category
+                </button>
               </div>
-              <div class="form-row">
-                <label for="adminNewRole">Role</label>
-                <select id="adminNewRole">
-                  <option value="user">Beta Tester</option>
-                  <option value="admin">Administrator</option>
-                </select>
-              </div>
+              <div id="categoriesList" class="categories-list"></div>
             </div>
-            <button
-              type="submit"
-              class="btn-modal-primary"
-              style="align-self: flex-end"
-            >
-              Add User
-            </button>
-          </form>
-
-          <h3 style="font-size: 15px; font-weight: 800; margin-bottom: 8px">
-            Active Beta Accounts
-          </h3>
-          <div
-            style="
-              max-height: 180px;
-              overflow-y: auto;
-              border: 1.5px solid #000;
-              border-radius: 8px;
-            "
-          >
-            <table class="admin-users-table">
-              <thead>
-                <tr>
-                  <th>Username</th>
-                  <th>Role</th>
-                  <th>Created</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="adminUsersTableBody"></tbody>
-            </table>
           </div>
-        </div>
+        </section>
 
-        <!-- Tab 3: Announcements -->
-        <div class="modal-tab-panel" id="tabPanelAnnouncements" style="display: none">
-          <div class="announcements-tab-header">
+        <!-- RIGHT PANE: section list -->
+        <nav class="modal-nav-pane">
+          <div class="modal-pane-header">
+            <h2>Account &amp; Settings</h2>
+            <button type="button" class="modal-close-btn">
+              <span class="material-symbols-outlined" style="font-size: 22px"
+                >close</span
+              >
+            </button>
+          </div>
+          <div class="modal-nav-list">
             <button
               type="button"
-              class="btn-modal-primary btn-create-announcement"
-              id="btnCreateAnnouncement"
+              class="modal-tab-btn active"
+              id="tabBtnSettings"
+              data-panel="tabPanelSettings"
+              data-title="Account Settings"
+            >
+              <span class="material-symbols-outlined">person</span>
+              <span>Account</span>
+            </button>
+            <button
+              type="button"
+              class="modal-tab-btn"
+              id="tabBtnCategories"
+              data-panel="tabPanelCategories"
+              data-title="Categories"
+            >
+              <span class="material-symbols-outlined">category</span>
+              <span>Categories</span>
+            </button>
+            <button
+              type="button"
+              class="modal-tab-btn"
+              id="tabBtnIntegrations"
+              data-panel="tabPanelIntegrations"
+              data-title="Integrations"
+            >
+              <span class="material-symbols-outlined">hub</span>
+              <span>Integrations</span>
+            </button>
+            <button
+              type="button"
+              class="modal-tab-btn"
+              id="tabBtnAnnouncements"
+              data-panel="tabPanelAnnouncements"
+              data-title="Announcements"
+            >
+              <span class="material-symbols-outlined">campaign</span>
+              <span>Announcements</span>
+            </button>
+            <button
+              type="button"
+              class="modal-tab-btn"
+              id="tabBtnAdmin"
+              data-panel="tabPanelAdmin"
+              data-title="Beta Users"
               style="display: none"
             >
-              <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">add</span>
-              New Announcement
+              <span class="material-symbols-outlined">group</span>
+              <span>Beta Users</span>
             </button>
           </div>
-          <div id="announcementsList" class="announcements-list"></div>
-        </div>
+        </nav>
       </div>
     </div>
 
@@ -921,6 +935,77 @@
       </div>
     </div>
 
+    <!-- Modal: Create / Edit Category.
+         Carries .modal-layer-top because it opens OVER whatever is already
+         open - the block editor when the pencil is clicked from its category
+         picker, the account modal when it is opened from the Categories tab -
+         instead of replacing it the way every other modal here does. -->
+    <div class="modal-container modal-layer-top" id="categoryEditModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 id="categoryEditTitle">New Category</h2>
+          <button type="button" class="modal-close-btn">
+            <span class="material-symbols-outlined" style="font-size: 24px"
+              >close</span
+            >
+          </button>
+        </div>
+        <form id="categoryEditForm" class="modal-form">
+          <div id="categoryEditStatusMsg" class="status-msg"></div>
+
+          <div class="form-row">
+            <label for="categoryNameInput">Name</label>
+            <input
+              type="text"
+              id="categoryNameInput"
+              maxlength="40"
+              required
+              placeholder="e.g. Mathematics"
+            />
+          </div>
+
+          <div class="form-row">
+            <label>Default colour</label>
+            <!-- Inline grids rather than the pop-up pickers used elsewhere: a
+                 popup inside a stacked modal is a third layer for no gain. -->
+            <div class="category-swatch-grid" id="categoryColorGrid"></div>
+          </div>
+
+          <div class="form-row">
+            <label>Default icon</label>
+            <div class="category-swatch-grid" id="categoryIconGrid"></div>
+          </div>
+
+          <div class="modal-actions" style="justify-content: space-between">
+            <button
+              type="button"
+              class="btn-modal-danger"
+              id="btnDeleteCategory"
+              style="display: none"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 16px; margin-right: 4px"
+                >delete</span
+              >
+              Delete
+            </button>
+            <div style="display: flex; gap: 12px; margin-left: auto">
+              <button
+                type="button"
+                class="btn-modal-secondary"
+                id="btnCancelCategoryEdit"
+              >
+                Cancel
+              </button>
+              <button type="submit" class="btn-modal-primary">Save</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Context Menu (All Google Icons, Uniform Sizing) -->
     <div class="context-menu" id="taskContextMenu">
       <div class="context-menu-item" id="ctxEdit">
@@ -953,6 +1038,8 @@
 
     <!-- Protected Frontend Scripts -->
     <script src="/protected/js/api.js"></script>
+    <script src="/protected/js/palette.js"></script>
+    <script src="/protected/js/category-picker.js"></script>
     <script src="/protected/js/history.js"></script>
     <script src="/protected/js/task-model.js"></script>
     <script src="/protected/js/physics-engine.js"></script>

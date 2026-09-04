@@ -2,6 +2,12 @@ const express = require("express");
 const path = require("path");
 const cookieParser = require("cookie-parser");
 const db = require("./server/db");
+const categories = require("./server/categories");
+const {
+  getSessionToken,
+  requireApiAuth,
+  requirePageAuth,
+} = require("./server/auth-middleware");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,41 +18,8 @@ app.use(
   cookieParser(process.env.SESSION_SECRET || "klndr_secret_session_salt_2026"),
 );
 
-// Helper to extract session token from cookie or Authorization header
-function getSessionToken(req) {
-  if (req.cookies && req.cookies.klndr_session) {
-    return req.cookies.klndr_session;
-  }
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    return authHeader.substring(7);
-  }
-  return null;
-}
-
-// Authentication middleware for API routes
-async function requireApiAuth(req, res, next) {
-  const token = getSessionToken(req);
-  const user = await db.validateSession(token);
-  if (!user) {
-    return res.status(401).json({ error: "Unauthorized: Please log in" });
-  }
-  req.user = user;
-  req.sessionToken = token;
-  next();
-}
-
-// Authentication middleware for Protected Page & Protected Assets
-async function requirePageAuth(req, res, next) {
-  const token = getSessionToken(req);
-  const user = await db.validateSession(token);
-  if (!user) {
-    return res.redirect("/login");
-  }
-  req.user = user;
-  req.sessionToken = token;
-  next();
-}
+// getSessionToken / requireApiAuth / requirePageAuth now live in
+// server/auth-middleware.js, so route modules can share them.
 
 // ==========================================
 // 1. PUBLIC ROUTES (Login & Public Assets)
@@ -262,6 +235,55 @@ app.put("/api/settings", requireApiAuth, async (req, res) => {
   res.json({ settings });
 });
 
+// Categories API
+//
+// The list is per user and starts empty. A user who predates categories is
+// migrated on their first read here, from the categories their tasks actually
+// carry - see server/categories.js.
+app.get("/api/categories", requireApiAuth, async (req, res) => {
+  try {
+    const list = await categories.listCategories(req.user.id);
+    res.json({ categories: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/categories", requireApiAuth, async (req, res) => {
+  try {
+    const category = await categories.createCategory(req.user.id, req.body);
+    res.json({ category });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// `applyToTasks` pushes the new colour and icon onto the tasks already wearing
+// this category. It happens here rather than on the client because the client
+// only holds the current week plus everything unscheduled, so it can neither
+// count the tasks honestly nor reach all of them.
+app.put("/api/categories/:id", requireApiAuth, async (req, res) => {
+  try {
+    const result = await categories.updateCategory(
+      req.user.id,
+      req.params.id,
+      req.body,
+    );
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/categories/:id", requireApiAuth, async (req, res) => {
+  try {
+    const result = await categories.deleteCategory(req.user.id, req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Announcements API
 app.get("/api/announcements", requireApiAuth, async (req, res) => {
   try {
@@ -320,6 +342,13 @@ app.put("/api/announcements/seen", requireApiAuth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Integrations (Sylla and anything added to the connector registry later).
+// Must be registered before the catch-all below, which would otherwise turn an
+// OAuth callback into a redirect to /login. Guards are per-route inside the
+// router: JSON 401s for the XHR endpoints, a redirect for the two that are
+// top-level navigations.
+app.use("/api/integrations", require("./server/routes/integrations"));
 
 // Catch-all 404 handler
 app.use((req, res) => {
