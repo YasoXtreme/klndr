@@ -511,7 +511,10 @@ body {
 
 .timeline-task-card.is-sm .task-meta-text,
 .timeline-task-card.is-xs .task-meta-text,
-.timeline-task-card.is-min .task-meta-text {
+.timeline-task-card.is-min .task-meta-text,
+/* The category is the least important line on a block: the colour has already
+   said it. So it goes before the time range does, one tier earlier. */
+.timeline-task-card.is-sm .task-category-text {
   display: none;
 }
 
@@ -548,7 +551,8 @@ body {
 }
 
 /* Short rows cannot fit a checkbox and two text lines side by side. */
-.timeline-task-card.is-short .task-meta-text {
+.timeline-task-card.is-short .task-meta-text,
+.timeline-task-card.is-short .task-category-text {
   display: none;
 }
 
@@ -630,6 +634,21 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* Same treatment as the tooltip's category line, sized for a block. Sits on
+   the category's own colour, so the ink is black at low alpha rather than a
+   fixed grey, which would go muddy on a dark swatch and vanish on a pale one. */
+.task-category-text {
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-title-text {

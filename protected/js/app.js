@@ -190,15 +190,29 @@ class KlndrApp {
       this.initCalendarCollapse();
       this.initAnnouncementsTab();
 
+      // Before loadTasks, not after: this is the only feedback someone gets
+      // from a connect attempt, and burying it behind two awaits means a
+      // failure anywhere in them swallows the explanation as well as the board.
+      this.handleIntegrationRedirect();
+
       await this.loadTasks();
       await this.initMissedAnnouncementsCarousel();
-      this.handleIntegrationRedirect();
       // After the first paint, so a slow source app never delays the calendar.
       // Throttled server-side, so calling it on every load is cheap.
       void this.syncIntegrationsInBackground();
 
     } catch (err) {
+      // Anything thrown above leaves the board half-built, with the date range
+      // still reading "Loading...". A console line is not a failure state a
+      // person can act on, so say it on screen and name the reason.
       console.error('Failed to initialize Klndr:', err);
+      const label = document.getElementById('calendarDateRangeLabel');
+      if (label) label.textContent = 'Failed to load';
+      try {
+        this.showToast(`Could not load your board: ${err.message}. Try reloading.`, 'error');
+      } catch (toastErr) {
+        console.error('Could not surface the failure either:', toastErr);
+      }
     }
   }
 

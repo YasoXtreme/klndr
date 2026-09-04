@@ -156,15 +156,24 @@ async function syncProvider(userId, connector, options = {}) {
 
     const patch = {};
 
-    // Identity: the source owns it, so re-apply whenever the item changed.
+    // Text the source owns is compared, not gated on the revision.
+    //
+    // A revision moves when *the source* changes. It does not move when klndr
+    // changes how it renders what the source sent - a new title format, say -
+    // so gating these would apply the change to rows imported afterwards and
+    // leave every existing block stale, with nothing that would ever fix it.
+    // Comparing costs one string compare and still writes nothing when nothing
+    // differs, which is all the revision check was buying here.
+    if (item.title !== task.title) patch.title = item.title;
+    if (item.url !== task.source_url) patch.source_url = item.url;
+
+    // Everything below is genuinely about the source having moved on.
     // Colour and icon follow the resolved category rather than the source, and
     // are only re-asserted when the subject actually moved the task to a
     // different category - repainting on every revision bump would undo a
     // colour the person chose on that task.
     if (task.source_revision !== item.revision) {
       const style = styleFor(item);
-      patch.title = item.title;
-      patch.source_url = item.url;
       patch.source_revision = item.revision;
       if (item.metadata) patch.metadata = { ...task.metadata, source: item.metadata };
       if (style.category !== task.category) {

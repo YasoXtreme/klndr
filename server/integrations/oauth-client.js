@@ -47,6 +47,26 @@ function buildAuthorizeUrl(baseUrl, params) {
 }
 
 /**
+ * A redirect on an API call always means the configured base URL is not the
+ * address the provider actually serves from.
+ *
+ * Never follow one. `fetch` strips the Authorization header when a redirect
+ * crosses origins, so following it turns a wrong base URL - http for https,
+ * a bare Vercel domain for a custom one, apex for www - into a bare 401 with
+ * nothing to point at. Worse, a POST survives the same redirect intact,
+ * because its credentials travel in the body rather than a header, so the
+ * token exchange appears to work and only the calls after it fail.
+ */
+function redirectError(response, baseUrl) {
+  return new OAuthClientError(
+    `${baseUrl} redirected to ${response.headers.get("location") || "somewhere else"}. ` +
+      "Point the provider's base URL at the address it actually serves from.",
+    response.status,
+    null,
+  );
+}
+
+/**
  * Posts a form to a token endpoint and returns the parsed TokenSet.
  *
  * Errors carry the provider's own `error` code where there is one, because
@@ -61,7 +81,12 @@ async function postForm(tokenUrl, body) {
       Accept: "application/json",
     },
     body: new URLSearchParams(body).toString(),
+    redirect: "manual",
   });
+
+  if (response.status >= 300 && response.status < 400) {
+    throw redirectError(response, tokenUrl);
+  }
 
   const text = await response.text();
   let parsed = null;
@@ -145,6 +170,7 @@ module.exports = {
   createState,
   safeEqual,
   buildAuthorizeUrl,
+  redirectError,
   exchangeCode,
   refreshTokens,
   revokeToken,

@@ -5,6 +5,7 @@ const {
   exchangeCode,
   refreshTokens,
   revokeToken,
+  redirectError,
   OAuthClientError,
 } = require("./oauth-client");
 
@@ -106,6 +107,46 @@ async function revoke(refreshToken) {
   });
 }
 
+/**
+ * Sylla's own `error_description`, when it sent one.
+ *
+ * Worth the extra read: Sylla distinguishes "no Bearer header arrived" from
+ * "that token is unknown" from "the authorization was revoked", and those have
+ * completely different causes. Collapsing them into one message turns a
+ * five-second fix into an afternoon.
+ */
+async function describe(response) {
+  try {
+    const body = await response.text();
+    const parsed = JSON.parse(body);
+    return parsed.error_description || parsed.error || "";
+  } catch {
+    return "";
+  }
+}
+
+async function assertUsable(response, baseUrl, what) {
+  if (response.status >= 300 && response.status < 400) {
+    throw redirectError(response, baseUrl);
+  }
+  if (response.status === 401) {
+    const detail = await describe(response);
+    throw new OAuthClientError(
+      `Sylla rejected the access token${detail ? `: ${detail}` : "."}`,
+      401,
+      "invalid_grant",
+    );
+  }
+  if (!response.ok) {
+    const detail = await describe(response);
+    throw new OAuthClientError(
+      `Sylla returned ${response.status} ${what}${detail ? `: ${detail}` : "."}`,
+      response.status,
+      null,
+    );
+  }
+}
+
 async function apiGet(accessToken, path) {
   const { baseUrl } = requireConfig();
   const response = await fetch(`${baseUrl}${path}`, {
@@ -113,22 +154,12 @@ async function apiGet(accessToken, path) {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
     },
+    // See redirectError: following a redirect here would silently drop the
+    // Authorization header and report the result as a rejected token.
+    redirect: "manual",
   });
 
-  if (response.status === 401) {
-    throw new OAuthClientError(
-      "Sylla rejected the access token.",
-      401,
-      "invalid_grant",
-    );
-  }
-  if (!response.ok) {
-    throw new OAuthClientError(
-      `Sylla returned ${response.status} for ${path}.`,
-      response.status,
-      null,
-    );
-  }
+  await assertUsable(response, `${baseUrl}${path}`, `for ${path}`);
   return response.json();
 }
 
@@ -172,6 +203,31 @@ function categoryNamer(sessions) {
   };
 }
 
+/**
+ * What one session is called on a klndr block.
+ *
+ * `M3 S1`, plus the topic when it says something: `M3 S1 · Kinematics`.
+ *
+ * Three decisions worth keeping:
+ *
+ * - **The month is not decoration.** Sylla numbers sessions from 1 again in
+ *   every month, so "Session 1" on its own names several different pieces of
+ *   work and is useless on a calendar.
+ * - **The subject is left out.** It is the task's category, which is already
+ *   the column header in the tasks panel and the colour on the calendar.
+ *   Repeating it spends the width of a block on something the block's own
+ *   colour has already said.
+ * - **A topic that only repeats the number is dropped.** Some subjects carry
+ *   topics literally named "Session 4", which adds nothing next to `S4`.
+ */
+const NUMBER_ONLY_TOPIC = /^session\s*\d+$/i;
+
+function sessionTitle(session) {
+  const label = `M${session.month} S${session.sessionNumber}`;
+  const topic = String(session.topic || "").trim();
+  return topic && !NUMBER_ONLY_TOPIC.test(topic) ? `${label} · ${topic}` : label;
+}
+
 async function fetchItems(accessToken) {
   const data = await apiGet(accessToken, "/api/v1/sessions?status=all");
   const sessions = Array.isArray(data.sessions) ? data.sessions : [];
@@ -179,11 +235,7 @@ async function fetchItems(accessToken) {
 
   return sessions.map((session) => ({
     external_id: session.id,
-    // A session's topic is optional in Sylla, so fall back to its number
-    // rather than titling the task "Physics: null".
-    title: session.topic
-      ? `${session.subject.name}: ${session.topic}`
-      : `${session.subject.name} session ${session.sessionNumber}`,
+    title: sessionTitle(session),
     // The category name is matched against the person's own categories, and
     // becomes one if they have no category by that name yet. That category is
     // what gives the subject its column, its filter pill and its colour.
@@ -211,29 +263,18 @@ async function fetchItems(accessToken) {
 
 async function pushCompletion(accessToken, externalId, completed) {
   const { baseUrl } = requireConfig();
-  const response = await fetch(`${baseUrl}/api/v1/progress/${externalId}`, {
+  const url = `${baseUrl}/api/v1/progress/${externalId}`;
+  const response = await fetch(url, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ sessionStatus: completed ? "done" : "not_yet" }),
+    redirect: "manual",
   });
 
-  if (response.status === 401) {
-    throw new OAuthClientError(
-      "Sylla rejected the access token.",
-      401,
-      "invalid_grant",
-    );
-  }
-  if (!response.ok) {
-    throw new OAuthClientError(
-      `Sylla returned ${response.status} updating progress.`,
-      response.status,
-      null,
-    );
-  }
+  await assertUsable(response, url, "updating progress");
 }
 
 module.exports = {

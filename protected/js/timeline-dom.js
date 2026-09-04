@@ -517,6 +517,16 @@ class TimelineDOM {
     const content = document.createElement('div');
     content.className = 'task-content-inner';
 
+    // Above the title, in the tooltip's own category style. An imported title
+    // like "M3 S1" says which session but not which subject, and the block's
+    // colour only says it once you know the palette.
+    if (task.category) {
+      const categoryEl = document.createElement('div');
+      categoryEl.className = 'task-category-text';
+      categoryEl.textContent = task.category;
+      content.appendChild(categoryEl);
+    }
+
     const titleEl = document.createElement('div');
     titleEl.className = 'task-title-text';
     titleEl.textContent = task.title || 'Untitled Task';
