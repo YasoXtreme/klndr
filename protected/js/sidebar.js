@@ -422,6 +422,17 @@ class TasksSidebar {
     const content = document.createElement('div');
     content.className = 'task-content-inner';
 
+    // Same line, same style, same position as on a calendar block. An imported
+    // title reads "M1 S3", which names the session but not the subject, and in
+    // the flat list beside the calendar nothing else says it. Hidden inside a
+    // kanban column, where the column header has already said it.
+    if (task.category) {
+      const categoryEl = document.createElement('div');
+      categoryEl.className = 'task-category-text';
+      categoryEl.textContent = task.category;
+      content.appendChild(categoryEl);
+    }
+
     const titleEl = document.createElement('div');
     titleEl.className = 'task-title-text';
     titleEl.textContent = task.title;
@@ -430,7 +441,10 @@ class TasksSidebar {
     const metaEl = document.createElement('div');
     metaEl.className = 'task-meta-text';
     const dur = task.default_timing || task.total_duration || 120;
-    metaEl.textContent = `${dur} min${isScheduled ? ' • Scheduled' : ' • Drag to schedule'}`;
+    // "Drag to schedule" was a tutorial, not information: it said the same
+    // thing on every unscheduled card forever. "Scheduled" stays, because in a
+    // list that mixes both it is the one thing the card does not otherwise say.
+    metaEl.textContent = `${dur} min${isScheduled ? ' • Scheduled' : ''}`;
     content.appendChild(metaEl);
 
     card.appendChild(content);

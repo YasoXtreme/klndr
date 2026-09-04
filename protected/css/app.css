@@ -556,6 +556,13 @@ body {
   display: none;
 }
 
+/* In the kanban view every card already sits under a header naming its
+   category, so repeating it on each card is noise. The flat list beside the
+   calendar has no such header, which is where the line earns its place. */
+.task-category-column .task-category-text {
+  display: none;
+}
+
 .timeline-task-card.is-short .task-title-text {
   -webkit-line-clamp: 1;
 }
