@@ -3,23 +3,294 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Klndr | Fluid Time-Blocking Workspace</title>
-    <link rel="icon" href="/assets/favicon.ico" type="image/x-icon" />
+    <title>klndr — Think of it. Schedule it.</title>
+    <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
+    <link rel="icon" href="/assets/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+
+    <!-- The boot overlay draws the lockup in ElmsSans Black before anything
+         else is on screen, so the face has to be in flight from the first
+         byte, not discovered later inside common.css. -->
     <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      rel="preload"
+      href="/assets/ElmsSans.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
     />
+
+    <!-- The mint ground, inline, so it is the first thing painted. Everything
+         below this point can be slow without the app opening on white. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: linear-gradient(135deg, #f2ffec 0%, #ffffff 100%);
+        background-attachment: fixed;
+      }
+      .app-boot {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, #f2ffec 0%, #ffffff 100%);
+        background-attachment: fixed;
+      }
+      /* Nothing but the ground until the boot script decides otherwise. */
+      .app-boot > * {
+        opacity: 0;
+      }
+      /* Last resort. The boot script stamps .boot-js on <html> as its first
+         statement, so this only ever runs if that script failed to parse -
+         in which case an overlay nobody can dismiss would hide a working app. */
+      html:not(.boot-js) .app-boot {
+        animation: app-boot-bailout 0s linear 15s forwards;
+      }
+      @keyframes app-boot-bailout {
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+    </style>
+    <noscript>
+      <style>
+        .app-boot {
+          display: none;
+        }
+      </style>
+    </noscript>
+
     <link rel="stylesheet" href="/public/css/common.css" />
     <link rel="stylesheet" href="/protected/css/app.css" />
+
+    <!-- Third party and render-blocking, which on a cold start is the single
+         longest thing between the request and a first paint. Loaded async so
+         the mint ground can come up without it; the icons it carries all sit
+         behind the overlay anyway. -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      onload="this.rel = 'stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      />
+    </noscript>
   </head>
   <body>
+    <!-- ====================================================
+       0. BOOT OVERLAY
+       ====================================================
+       First element in the body, painted by the critical CSS in the head, so
+       the app opens on klndr's own mint ground instead of a white flash.
+
+       The rule it enforces: the logo entrance is guaranteed exactly once, on
+       the load straight after signing in. Every load after that shows nothing
+       at all unless it is genuinely slow - and a fast load is never made to
+       wait for an animation. See KlndrBoot below for the timings. -->
+    <div class="app-boot" id="appBoot">
+      <div class="app-boot-stage">
+        <span
+          class="klndr-lockup klndr-lockup-boot"
+          id="appBootLockup"
+          role="img"
+          aria-label="klndr"
+        >
+          <span class="klndr-plate" aria-hidden="true"><span>k</span></span>
+          <span class="klndr-lockup-text" aria-hidden="true">
+            <span class="klndr-wordmark">klndr</span>
+            <span class="klndr-tagline">Think of it. Schedule it.</span>
+          </span>
+        </span>
+        <p class="app-boot-note">Waking the server&hellip;</p>
+      </div>
+
+      <div class="app-boot-failure" role="alert">
+        <h1>Couldn't load your board</h1>
+        <p class="app-boot-reason" id="appBootReason"></p>
+        <button type="button" class="btn-boot-retry" id="appBootRetry">
+          Try again
+        </button>
+      </div>
+    </div>
+
+    <script>
+      /**
+       * Owns the gap between the request and a usable board.
+       *
+       * app.js tells it two things and nothing else: ready(), when the board is
+       * on screen, and fail(err), when it never will be. Every deadline in
+       * between lives here.
+       *
+       *   after a login   lockup up at once, full entrance, then out
+       *   under 400ms     no logo at any point, just a fade to the board
+       *   over 400ms      lockup fades up mid-entrance, held so it cannot blink
+       *   over 2.5s       a line under it, because a cold start reads as broken
+       *   over 12s, or on error   the failure card, with a way out
+       *
+       * Inline and parsed before the app scripts on purpose: the clock has to
+       * start when the HTML arrives, not at DOMContentLoaded, or every deadline
+       * below is measured from the wrong moment.
+       */
+      window.KlndrBoot = (function () {
+        // Told to the stylesheet immediately: the bailout animation in the head
+        // is scoped to html:not(.boot-js) and exists only for the case where
+        // this script never ran.
+        document.documentElement.classList.add('boot-js');
+
+        var SILENT_MS = 400; // under this, a load earns no logo at all
+        var MIN_SHOW_MS = 660; // once lit, hold through the wordmark landing
+        var HERO_SHOW_MS = 920; // ...and through the tagline, after a login
+        var REDUCED_SHOW_MS = 300;
+        var SLOW_NOTE_MS = 2500;
+        var GIVE_UP_MS = 12000;
+        var FADE_MS = 180;
+        var FONT_WAIT_MS = 600;
+
+        var root = document.getElementById('appBoot');
+        var lockup = document.getElementById('appBootLockup');
+        var reason = document.getElementById('appBootReason');
+        var retry = document.getElementById('appBootRetry');
+
+        var reduced =
+          window.matchMedia &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // One-shot handoff from the login page. Read and cleared in the same
+        // breath, so a refresh of this very page is an ordinary load again.
+        var hero = false;
+        try {
+          hero = sessionStorage.getItem('klndr_boot_hero') === '1';
+          sessionStorage.removeItem('klndr_boot_hero');
+        } catch (storageErr) {
+          // Storage blocked. An ordinary load, then.
+        }
+
+        var timers = [];
+        var litAt = 0;
+        var settled = false;
+        var done = null;
+
+        function later(fn, ms) {
+          timers.push(setTimeout(fn, ms));
+        }
+
+        function clearTimers() {
+          timers.forEach(clearTimeout);
+          timers = [];
+        }
+
+        /**
+         * The lockup is ElmsSans Black. Revealing it before the face has landed
+         * would show an Arial k that swaps a moment later, which is worse than
+         * the wait - and the wait is free, because the overlay is already up.
+         */
+        function faceReady() {
+          var cap = new Promise(function (resolve) {
+            setTimeout(resolve, FONT_WAIT_MS);
+          });
+          if (!document.fonts || !document.fonts.load) return cap;
+          return Promise.race([
+            document.fonts.load('900 1em ElmsSans').catch(function () {}),
+            cap
+          ]);
+        }
+
+        // Reveal, and start the entrance. Idempotent, and a no-op once the
+        // board has beaten it - which is the whole point of the silent window.
+        function light() {
+          if (settled || litAt) return;
+          litAt = Date.now();
+          root.classList.add('is-lit');
+          lockup.classList.add('klndr-lockup-animated');
+        }
+
+        // How much longer the logo has to stay, given it is already up. Never a
+        // delay added to a finished load: if the entrance has run, this is 0.
+        function holdRemaining() {
+          if (!litAt) return 0;
+          var target = reduced
+            ? REDUCED_SHOW_MS
+            : hero
+              ? HERO_SHOW_MS
+              : MIN_SHOW_MS;
+          return Math.max(0, target - (Date.now() - litAt));
+        }
+
+        if (hero) root.setAttribute('data-hero', '');
+
+        var face = faceReady();
+        if (hero) {
+          face.then(light);
+        } else {
+          var silence = new Promise(function (resolve) {
+            later(resolve, SILENT_MS);
+          });
+          Promise.all([face, silence]).then(light);
+        }
+
+        later(function () {
+          light();
+          root.classList.add('is-slow');
+        }, SLOW_NOTE_MS);
+
+        later(function () {
+          fail(new Error('The server is taking longer than it should.'));
+        }, GIVE_UP_MS);
+
+        retry.addEventListener('click', function () {
+          window.location.reload();
+        });
+
+        /** The board is up. Resolves once the overlay is gone, not before. */
+        function ready() {
+          if (done) return done;
+          settled = true;
+          clearTimers();
+          done = new Promise(function (resolve) {
+            setTimeout(function () {
+              root.classList.add('is-done');
+              setTimeout(function () {
+                if (root.parentNode) root.parentNode.removeChild(root);
+                resolve();
+              }, FADE_MS);
+            }, holdRemaining());
+          });
+          return done;
+        }
+
+        /** It never will be. Say so, and offer the only useful next move. */
+        function fail(err) {
+          if (settled) return;
+          settled = true;
+          clearTimers();
+          reason.textContent =
+            (err && err.message) ||
+            'Something went wrong on the way in.';
+          root.removeAttribute('data-hero');
+          root.classList.remove('is-lit', 'is-slow');
+          root.classList.add('is-failed');
+        }
+
+        return { ready: ready, fail: fail };
+      })();
+    </script>
+
     <!-- 1. Top Navigation Bar -->
     <header class="app-topbar">
       <div class="topbar-left">
         <div class="topbar-brand">
-          <img src="/assets/yassen logo.svg" alt="YASSEN" class="logo-svg" />
-          <span class="brand-divider">|</span>
-          <span class="brand-title">Klndr</span>
+          <span class="klndr-lockup klndr-lockup-topbar" role="img" aria-label="klndr">
+            <span class="klndr-plate" aria-hidden="true"><span>k</span></span>
+            <span class="klndr-wordmark" aria-hidden="true">klndr</span>
+          </span>
         </div>
       </div>
 
@@ -1048,5 +1319,66 @@
     <script src="/protected/js/drag-controller.js"></script>
     <script src="/protected/js/sidebar.js"></script>
     <script src="/protected/js/app.js"></script>
+    <!-- Forced password change. Raised when an admin reset leaves the account
+         holding a temporary password: the server refuses every other API call
+         until it is replaced, so there is deliberately no way to dismiss this
+         except setting a password or logging out. -->
+    <div class="modal-container forced-password-modal" id="forcedPasswordModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card" style="max-width: 440px">
+        <div class="modal-header">
+          <h2>Set a new password</h2>
+        </div>
+        <p class="forced-password-intro">
+          An administrator reset your password. Choose a new one to get back
+          into your board.
+        </p>
+        <form id="forcedPasswordForm" class="modal-form">
+          <div id="forcedPasswordStatusMsg" class="status-msg"></div>
+          <div class="form-row">
+            <label for="forcedCurrentPassword">Temporary password</label>
+            <input
+              type="password"
+              id="forcedCurrentPassword"
+              required
+              autocomplete="current-password"
+              placeholder="The one you just signed in with"
+            />
+          </div>
+          <div class="form-row">
+            <label for="forcedNewPassword">New password</label>
+            <input
+              type="password"
+              id="forcedNewPassword"
+              required
+              autocomplete="new-password"
+              placeholder="••••••••"
+            />
+          </div>
+          <div class="form-row">
+            <label for="forcedConfirmPassword">Confirm new password</label>
+            <input
+              type="password"
+              id="forcedConfirmPassword"
+              required
+              autocomplete="new-password"
+              placeholder="••••••••"
+            />
+          </div>
+          <div class="modal-actions" style="justify-content: space-between">
+            <button
+              type="button"
+              class="btn-modal-danger"
+              id="forcedPasswordLogout"
+            >
+              Log Out
+            </button>
+            <button type="submit" class="btn-modal-primary">
+              Set Password
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </body>
 </html>

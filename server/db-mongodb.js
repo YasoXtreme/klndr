@@ -137,7 +137,7 @@ async function changeUsername(userId, newUsername) {
   return withoutPassword(result);
 }
 
-async function changePassword(userId, currentPassword, newPassword) {
+async function changePassword(userId, currentPassword, newPassword, keepToken) {
   const { users } = await collections();
   const user = await users.findOne({ id: userId });
   if (!user) throw new Error("User not found");
@@ -149,8 +149,15 @@ async function changePassword(userId, currentPassword, newPassword) {
   }
   await users.updateOne(
     { id: userId },
-    { $set: { password_hash: bcrypt.hashSync(newPassword, 10) } },
+    {
+      $set: { password_hash: bcrypt.hashSync(newPassword, 10) },
+      // Clearing the flag is what releases an admin-reset user into the app.
+      $unset: { must_change_password: "" },
+    },
   );
+  // Retiring the old password has to retire the sessions issued against it,
+  // otherwise a stolen 30-day session outlives the password change entirely.
+  await destroyUserSessions(userId, { keepToken });
   return true;
 }
 
@@ -165,6 +172,65 @@ async function deleteUser(username) {
     settings.deleteOne({ user_id: user.id }),
   ]);
   return true;
+}
+
+// Ambiguous glyphs (0/O, 1/l/I, 8/B) are left out so a temporary password
+// survives being read down a phone line or copied off a screen.
+const TEMP_PASSWORD_ALPHABET =
+  "abcdefghjkmnpqrstuvwxyz" + "23456789" + "ACDEFGHJKLMNPQRSTUVWXYZ";
+
+function generateTempPassword(length = 12) {
+  const alphabet = TEMP_PASSWORD_ALPHABET;
+  // Rejection sampling: 256 is not a multiple of the alphabet length, so a
+  // plain modulo would bias the result toward its first characters.
+  const limit = 256 - (256 % alphabet.length);
+  const chars = [];
+  while (chars.length < length) {
+    for (const byte of crypto.randomBytes(length)) {
+      if (byte >= limit) continue;
+      chars.push(alphabet[byte % alphabet.length]);
+      if (chars.length >= length) break;
+    }
+  }
+  // Grouped so it can be dictated without losing your place.
+  return chars.join("").replace(/(.{4})(?=.)/g, "$1-");
+}
+
+// keepToken spares the caller's own session, so changing your own password
+// does not log you out of the tab you changed it in.
+async function destroyUserSessions(userId, { keepToken } = {}) {
+  const { sessions } = await collections();
+  const filter = { user_id: userId };
+  if (keepToken) filter._id = { $ne: keepToken };
+  await sessions.deleteMany(filter);
+}
+
+// The only account recovery path there is: no user document carries an email,
+// so a reset link has nowhere to go and an admin has to hand this over
+// out-of-band. Returns null when the username does not exist.
+async function adminResetPassword(username) {
+  const { users } = await collections();
+  const user = await getUserByUsername(username);
+  if (!user) return null;
+
+  const tempPassword = generateTempPassword();
+  await users.updateOne(
+    { id: user.id },
+    {
+      $set: {
+        password_hash: bcrypt.hashSync(tempPassword, 10),
+        must_change_password: true,
+      },
+    },
+  );
+  // Every session goes, with no keepToken: a reset is usually prompted by a
+  // lockout or a compromise, and the point is to evict whoever holds them.
+  await destroyUserSessions(user.id);
+
+  return {
+    user: withoutPassword({ ...user, must_change_password: true }),
+    tempPassword,
+  };
 }
 
 function verifyPassword(user, password) {
@@ -620,6 +686,8 @@ module.exports = {
   deleteUser,
   changeUsername,
   changePassword,
+  adminResetPassword,
+  destroyUserSessions,
   verifyPassword,
   createSession,
   validateSession,

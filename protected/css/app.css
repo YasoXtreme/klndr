@@ -34,6 +34,136 @@ body {
 }
 
 /* ====================================================
+   0. BOOT OVERLAY
+   ====================================================
+   The base rules are duplicated inline in index.html so the mint ground is the
+   first thing painted, whatever this file is still doing. What is here is
+   everything the overlay needs once it has an opinion to express.
+
+   Three independent flags rather than one state, because they genuinely stack:
+   a slow load is lit AND slow, and going from slow to done must not yank the
+   note away mid-fade. */
+.app-boot {
+  transition: opacity 180ms ease;
+}
+
+.app-boot.is-done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.app-boot-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.app-boot.is-lit .app-boot-stage {
+  opacity: 1;
+}
+
+.klndr-lockup-boot {
+  --klndr-size: 92px;
+  --klndr-shadow: 6px;
+}
+
+/* The tagline is the ceremony, and ceremony belongs to arriving. A slow
+   refresh gets the plate and the wordmark; only a fresh login gets the line. */
+.app-boot .klndr-tagline {
+  display: none;
+}
+
+.app-boot[data-hero] .klndr-tagline {
+  display: block;
+}
+
+/* Held back until a load is slow enough that silence starts to read as a
+   broken page rather than a fast one. */
+.app-boot-note {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-muted, #4b5563);
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+.app-boot.is-slow .app-boot-note {
+  opacity: 1;
+}
+
+.app-boot-failure {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 380px;
+  padding: 28px 32px 30px;
+  text-align: center;
+  background: #ffffff;
+  border: var(--border-thick);
+  border-radius: var(--radius-card);
+  box-shadow: 4px 4px 0 #000;
+}
+
+.app-boot.is-failed .app-boot-stage {
+  display: none;
+}
+
+.app-boot.is-failed .app-boot-failure {
+  display: flex;
+  opacity: 1;
+}
+
+.app-boot-failure h1 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+}
+
+.app-boot-reason {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-muted, #4b5563);
+}
+
+.btn-boot-retry {
+  margin-top: 6px;
+  height: 40px;
+  padding: 0 26px;
+  background: var(--accent-mint);
+  border: var(--border-thick);
+  border-radius: var(--radius-block);
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #000;
+  cursor: pointer;
+  transition: transform 0.1s ease, background-color 0.15s ease;
+}
+
+.btn-boot-retry:hover {
+  background: var(--accent-mint-hover);
+  transform: translateY(-1px);
+}
+
+.btn-boot-retry:active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-boot,
+  .app-boot-stage,
+  .app-boot-note {
+    transition-duration: 150ms;
+  }
+}
+
+/* ====================================================
    1. TOP NAVIGATION BAR
    ==================================================== */
 .app-topbar {
@@ -53,22 +183,11 @@ body {
   text-decoration: none;
 }
 
-.topbar-brand .logo-svg {
-  height: 28px;
-  width: auto;
-}
-
-.topbar-brand .brand-divider {
-  font-size: 24px;
-  font-weight: 300;
-  color: #000;
-}
-
-.topbar-brand .brand-title {
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  color: #000;
+/* No shadow: the brand drops it below 32px, and at this density it would
+   fight the buttons across the bar anyway. */
+.klndr-lockup-topbar {
+  --klndr-size: 32px;
+  --klndr-shadow: 0px;
 }
 
 .user-profile-pill {
@@ -1910,6 +2029,81 @@ body.is-seam-dragging * {
   cursor: pointer;
   display: flex;
   align-items: center;
+}
+
+.btn-reset-user {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.btn-reset-user:hover {
+  color: #111827;
+}
+
+/* The two actions sit in one cell; without this they stack, because both
+   buttons are display:flex. */
+.admin-user-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reset-pending-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+  white-space: nowrap;
+}
+
+/* The one and only time this password is legible. Monospaced and selectable
+   on purpose: it exists to be copied or read aloud, and it is not recoverable
+   afterwards. */
+.admin-temp-password {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1.5px solid #f59e0b;
+  border-radius: 8px;
+  background: #fffbeb;
+}
+
+.admin-temp-password code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #111827;
+  user-select: all;
+  margin-bottom: 6px;
+}
+
+.admin-temp-password p {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #92400e;
+  margin: 0;
+}
+
+/* Sits above every other modal: while it is up, the API refuses everything
+   else, so nothing behind it is actionable anyway. */
+.forced-password-modal {
+  z-index: 2000;
+}
+
+.forced-password-intro {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4b5563;
+  margin: 0 0 16px;
 }
 
 /* Global Dragging Ghost Element */

@@ -91,32 +91,65 @@ class KlndrApp {
 
   async init() {
     try {
-      const authData = await API.getMe();
+      // Which week we are looking at is arithmetic on today's date, so it can
+      // be settled before the network is touched. That is what lets the tasks
+      // request go out alongside the other three instead of behind them.
+      this.computeWeekDays();
+
+      // One round trip of latency instead of four. None of these depend on
+      // each other, and on a cold serverless start that difference is most of
+      // the wait. Settings and categories degrade to defaults, so they catch
+      // their own failures; auth and tasks do not, and are allowed to throw.
+      const [authData, userSettings, categories, tasks] = await Promise.all([
+        API.getMe(),
+        API.getSettings().catch(e => {
+          console.warn('Using default settings', e);
+          return null;
+        }),
+        API.getCategories().catch(e => {
+          console.warn('Could not load categories', e);
+          return null;
+        }),
+        API.getTasks(this.days[0].startTimestamp, this.days[6].endTimestamp).catch(e => {
+          // An account awaiting an admin-reset password change is refused by
+          // every data endpoint, this one included. That is not a boot failure
+          // - it is the forced-password screen below - so swallow it here and
+          // let the must_change_password check answer it. Keeping the four
+          // calls parallel is worth more than the three wasted 403s, which
+          // only happen in that one rare state.
+          if (e && e.code === 'password_change_required') return null;
+          throw e;
+        })
+      ]);
+
+      // A 401 in any of the four has already pointed the browser at /login.
+      // Leave the boot overlay standing on this path: the page is on its way
+      // out, and fading it to reveal an empty board would misdescribe what is
+      // about to happen.
       if (!authData || !authData.user) {
         window.location.href = '/login';
         return;
       }
       this.user = authData.user;
+
+      // An admin reset leaves this account able to do exactly one thing, and
+      // the server enforces that on every endpoint. Nothing below would have a
+      // board to draw, so stop here and put up the screen that lets them
+      // comply.
+      if (this.user.must_change_password) {
+        this.showForcedPasswordChange();
+        return;
+      }
+
       this.updateUserUI();
 
-      try {
-        const userSettings = await API.getSettings();
-        if (userSettings) {
-          this.settings = { ...this.settings, ...userSettings };
-        }
-      } catch (e) {
-        console.warn('Using default settings', e);
+      if (userSettings) {
+        this.settings = { ...this.settings, ...userSettings };
       }
 
       // Before the controllers are built: the sidebar renders its filter pills
       // and its kanban columns from this, and both run during construction.
-      try {
-        this.categories = await API.getCategories() || [];
-      } catch (e) {
-        console.warn('Could not load categories', e);
-      }
-
-      this.computeWeekDays();
+      this.categories = categories || [];
 
       const canvasEl = document.getElementById('timelineCanvas');
       const rulerCanvasEl = document.getElementById('timelineRulerCanvas');
@@ -195,9 +228,15 @@ class KlndrApp {
       // failure anywhere in them swallows the explanation as well as the board.
       this.handleIntegrationRedirect();
 
-      await this.loadTasks();
-      await this.initMissedAnnouncementsCarousel();
-      // After the first paint, so a slow source app never delays the calendar.
+      this.applyTasks(tasks);
+
+      // The board is on screen. Everything past this point is allowed to be
+      // slow, so nothing past this point is awaited before the overlay lifts.
+      const shown = window.KlndrBoot ? KlndrBoot.ready() : Promise.resolve();
+
+      // Chained off the overlay rather than fired here, so an announcement
+      // never materialises through the fade.
+      shown.then(() => this.initMissedAnnouncementsCarousel());
       // Throttled server-side, so calling it on every load is cheap.
       void this.syncIntegrationsInBackground();
 
@@ -205,9 +244,13 @@ class KlndrApp {
       // Anything thrown above leaves the board half-built, with the date range
       // still reading "Loading...". A console line is not a failure state a
       // person can act on, so say it on screen and name the reason.
-      console.error('Failed to initialize Klndr:', err);
+      console.error('Failed to initialize klndr:', err);
       const label = document.getElementById('calendarDateRangeLabel');
       if (label) label.textContent = 'Failed to load';
+      // The overlay is still up and is the only thing on screen, so the
+      // explanation goes there. The toast below still runs, for the case
+      // where the overlay has already lifted.
+      if (window.KlndrBoot) KlndrBoot.fail(err);
       try {
         this.showToast(`Could not load your board: ${err.message}. Try reloading.`, 'error');
       } catch (toastErr) {
@@ -1010,6 +1053,96 @@ class KlndrApp {
     });
   }
 
+  /**
+   * The one state where the board is unreachable: an admin reset the password,
+   * and the server refuses every call but the change itself until it is
+   * replaced. Deliberately offers no dismiss - the only ways out are setting a
+   * password or logging out.
+   */
+  showForcedPasswordChange() {
+    const modal = document.getElementById('forcedPasswordModal');
+    const form = document.getElementById('forcedPasswordForm');
+    const msgEl = document.getElementById('forcedPasswordStatusMsg');
+
+    if (!modal || !form) {
+      // No markup to render into. Say it plainly rather than stranding someone
+      // on a board that will refuse every single thing they try.
+      if (window.KlndrBoot) KlndrBoot.ready();
+      this.showToast(
+        'Your password was reset by an administrator. Log out and sign in again to set a new one.',
+        'error'
+      );
+      return;
+    }
+
+    // init returned early, so the boot overlay is still up - and at z-index
+    // 9999 it would bury this. Chained rather than fired alongside, so the
+    // card does not materialise through the fade.
+    const shown = window.KlndrBoot ? KlndrBoot.ready() : Promise.resolve();
+    shown.then(() => {
+      modal.classList.add('active');
+      const firstField = document.getElementById('forcedCurrentPassword');
+      if (firstField) firstField.focus();
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const currentPassword = document.getElementById('forcedCurrentPassword').value;
+      const newPassword = document.getElementById('forcedNewPassword').value;
+      const confirmPassword = document.getElementById('forcedConfirmPassword').value;
+
+      try {
+        await API.request('/api/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+        });
+        msgEl.textContent = 'Password set. Loading your board...';
+        msgEl.className = 'status-msg success';
+        // Reload rather than resuming init: the flag is cleared server-side
+        // now, and a clean boot is simpler than unwinding one that stopped
+        // half way through.
+        window.location.reload();
+      } catch (err) {
+        msgEl.textContent = err.message;
+        msgEl.className = 'status-msg error';
+      }
+    });
+
+    const logoutBtn = document.getElementById('forcedPasswordLogout');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async () => {
+        await API.logout();
+      });
+    }
+  }
+
+  /**
+   * The one and only time this password is legible. Nothing stores it in
+   * recoverable form, so it stays on screen until the admin navigates away
+   * rather than auto-dismissing. Built with textContent, not innerHTML: the
+   * username is echoed back and has never been escaped anywhere.
+   */
+  showTempPassword(username, tempPassword) {
+    const anchor = document.getElementById('adminUserStatusMsg');
+    if (!anchor) return;
+    document.querySelectorAll('.admin-temp-password').forEach(el => el.remove());
+
+    const box = document.createElement('div');
+    box.className = 'admin-temp-password';
+
+    const code = document.createElement('code');
+    code.textContent = tempPassword;
+
+    const note = document.createElement('p');
+    note.textContent =
+      `Temporary password for ${username}. Hand it over directly — it will not ` +
+      `be shown again. They are signed out everywhere as of now, and must set ` +
+      `their own password at their next login.`;
+
+    box.append(code, note);
+    anchor.insertAdjacentElement('afterend', box);
+  }
+
   async loadAdminUsersList() {
     const listContainer = document.getElementById('adminUsersTableBody');
     if (!listContainer) return;
@@ -1028,17 +1161,49 @@ class KlndrApp {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td><strong>${u.username}</strong></td>
-          <td><span class="role-badge ${u.role}">${u.role}</span></td>
+          <td>
+            <span class="role-badge ${u.role}">${u.role}</span>
+            ${u.must_change_password ? '<span class="reset-pending-badge">reset pending</span>' : ''}
+          </td>
           <td>${new Date(u.created_at * 1000).toLocaleDateString()}</td>
           <td>
             ${u.username !== this.user.username ? `
-              <button type="button" class="btn-delete-user" data-username="${u.username}" title="Delete User">
-                <span class="material-symbols-outlined" style="font-size: 16px;">delete</span>
-              </button>
+              <div class="admin-user-actions">
+                <button type="button" class="btn-reset-user" data-username="${u.username}" title="Reset Password">
+                  <span class="material-symbols-outlined" style="font-size: 16px;">lock_reset</span>
+                </button>
+                <button type="button" class="btn-delete-user" data-username="${u.username}" title="Delete User">
+                  <span class="material-symbols-outlined" style="font-size: 16px;">delete</span>
+                </button>
+              </div>
             ` : '<span style="color:#9ca3af;font-size:12px;">(You)</span>'}
           </td>
         `;
         listContainer.appendChild(tr);
+      });
+
+      listContainer.querySelectorAll('.btn-reset-user').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const username = btn.dataset.username;
+          if (!confirm(`Reset the password for "${username}"?\n\nThis signs them out of every device immediately, and they must set a new password at their next login.`)) {
+            return;
+          }
+          const msgEl = document.getElementById('adminUserStatusMsg');
+          try {
+            const res = await API.resetUserPassword(username);
+            if (msgEl) {
+              msgEl.textContent = '';
+              msgEl.className = 'status-msg';
+            }
+            this.showTempPassword(res.username, res.tempPassword);
+            await this.loadAdminUsersList();
+          } catch (err) {
+            if (msgEl) {
+              msgEl.textContent = err.message;
+              msgEl.className = 'status-msg error';
+            }
+          }
+        });
       });
 
       listContainer.querySelectorAll('.btn-delete-user').forEach(btn => {
@@ -1530,7 +1695,18 @@ class KlndrApp {
   async loadTasks() {
     const startDate = this.days[0].startTimestamp;
     const endDate = this.days[6].endTimestamp;
-    this.tasks = await API.getTasks(startDate, endDate);
+    this.applyTasks(await API.getTasks(startDate, endDate));
+  }
+
+  /**
+   * Adopt a freshly fetched week.
+   *
+   * Split out from loadTasks so the boot path can fetch the week alongside
+   * everything else and hand the result in, rather than paying for its own
+   * round trip once the others have finished.
+   */
+  applyTasks(tasks) {
+    this.tasks = tasks;
     // Records written before segments existed are migrated here, once, on read.
     this.tasks.forEach(t => TaskModel.ensureSegments(t));
     // History describes edits to the list that was just replaced.

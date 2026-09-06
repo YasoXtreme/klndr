@@ -13,6 +13,12 @@
   margin-bottom: 32px;
 }
 
+/* 64px plate, so the kit's middle shadow step. */
+.klndr-lockup-login {
+  --klndr-size: 64px;
+  --klndr-shadow: 3px;
+}
+
 .login-card {
   width: 100%;
   max-width: 520px;

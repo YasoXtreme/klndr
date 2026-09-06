@@ -27,7 +27,13 @@ const API = {
 
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || 'API Request Failed');
+      const err = new Error(data.error || 'API Request Failed');
+      // Carries the machine-readable reason alongside the message, so callers
+      // can branch on the forced-password-change gate without matching on
+      // display text.
+      err.code = data.code;
+      err.status = response.status;
+      throw err;
     }
     return data;
   },
@@ -52,6 +58,15 @@ const API = {
     });
   },
 
+  // Returns a server-generated temporary password, once. Nothing stores it in
+  // readable form, so a lost response means resetting again.
+  async resetUserPassword(username) {
+    return this.request(
+      `/api/admin/users/${encodeURIComponent(username)}/reset-password`,
+      { method: 'POST' }
+    );
+  },
+
   // Task APIs
   async getTasks(startDate, endDate) {
     let url = '/api/tasks';
@@ -59,7 +74,9 @@ const API = {
       url += `?startDate=${startDate}&endDate=${endDate}`;
     }
     const data = await this.request(url);
-    return data.tasks || [];
+    // Null when the session has expired: request() has already sent the
+    // browser to /login, and this page is on its way out.
+    return data ? data.tasks || [] : [];
   },
 
   async createTask(taskData) {
@@ -95,7 +112,7 @@ const API = {
   // Settings APIs
   async getSettings() {
     const data = await this.request('/api/settings');
-    return data.settings;
+    return data ? data.settings : null;
   },
 
   async updateSettings(settings) {
@@ -112,7 +129,7 @@ const API = {
   // records themselves; the server cascades a rename or a delete onto tasks.
   async getCategories() {
     const data = await this.request('/api/categories');
-    return data.categories;
+    return data ? data.categories : null;
   },
 
   async createCategory(category) {

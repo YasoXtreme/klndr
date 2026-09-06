@@ -7,6 +7,7 @@ const {
   getSessionToken,
   requireApiAuth,
   requirePageAuth,
+  requireAdmin,
 } = require("./server/auth-middleware");
 
 const app = express();
@@ -25,9 +26,15 @@ app.use(
 // 1. PUBLIC ROUTES (Login & Public Assets)
 // ==========================================
 
-// Serve public static assets (fonts, logo, login css/js)
+// Serve public static assets (fonts, brand marks, login css/js)
 app.use("/public", express.static(path.join(__dirname, "public")));
 app.use("/assets", express.static(path.join(__dirname, "public", "assets")));
+
+// Both pages point at the icons explicitly, so this is only ever hit by
+// clients that probe the conventional path instead of reading the markup.
+app.get("/favicon.ico", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "assets", "favicon.ico"));
+});
 
 // Login page route
 app.get("/login", async (req, res) => {
@@ -114,7 +121,12 @@ app.post("/api/auth/change-password", requireApiAuth, async (req, res) => {
       .json({ error: "New password and confirm password do not match" });
   }
   try {
-    await db.changePassword(req.user.id, currentPassword, newPassword);
+    await db.changePassword(
+      req.user.id,
+      currentPassword,
+      newPassword,
+      req.sessionToken,
+    );
     res.json({ message: "Password updated successfully" });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -122,45 +134,70 @@ app.post("/api/auth/change-password", requireApiAuth, async (req, res) => {
 });
 
 // Admin endpoints for beta user management
-app.get("/api/admin/users", requireApiAuth, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden: Admin access required" });
-  }
-  const users = await db.getAllUsers();
-  res.json({ users });
-});
+app.get(
+  "/api/admin/users",
+  requireApiAuth,
+  requireAdmin,
+  async (req, res) => {
+    const users = await db.getAllUsers();
+    res.json({ users });
+  },
+);
 
-app.post("/api/admin/create-user", requireApiAuth, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden: Admin access required" });
-  }
+app.post(
+  "/api/admin/create-user",
+  requireApiAuth,
+  requireAdmin,
+  async (req, res) => {
+    const { username, password, role } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password required" });
+    }
 
-  const { username, password, role } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: "Username and password required" });
-  }
+    try {
+      const newUser = await db.createUser(username, password, role || "user");
+      res
+        .status(201)
+        .json({ message: "User created successfully", user: newUser });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+);
 
-  try {
-    const newUser = await db.createUser(username, password, role || "user");
-    res
-      .status(201)
-      .json({ message: "User created successfully", user: newUser });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+app.delete(
+  "/api/admin/users/:username",
+  requireApiAuth,
+  requireAdmin,
+  async (req, res) => {
+    const success = await db.deleteUser(req.params.username);
+    if (!success) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ message: "User deleted successfully" });
+  },
+);
 
-app.delete("/api/admin/users/:username", requireApiAuth, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden: Admin access required" });
-  }
-
-  const success = await db.deleteUser(req.params.username);
-  if (!success) {
-    return res.status(404).json({ error: "User not found" });
-  }
-  res.json({ message: "User deleted successfully" });
-});
+// The only account recovery path klndr has: no user document carries an email,
+// so there is nowhere to send a reset link and an admin has to pass the
+// temporary password on out-of-band. The server generates it rather than
+// letting the admin pick one, and it is returned exactly once.
+app.post(
+  "/api/admin/users/:username/reset-password",
+  requireApiAuth,
+  requireAdmin,
+  async (req, res) => {
+    const result = await db.adminResetPassword(req.params.username);
+    if (!result) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({
+      message: "Password reset. This is shown once.",
+      username: result.user.username,
+      tempPassword: result.tempPassword,
+    });
+  },
+);
 
 // ==========================================
 // 2. PROTECTED STATIC ASSETS & APP CODE
@@ -310,10 +347,7 @@ app.get("/api/announcements/missed", requireApiAuth, async (req, res) => {
   }
 });
 
-app.post("/api/announcements", requireApiAuth, async (req, res) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden: Admin access required" });
-  }
+app.post("/api/announcements", requireApiAuth, requireAdmin, async (req, res) => {
   const { title, content, header_image_url } = req.body;
   if (!title || !content) {
     return res.status(400).json({ error: "Title and content are required" });

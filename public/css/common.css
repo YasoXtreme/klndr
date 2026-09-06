@@ -52,31 +52,121 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Brand header with SVG logo */
-.brand-header {
-  display: flex;
+
+/* ====================================================
+   THE KLNDR LOCKUP
+   ====================================================
+   One component for every surface that carries the brand: the login header, the
+   app topbar, and the boot overlay.
+
+   Built from DOM rather than an <img> or an inline <svg>. The brand kit draws
+   the "k" as live SVG <text> with no font-family on it, and ElmsSans is a
+   variable font whose default instance is Thin - so an <img> of the kit's mark
+   renders a thin serif k, not the Black one. Markup inherits the @font-face this
+   stylesheet already declares and can say font-weight: 900 out loud.
+
+   Proportions come from brand/klndr-logo-animation.html, where the plate is
+   92px: everything below is that drawing divided by 92 and multiplied by
+   --klndr-size, so one property resizes the whole lockup.
+
+   --klndr-shadow is set per surface rather than derived, because the kit's rule
+   is a set of steps, not a curve: none below 32px, 3px at 56px, 6px past 78px.
+*/
+
+.klndr-lockup {
+  --klndr-size: 64px;
+  --klndr-shadow: 3px;
+  /* A plate has to read as a plate, so it takes the colour its surface is
+     not. Every klndr surface that carries the lockup is the mint gradient,
+     hence white here - mint on mint collapses the badge into a bare outline.
+     The kit does the same: its animation puts --paper on a --mint body. Flip
+     this to var(--accent-mint) for a lockup on white. */
+  --klndr-plate-fill: #ffffff;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
+  gap: calc(var(--klndr-size) * 0.239);
+  line-height: 1;
   user-select: none;
 }
 
-.brand-header .logo-svg {
-  height: 32px;
-  width: auto;
-  display: block;
+.klndr-plate {
+  flex: none;
+  width: var(--klndr-size);
+  height: var(--klndr-size);
+  display: grid;
+  place-items: center;
+  background: var(--klndr-plate-fill);
+  border: calc(var(--klndr-size) * 0.0435) solid #000;
+  border-radius: calc(var(--klndr-size) * 0.174);
+  box-shadow: var(--klndr-shadow) var(--klndr-shadow) 0 #000;
 }
 
-.brand-header .brand-divider {
-  font-size: 28px;
-  font-weight: 300;
+.klndr-plate,
+.klndr-wordmark {
+  font-size: calc(var(--klndr-size) * 0.674);
+  font-weight: 900;
+  letter-spacing: -0.058em;
   color: #000;
-  line-height: 1;
 }
 
-.brand-header .brand-title {
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  color: #000000;
+/* The glyph sits high in its em box; drop it onto the plate's optical centre.
+   Same nudge, proportionally, that the kit's animation applies at 92px. */
+.klndr-plate > span {
+  display: block;
+  transform: translateY(calc(var(--klndr-size) * 0.033));
+}
+
+.klndr-wordmark {
+  line-height: 0.95;
+}
+
+.klndr-tagline {
+  font-size: calc(var(--klndr-size) * 0.163);
+  font-weight: 700;
+  color: #000;
+}
+
+/* Stacked variant: the wordmark and tagline as a column beside the plate. */
+.klndr-lockup-text {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--klndr-size) * 0.065);
+}
+
+/* ---- The entrance, verbatim from the kit's animation ----
+   Only ever plays at the boot overlay's 92px, so the offsets stay in px. */
+
+.klndr-lockup-animated .klndr-plate {
+  animation: k-plate-in 360ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.klndr-lockup-animated .klndr-wordmark {
+  animation: k-wipe-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) 240ms both;
+}
+
+.klndr-lockup-animated .klndr-tagline {
+  animation: k-fade-up 300ms ease 620ms both;
+}
+
+@keyframes k-plate-in {
+  0% { opacity: 0; transform: translateY(26px) scale(0.9); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes k-wipe-in {
+  0% { clip-path: inset(0 100% 0 0); transform: translateX(-14px); }
+  100% { clip-path: inset(0 0 0 0); transform: none; }
+}
+
+@keyframes k-fade-up {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .klndr-lockup-animated .klndr-plate,
+  .klndr-lockup-animated .klndr-wordmark,
+  .klndr-lockup-animated .klndr-tagline {
+    animation: none;
+  }
 }

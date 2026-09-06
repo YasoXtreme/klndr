@@ -8,7 +8,8 @@
     "dev": "node --watch server.js",
     "add-user": "node scripts/manage-users.js add",
     "list-users": "node scripts/manage-users.js list",
-    "delete-user": "node scripts/manage-users.js delete"
+    "delete-user": "node scripts/manage-users.js delete",
+    "reset-password": "node scripts/manage-users.js reset"
   },
   "keywords": [
     "calendar",

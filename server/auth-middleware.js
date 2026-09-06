@@ -16,6 +16,13 @@ function getSessionToken(req) {
   return null;
 }
 
+// While a reset is pending, the account can do exactly one thing: set a new
+// password. Gating on the server rather than in the UI is the whole point —
+// a client-side overlay would leave every data endpoint reachable with the
+// temporary password. /api/auth/me and /api/auth/logout call validateSession
+// directly rather than passing through here, so they stay reachable too.
+const PASSWORD_CHANGE_EXEMPT = new Set(["/api/auth/change-password"]);
+
 // For XHR endpoints: a failure is JSON the client can act on.
 async function requireApiAuth(req, res, next) {
   const token = getSessionToken(req);
@@ -25,6 +32,20 @@ async function requireApiAuth(req, res, next) {
   }
   req.user = user;
   req.sessionToken = token;
+
+  // req.originalUrl, not req.path: inside a mounted router req.path is
+  // relative to the mount point and would never match the full path.
+  let pathname = req.originalUrl.split("?")[0];
+  while (pathname.length > 1 && pathname.endsWith("/")) {
+    pathname = pathname.slice(0, -1);
+  }
+  if (user.must_change_password && !PASSWORD_CHANGE_EXEMPT.has(pathname)) {
+    return res.status(403).json({
+      error: "Set a new password before continuing",
+      code: "password_change_required",
+    });
+  }
+
   next();
 }
 
@@ -42,4 +63,18 @@ async function requirePageAuth(req, res, next) {
   next();
 }
 
-module.exports = { getSessionToken, requireApiAuth, requirePageAuth };
+// Runs after requireApiAuth, which is what puts req.user in place. Replaces
+// the identical check that used to be copy-pasted across each admin route.
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden: Admin access required" });
+  }
+  next();
+}
+
+module.exports = {
+  getSessionToken,
+  requireApiAuth,
+  requirePageAuth,
+  requireAdmin,
+};

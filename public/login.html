@@ -3,8 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Klndr | Log In</title>
-    <link rel="icon" href="/assets/favicon.ico" type="image/x-icon" />
+    <title>klndr | Log In</title>
+    <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
+    <link rel="icon" href="/assets/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <!-- The lockup is drawn in ElmsSans Black. Preloading the face keeps the
+         mark from landing in Arial and swapping a beat later. -->
+    <link
+      rel="preload"
+      href="/assets/ElmsSans.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
@@ -14,13 +27,17 @@
   </head>
   <body>
     <div class="login-page-wrapper">
-      <!-- Brand Header: YASSEN | Klndr -->
+      <!-- Brand lockup. Deliberately static: this page is instant, and the
+           entrance animation belongs to the moment after Continue. Playing it
+           twice inside five seconds would spend it. -->
       <div class="login-brand-container">
-        <div class="brand-header">
-          <img src="/assets/yassen logo.svg" alt="YASSEN" class="logo-svg" />
-          <span class="brand-divider">|</span>
-          <span class="brand-title">Klndr</span>
-        </div>
+        <span class="klndr-lockup klndr-lockup-login" role="img" aria-label="klndr">
+          <span class="klndr-plate" aria-hidden="true"><span>k</span></span>
+          <span class="klndr-lockup-text" aria-hidden="true">
+            <span class="klndr-wordmark">klndr</span>
+            <span class="klndr-tagline">Think of it. Schedule it.</span>
+          </span>
+        </span>
       </div>
 
       <!-- Login Card -->
@@ -28,7 +45,7 @@
         <div class="login-card-header">
           <div class="title-group">
             <h1>Hello there</h1>
-            <p>Log in to your Klndr account</p>
+            <p>Log in to your klndr account</p>
           </div>
           <!-- Google Icon hand gesture with waving animation -->
           <div class="waving-hand">
@@ -78,7 +95,7 @@
 
       <!-- Beta Disclaimer Footer -->
       <div class="login-footer-disclaimer">
-        <strong>Klndr</strong> is currently in beta and is invite only to select
+        <strong>klndr</strong> is currently in beta and is invite only to select
         beta testers, to get access and become a beta tester, contact
         <strong>beta@yassen.dev</strong>
       </div>
@@ -115,6 +132,15 @@
           if (data.token) {
             localStorage.setItem("klndr_token", data.token);
             localStorage.setItem("klndr_user", JSON.stringify(data.user));
+          }
+
+          // Read once by the app on the very next load, then cleared. It is
+          // what separates "just signed in", which earns the full logo
+          // entrance, from every refresh after, which does not.
+          try {
+            sessionStorage.setItem("klndr_boot_hero", "1");
+          } catch (storageErr) {
+            // Storage blocked. The app still loads, it just skips the entrance.
           }
 
           window.location.href = "/";
