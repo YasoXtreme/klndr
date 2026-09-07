@@ -5,6 +5,13 @@
 const UNCATEGORIZED = CategoryPicker.UNCATEGORIZED;
 
 class TasksSidebar {
+  // A drag has to earn the gesture. Starting one on the bare press built a ghost
+  // on every click, and on touch it made the list unscrollable: the first
+  // finger-down became a drag and the scroll never happened.
+  static MOUSE_DRAG_THRESHOLD_PX = 4;
+  static TOUCH_SLOP_PX = 10;
+  static LONG_PRESS_MS = 400;
+
   constructor(containerElement, state, onTaskInteraction, onDragStart, onToggleCollapse) {
     this.container = containerElement;
     this.state = state;
@@ -66,6 +73,16 @@ class TasksSidebar {
     this.isFullView = isFull;
     this.container.classList.toggle('is-full-view', isFull);
     this.render();
+  }
+
+  /**
+   * Filling the workspace and showing a kanban are two different questions, and
+   * on a phone they have different answers: the pane should fill the screen,
+   * but 280px columns on a 375px screen are a board you can only ever see one
+   * column of. The flat list says more at the same width.
+   */
+  get usesKanban() {
+    return this.isFullView && document.body.dataset.layout !== 'phone';
   }
 
   initControls() {
@@ -449,11 +466,86 @@ class TasksSidebar {
 
     card.appendChild(content);
 
-    // Drag initiation handler
-    card.addEventListener('mousedown', (e) => {
-      if (e.target.closest('.task-checkbox')) return;
-      e.preventDefault();
-      this.onDragStart(task, e.clientX, e.clientY);
+    // Reordering by drag is gone on a phone: a long press in this list now
+    // hands the gesture to the calendar, because that is the only way a task
+    // can reach it there. These put the ordering back, and the stylesheet shows
+    // them only where that trade was actually made.
+    const nudge = (direction, icon, label) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `btn-task-nudge is-${direction < 0 ? 'up' : 'down'}`;
+      btn.title = label;
+      btn.innerHTML = `<span class="material-symbols-outlined">${icon}</span>`;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.onTaskInteraction('moveTaskInList', { task, direction });
+      });
+      card.appendChild(btn);
+    };
+    nudge(-1, 'keyboard_arrow_up', 'Move up');
+    nudge(1, 'keyboard_arrow_down', 'Move down');
+
+
+    // Drag initiation. Deferred rather than immediate - see the thresholds on
+    // the class. No preventDefault: on touch it would kill the scroll we are
+    // deliberately leaving to the browser, and .sidebar-task-card is already
+    // user-select:none, which was all it bought for the mouse.
+    card.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.task-checkbox, .btn-task-nudge')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+      const isTouch = e.pointerType !== 'mouse';
+      const pointerId = e.pointerId;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      let armed = false;
+      let timer = null;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      };
+
+      const start = () => {
+        if (armed) return;
+        armed = true;
+        clearTimeout(timer);
+        if (isTouch && navigator.vibrate) navigator.vibrate(10);
+        this.onDragStart(task, startX, startY, pointerId);
+      };
+
+      const onMove = (ev) => {
+        if (ev.pointerId !== pointerId || armed) return;
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        // The same travel means opposite things: for a mouse it is intent to
+        // drag, for a finger it is the list being scrolled.
+        if (isTouch) {
+          if (dist > TasksSidebar.TOUCH_SLOP_PX) cleanup();
+        } else if (dist > TasksSidebar.MOUSE_DRAG_THRESHOLD_PX) {
+          start();
+        }
+      };
+
+      const onUp = (ev) => {
+        if (ev.pointerId !== pointerId) return;
+        const wasArmed = armed;
+        cleanup();
+        // A press that never became a drag is a tap, and on touch that opens
+        // the editor - the job dblclick does for a mouse.
+        if (!wasArmed && isTouch) {
+          this.onTaskInteraction('openEditModal', { task });
+        }
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+
+      if (isTouch) timer = setTimeout(start, TasksSidebar.LONG_PRESS_MS);
     });
 
     // Double click & Context Menu
@@ -463,8 +555,15 @@ class TasksSidebar {
     });
 
     card.addEventListener('contextmenu', (e) => {
+      // preventDefault unconditionally - that is what refuses the OS callout.
+      // But only a mouse gets the app's menu: Android raises this ~500ms into
+      // the very press that armed the drag at 400ms, and opening a menu there
+      // does not merely interrupt the drag, it freezes it, because
+      // handleDragMove stands down while one is open. A finger reaches these
+      // actions by tapping the task and using More... in the editor.
       e.preventDefault();
       e.stopPropagation();
+      if (TimelineDOM.isTouchInput()) return;
       this.onTaskInteraction('openContextMenu', { task, clientX: e.clientX, clientY: e.clientY });
     });
 
@@ -530,7 +629,7 @@ class TasksSidebar {
     // ==========================================
     // MULTI-COLUMN KANBAN VIEW (When Calendar is Collapsed)
     // ==========================================
-    if (this.isFullView) {
+    if (this.usesKanban) {
       listEl.style.display = 'none';
       if (!multicolumnEl) return;
       multicolumnEl.style.display = 'flex';
@@ -635,6 +734,17 @@ class TasksSidebar {
 
     sortedTasks.forEach(task => {
       listEl.appendChild(this.createTaskCardElement(task));
+    });
+
+    // The ends of the list have nowhere to go. Done here rather than in the
+    // card, because a card does not know where it sits once filters have had
+    // their say.
+    const cards = listEl.querySelectorAll('.sidebar-task-card');
+    cards.forEach((card, i) => {
+      const up = card.querySelector('.btn-task-nudge.is-up');
+      const down = card.querySelector('.btn-task-nudge.is-down');
+      if (up) up.disabled = i === 0;
+      if (down) down.disabled = i === cards.length - 1;
     });
   }
 }

@@ -13,9 +13,18 @@ class KlndrApp {
       tickPercent: 25
     };
 
-    this.weekOffset = 0;
-    this.MAX_MONTH_WEEKS = 4;
+    // Where the view starts, as a whole number of days from today, and how
+    // many days it shows.
+    //
+    // Days rather than weeks because the count is now variable: at seven this
+    // steps by a week and behaves exactly as it always did, but a three-day
+    // view that jumped by a week would skip four days on every press.
+    this.dayOffset = 0;
+    this.dayCount = KlndrApp.readStoredDayCount();
     this.days = [];
+
+    // Guards the range fetch below - see reloadTasksPreservingHistory.
+    this._rangeToken = 0;
 
     this.canvasRenderer = null;
     this.domRenderer = null;
@@ -91,10 +100,10 @@ class KlndrApp {
 
   async init() {
     try {
-      // Which week we are looking at is arithmetic on today's date, so it can
+      // Which days we are looking at is arithmetic on today's date, so it can
       // be settled before the network is touched. That is what lets the tasks
       // request go out alongside the other three instead of behind them.
-      this.computeWeekDays();
+      this.computeVisibleDays();
 
       // One round trip of latency instead of four. None of these depend on
       // each other, and on a cold serverless start that difference is most of
@@ -110,7 +119,7 @@ class KlndrApp {
           console.warn('Could not load categories', e);
           return null;
         }),
-        API.getTasks(this.days[0].startTimestamp, this.days[6].endTimestamp).catch(e => {
+        API.getTasks(this.days[0].startTimestamp, this.lastVisibleDay.endTimestamp).catch(e => {
           // An account awaiting an admin-reset password change is refused by
           // every data endpoint, this one included. That is not a boot failure
           // - it is the forced-password screen below - so swallow it here and
@@ -196,14 +205,28 @@ class KlndrApp {
         }
       );
 
+      // A drag that starts in the tasks list has to be able to reach the
+      // calendar, and on a phone the calendar is not on screen when that drag
+      // begins. Handed over as a callback rather than reached through the
+      // shared state, because revealing a pane is the app's business.
+      this.dragController.onNeedsCalendar = () => {
+        if (!this.isCalendarCollapsed) return false;
+        this.setCalendarCollapsed(false);
+        // Immediately, not on the ResizeObserver: on a coarse pointer that sits
+        // behind a 150ms settle timer, and a drag already in flight would spend
+        // those frames reading the geometry of a pane that was hidden.
+        if (this.canvasRenderer) this.canvasRenderer.resize();
+        return true;
+      };
+
       this.sidebarController = new TasksSidebar(
         sidebarContainer,
         sharedState,
         (action, payload) => {
           this.handleTaskInteraction(action, payload);
         },
-        (task, clientX, clientY) => {
-          this.dragController.startSidebarTaskDrag(task, clientX, clientY);
+        (task, clientX, clientY, pointerId) => {
+          this.dragController.startSidebarTaskDrag(task, clientX, clientY, pointerId);
         },
         (tasksCollapsed) => {
           this.handleTasksPanelCollapse(tasksCollapsed);
@@ -215,6 +238,17 @@ class KlndrApp {
         this.splitSegmentAt(task, segmentId, timestamp);
       };
 
+      this.initInputMode();
+      this.initMobileLayout();
+      // After initMobileLayout, which is what settles the orientation - and
+      // unconditionally, because setOrientation only fires when the orientation
+      // actually changes and a desktop boot never changes it.
+      if (this.canvasRenderer) this.canvasRenderer.scrollToNow();
+      // Stored per device, so it has to be pushed into the controller on every
+      // boot rather than only when the select changes.
+      this.setTouchSnapPreference(this.touchSnapPreference);
+      this.initSwipeNavigation();
+      this.initPlacementBar();
       this.initKeyboardListeners();
       this.initUIEventListeners();
       this.initAccountModal();
@@ -339,35 +373,148 @@ class KlndrApp {
     }
   }
 
-  computeWeekDays() {
+  // Indexed off the end rather than off 6: the strip is only seven days long
+  // in one of the four day counts, and every hardcoded 6 was a crash at the
+  // other three.
+  get lastVisibleDay() {
+    return this.days[this.days.length - 1];
+  }
+
+  /**
+   * Build the visible day strip: `dayCount` days starting `dayOffset` days from
+   * today.
+   *
+   * The seven-day view still snaps back to the Saturday containing its base
+   * date, so a week is always a whole week and this reproduces the old
+   * computeWeekDays() exactly. Below seven it deliberately does not snap - a
+   * three-day view that could only ever start on a Saturday would be unable to
+   * show you tomorrow.
+   */
+  computeVisibleDays() {
     const now = new Date();
-    const baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (this.weekOffset * 7));
+    const base = new Date(now.getFullYear(), now.getMonth(), now.getDate() + this.dayOffset);
 
-    const currentDayOfWeek = baseDate.getDay();
-    const diffToSat = (currentDayOfWeek + 1) % 7;
-    const satDate = new Date(baseDate);
-    satDate.setDate(baseDate.getDate() - diffToSat);
-    satDate.setHours(0, 0, 0, 0);
+    // (getDay() + 1) % 7 is the distance back to the containing Saturday.
+    if (this.dayCount === 7) base.setDate(base.getDate() - ((base.getDay() + 1) % 7));
 
-    const dayNames = ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    // Normalised AFTER the snap, never before it. setDate carries the
+    // wall-clock time along with it, so an anchor that landed on a day whose
+    // midnight does not exist - Cairo skips one every spring - would hand its
+    // 01:00 to the snapped Saturday, and every day in the strip would inherit
+    // it and sit an hour late.
+    base.setHours(0, 0, 0, 0);
+
     this.days = [];
 
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(satDate);
-      d.setDate(satDate.getDate() + i);
+    for (let i = 0; i < this.dayCount; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
       const startTimestamp = Math.floor(d.getTime() / 1000);
-      const endTimestamp = startTimestamp + 86400;
 
       this.days.push({
-        name: dayNames[i],
+        // Read off the date, not off the position in the strip. The old code
+        // indexed a Saturday-first name list by i, which is only correct while
+        // the strip IS a snapped week - against any other anchor it would
+        // quietly label a Tuesday "Sat".
+        name: KlndrApp.DAY_NAMES[d.getDay()],
         date: d,
         startTimestamp,
-        endTimestamp,
+        endTimestamp: startTimestamp + 86400,
         isToday: d.toDateString() === now.toDateString()
       });
     }
 
     this.updateDateRangeUI();
+  }
+
+  /**
+   * Move the view, then catch the data up to it.
+   *
+   * Rendering before the fetch is deliberate: the grid and the date label are
+   * pure arithmetic on the anchor, so they can move on the same frame as the
+   * press, and the request only fills blocks in behind them. Waiting on the
+   * network to redraw the grid would make every arrow press feel like a page
+   * load.
+   */
+  async showRange() {
+    const before = this.days.length;
+    this.computeVisibleDays();
+
+    // How many days are on screen is a geometry input - a lane is availCross
+    // divided by the day count - so changing it has to relayout the canvas, the
+    // same way a rotation does. Stepping the arrows changes only which dates
+    // the lanes carry, not how many there are, so that stays on the cheap path.
+    if (this.canvasRenderer && this.days.length !== before) this.canvasRenderer.resize();
+
+    this.renderAll();
+    try {
+      await this.reloadTasksPreservingHistory();
+    } catch (err) {
+      console.error('Could not load that range', err);
+      this.showToast("Couldn't load that range. Try again.", 'error');
+    }
+  }
+
+  /**
+   * Step by a whole view rather than by a fixed week, so an arrow always moves
+   * you exactly as far as you can see. At seven days that is the week step this
+   * has always had.
+   */
+  stepRange(direction) {
+    const next = this.dayOffset + direction * this.dayCount;
+    if (Math.abs(next) > KlndrApp.MAX_RANGE_DAYS) return;
+    this.dayOffset = next;
+    void this.showRange();
+  }
+
+  /**
+   * How many days are on screen.
+   *
+   * A separate axis of control from zoom, not another notch on it: time zoom is
+   * a magnification the main axis always carries a scrollbar for, while this is
+   * a RANGE - it decides which days get fetched. Folding it into `zoom` would
+   * make a network request depend on a rendering control.
+   */
+  async setDayCount(n) {
+    if (!KlndrApp.DAY_COUNTS.includes(n) || n === this.dayCount) return;
+    this.dayCount = n;
+    try {
+      localStorage.setItem(KlndrApp.DAY_COUNT_STORAGE_KEY, String(n));
+    } catch (e) { /* storage unavailable; the session still honours it */ }
+    this.syncDayCountUI();
+    await this.showRange();
+  }
+
+  /**
+   * localStorage is per browser, so this is never shared between someone's
+   * phone and their desktop - which is what makes a screen-dependent first-run
+   * default safe. Seven columns on a phone are 44px wide and cannot carry a
+   * title, so a phone opens at three. Anything stored beats both.
+   */
+  static readStoredDayCount() {
+    try {
+      const raw = parseInt(localStorage.getItem(KlndrApp.DAY_COUNT_STORAGE_KEY), 10);
+      if (KlndrApp.DAY_COUNTS.includes(raw)) return raw;
+    } catch (e) { /* storage unavailable */ }
+
+    // The SCREEN, not the window, and not the phone media query the rest of
+    // this file uses. Nothing is stored yet, so this is re-decided on every
+    // reload until the person picks for themselves - and a window measured
+    // while it is still being restored can be briefly narrow, which would make
+    // the default flip between two reloads of the same app on the same machine.
+    // Screen width is a fact about the device and does not move.
+    const screenWidth = (window.screen && window.screen.width) || window.innerWidth;
+    return screenWidth < 768 ? 3 : 7;
+  }
+
+  syncDayCountUI() {
+    document.querySelectorAll('.day-count-btn').forEach(btn => {
+      const on = Number(btn.dataset.days) === this.dayCount;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', String(on));
+    });
+    const select = document.getElementById('settingsDayCount');
+    if (select) select.value = String(this.dayCount);
   }
 
   updateZoomUI() {
@@ -388,20 +535,79 @@ class KlndrApp {
   }
 
   updateDateRangeUI() {
-    const dateLabelEl = document.getElementById('calendarDateRangeLabel');
-    if (!dateLabelEl || this.days.length === 0) return;
+    if (this.days.length === 0) return;
 
-    const first = this.days[0].date;
-    const last = this.days[6].date;
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
-    const rangeText = `${months[first.getMonth()]} ${first.getDate()} – ${months[last.getMonth()]} ${last.getDate()}, ${last.getFullYear()}`;
-    dateLabelEl.textContent = rangeText;
+    const dateLabelEl = document.getElementById('calendarDateRangeLabel');
+    if (dateLabelEl) dateLabelEl.textContent = this.formatRangeLabel();
+
+    // The arrows step by a view, so what they can reach depends on how wide the
+    // view is. Disabling on "the next step would leave the window" keeps them
+    // from landing outside it, and at seven days reproduces the old
+    // weekOffset +/- 4 bounds exactly.
+    const unit = this.dayCount === 7 ? 'week'
+      : this.dayCount === 1 ? 'day'
+      : `${this.dayCount} days`;
 
     const prevBtn = document.getElementById('btnPrevWeek');
+    if (prevBtn) {
+      prevBtn.disabled = this.dayOffset - this.dayCount < -KlndrApp.MAX_RANGE_DAYS;
+      prevBtn.title = `Previous ${unit}`;
+    }
+
     const nextBtn = document.getElementById('btnNextWeek');
-    if (prevBtn) prevBtn.disabled = this.weekOffset <= -this.MAX_MONTH_WEEKS;
-    if (nextBtn) nextBtn.disabled = this.weekOffset >= this.MAX_MONTH_WEEKS;
+    if (nextBtn) {
+      nextBtn.disabled = this.dayOffset + this.dayCount > KlndrApp.MAX_RANGE_DAYS;
+      nextBtn.title = `Next ${unit}`;
+    }
+  }
+
+  formatRangeLabel() {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const first = this.days[0].date;
+    const last = this.lastVisibleDay.date;
+
+    // A single day names itself: there is nothing to range, and the room the
+    // dash would have taken says which weekday it is instead.
+    if (this.days.length === 1) {
+      return `${this.days[0].name}, ${months[first.getMonth()]} ${first.getDate()}`;
+    }
+
+    // The year is spelled out on the week view only - it is the one people
+    // navigate far enough for it to matter, and it is what that view has always
+    // said.
+    if (this.days.length === 7) {
+      return `${months[first.getMonth()]} ${first.getDate()} – ${months[last.getMonth()]} ${last.getDate()}, ${last.getFullYear()}`;
+    }
+
+    // Repeating the month inside a single month reads as two separate dates
+    // rather than as one span.
+    const to = first.getMonth() === last.getMonth()
+      ? `${last.getDate()}`
+      : `${months[last.getMonth()]} ${last.getDate()}`;
+    return `${months[first.getMonth()]} ${first.getDate()} – ${to}`;
+  }
+
+  /**
+   * One app-wide record of how the user is actually pointing, stamped on <body>
+   * so JS and CSS can both answer it.
+   *
+   * Deliberately not a device test: a laptop with a touchscreen is whichever
+   * one the hand just used, and that changes mid-session. The media query only
+   * seeds the first answer, before any pointer has said otherwise.
+   */
+  initInputMode() {
+    const stamp = (mode) => {
+      if (document.body.dataset.input !== mode) document.body.dataset.input = mode;
+    };
+
+    const coarse = window.matchMedia && window.matchMedia('(hover: none)').matches;
+    stamp(coarse ? 'touch' : 'mouse');
+
+    window.addEventListener(
+      'pointerdown',
+      (e) => stamp(e.pointerType === 'mouse' ? 'mouse' : 'touch'),
+      { capture: true, passive: true }
+    );
   }
 
   initKeyboardListeners() {
@@ -431,6 +637,12 @@ class KlndrApp {
 
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        // Placing a split is the innermost thing Escape can back out of, so it
+        // answers first and does not fall through to closing modals.
+        if (this.placementActive) {
+          void this.cancelPlacement();
+          return;
+        }
         // A stacked modal dismisses only itself, so escaping out of the
         // category editor leaves the block editor underneath still open.
         if (this.closeTopModal()) return;
@@ -498,33 +710,251 @@ class KlndrApp {
   // Mutual exclusion: Collapsing Calendar expands Task Panel to full multi-column view
   initCalendarCollapse() {
     const calCollapseBtn = document.getElementById('btnCalendarCollapse');
-    const calPane = document.getElementById('calendarPane');
-
-    if (calCollapseBtn && calPane) {
+    if (calCollapseBtn) {
       calCollapseBtn.addEventListener('click', () => {
-        // If tasks was collapsed, uncollapse tasks first
-        if (this.isTasksCollapsed) {
-          this.isTasksCollapsed = false;
-          this.sidebarController.isCollapsed = false;
-          document.getElementById('tasks-sidebar-pane').classList.remove('is-collapsed');
-          const tasksCollapseIcon = document.getElementById('sidebarCollapseBtn')?.querySelector('.material-symbols-outlined');
-          if (tasksCollapseIcon) tasksCollapseIcon.textContent = 'chevron_right';
-        }
-
-        this.isCalendarCollapsed = !this.isCalendarCollapsed;
-        calPane.classList.toggle('is-collapsed', this.isCalendarCollapsed);
-
-        const iconSpan = calCollapseBtn.querySelector('.material-symbols-outlined');
-        if (iconSpan) {
-          iconSpan.textContent = this.isCalendarCollapsed ? 'chevron_right' : 'chevron_left';
-        }
-
-        // Toggle multi-column full view on task panel
-        this.sidebarController.setFullView(this.isCalendarCollapsed);
-        // The canvas relayout is driven by the ResizeObserver, so it lands when
-        // the pane transition actually settles rather than on a guessed timer.
+        this.setCalendarCollapsed(!this.isCalendarCollapsed);
       });
     }
+  }
+
+  /**
+   * The single place the calendar/tasks split is decided.
+   *
+   * The desktop chevron and the phone tab bar are two ways INTO this, not two
+   * implementations of it - which is what keeps the phone layout from needing a
+   * state machine of its own. On a phone the collapsed pane is hidden outright
+   * rather than reduced to a rail; the stylesheet decides which, so this method
+   * is the same on every size.
+   */
+  setCalendarCollapsed(collapsed) {
+    const calPane = document.getElementById('calendarPane');
+    if (!calPane) return;
+
+    // Both panes collapsed would leave an empty workspace with no way back.
+    if (collapsed && this.isTasksCollapsed) {
+      this.isTasksCollapsed = false;
+      this.sidebarController.isCollapsed = false;
+      document.getElementById('tasks-sidebar-pane').classList.remove('is-collapsed');
+      const tasksCollapseIcon = document.getElementById('sidebarCollapseBtn')?.querySelector('.material-symbols-outlined');
+      if (tasksCollapseIcon) tasksCollapseIcon.textContent = 'chevron_right';
+    }
+
+    this.isCalendarCollapsed = collapsed;
+    calPane.classList.toggle('is-collapsed', collapsed);
+
+    const iconSpan = document.getElementById('btnCalendarCollapse')?.querySelector('.material-symbols-outlined');
+    if (iconSpan) {
+      iconSpan.textContent = collapsed ? 'chevron_right' : 'chevron_left';
+    }
+
+    // Toggle multi-column full view on task panel
+    this.sidebarController.setFullView(collapsed);
+    this.syncMobileTabs();
+    // The canvas relayout is driven by the ResizeObserver, so it lands when
+    // the pane transition actually settles rather than on a guessed timer.
+  }
+
+  /**
+   * Which layout the viewport is in, stamped on <body> for the stylesheet and
+   * read back by anything whose behaviour differs (the sidebar's kanban, for
+   * one). Phone and tablet are genuinely different shapes rather than degrees
+   * of the same one: a tablet still fits both panes, a phone never does.
+   */
+  initMobileLayout() {
+    // A phone on its side is 844x390: wide enough to pass a max-width test, and
+    // nowhere near tall enough for the two-pane shape that test would hand it.
+    // Height is what actually runs out there, so it gets its own clause.
+    const phone = window.matchMedia(
+      '(max-width: 767px), (max-height: 500px) and (orientation: landscape)'
+    );
+    const tablet = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
+    // Days become COLUMNS, so what decides this is which way round the screen
+    // is, not how big it is: a portrait tablet wants columns as much as a phone
+    // does, and a phone on its side wants rows again - it has 844px of width to
+    // spend on time and only 390px to divide between days.
+    const portrait = window.matchMedia('(max-width: 1023px) and (orientation: portrait)');
+
+    const applyLayout = () => {
+      const mode = phone.matches ? 'phone' : (tablet.matches ? 'tablet' : 'desktop');
+      const orientation = this.resolveOrientation(portrait.matches);
+
+      // Decided BEFORE the early return below: orientation can change without
+      // the mode changing at all - a tablet rotated from landscape to portrait
+      // is still 'tablet' - so gating it on the mode would miss the rotation
+      // that matters most.
+      if (document.body.dataset.orientation !== orientation) {
+        document.body.dataset.orientation = orientation;
+        if (this.canvasRenderer) this.canvasRenderer.setOrientation(orientation);
+      }
+
+      if (document.body.dataset.layout === mode) return;
+      document.body.dataset.layout = mode;
+
+      // Growing out of the phone layout must not strand the calendar collapsed:
+      // off a phone that state means a 64px rail nobody asked for.
+      if (mode !== 'phone' && this.isCalendarCollapsed) {
+        this.setCalendarCollapsed(false);
+      }
+      this.sidebarController.render();
+      this.syncMobileTabs();
+    };
+
+    applyLayout();
+    phone.addEventListener('change', applyLayout);
+    tablet.addEventListener('change', applyLayout);
+    portrait.addEventListener('change', applyLayout);
+    // Belt and braces. The media-query listeners are the precise signal, but
+    // they are not always delivered - devtools viewport emulation drops them,
+    // and a coalesced window drag can too. applyLayout() returns immediately
+    // when the mode has not actually changed, so paying for it on every resize
+    // costs nothing and makes an orientation change impossible to miss.
+    window.addEventListener('resize', applyLayout);
+
+    document.getElementById('mobileTabCalendar')
+      ?.addEventListener('click', () => this.setCalendarCollapsed(false));
+    document.getElementById('mobileTabTasks')
+      ?.addEventListener('click', () => this.setCalendarCollapsed(true));
+  }
+
+  /**
+   * Auto by default, but overridable.
+   *
+   * The override is not only a preference: with no test framework here, being
+   * able to force vertical at desktop width is the only practical way to
+   * exercise that renderer on a screen big enough to see what is wrong with it.
+   */
+  // Indexed by Date#getDay(), so Sunday is 0. Deriving the label from the date
+  // is what makes an arbitrary anchor safe.
+  static DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  static DAY_COUNTS = [1, 3, 5, 7];
+  static DAY_COUNT_STORAGE_KEY = 'klndr_day_count';
+  // Four weeks either side of today, which is what MAX_MONTH_WEEKS = 4 meant.
+  static MAX_RANGE_DAYS = 28;
+
+  static ORIENTATION_STORAGE_KEY = 'klndr_orientation_pref';
+
+  /**
+   * Swipe left/right to step the visible range.
+   *
+   * Three things already want a horizontal touch gesture on this element, so
+   * this one stands down for all of them: a long-press drag (body carries
+   * is-touch-dragging), a pinch, and - the one that is easy to miss - the cross
+   * axis's own scrolling. In vertical mode days are COLUMNS, so when they do not
+   * all fit, dragging sideways is how you reach the ones off screen; stealing
+   * that would break the seven-day view to improve the three-day one. Hence the
+   * crossOverflows check rather than a phone-width check.
+   *
+   * Passive listeners throughout: this never calls preventDefault, it only
+   * watches a gesture the browser is already free to handle, and decides on
+   * release.
+   */
+  initSwipeNavigation() {
+    const el = document.getElementById('timeline-workspace');
+    if (!el) return;
+
+    // A swipe has to be clearly sideways and clearly deliberate. The 2:1 ratio
+    // is what keeps a slightly-diagonal scroll down the time axis from reading
+    // as a page turn.
+    const MIN_DISTANCE_PX = 60;
+    const AXIS_RATIO = 2;
+    const MAX_DURATION_MS = 600;
+
+    let start = null;
+
+    el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      start = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+    }, { passive: true });
+
+    const clear = () => { start = null; };
+    el.addEventListener('pointercancel', clear, { passive: true });
+
+    el.addEventListener('pointerup', (e) => {
+      const from = start;
+      start = null;
+      if (!from || e.pointerId !== from.id) return;
+
+      if (document.body.classList.contains('is-touch-dragging')) return;
+      if (this.canvasRenderer && this.canvasRenderer.isPinching && this.canvasRenderer.isPinching()) return;
+      if (this.canvasRenderer && this.canvasRenderer.crossOverflows) return;
+      if (document.querySelector('.modal-container.active, .context-menu.active')) return;
+
+      const dx = e.clientX - from.x;
+      const dy = e.clientY - from.y;
+      if (performance.now() - from.t > MAX_DURATION_MS) return;
+      if (Math.abs(dx) < MIN_DISTANCE_PX) return;
+      if (Math.abs(dx) < Math.abs(dy) * AXIS_RATIO) return;
+
+      // Swiping left drags the days leftward, which brings LATER ones in - the
+      // same direction of travel as flicking through photos.
+      this.stepRange(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  }
+
+  /**
+   * Which grid a finger drags against.
+   *
+   * Shift is a held modifier, and there is no held anything on a touchscreen -
+   * so the touch translation of it has to be a sticky choice rather than a
+   * transient one. Stored per device, and read only while the input is actually
+   * touch, so setting it on a touchscreen laptop leaves the Shift key alone.
+   */
+  static TOUCH_SNAP_STORAGE_KEY = 'klndr_touch_snap';
+  static TOUCH_SNAP_MODES = ['off', 'tick', 'bucket'];
+
+  get touchSnapPreference() {
+    try {
+      const raw = localStorage.getItem(KlndrApp.TOUCH_SNAP_STORAGE_KEY);
+      return KlndrApp.TOUCH_SNAP_MODES.includes(raw) ? raw : 'auto';
+    } catch (e) {
+      return 'auto';
+    }
+  }
+
+  setTouchSnapPreference(value) {
+    const mode = KlndrApp.TOUCH_SNAP_MODES.includes(value) ? value : null;
+    try {
+      if (mode) localStorage.setItem(KlndrApp.TOUCH_SNAP_STORAGE_KEY, mode);
+      else localStorage.removeItem(KlndrApp.TOUCH_SNAP_STORAGE_KEY);
+    } catch (e) { /* storage unavailable; the session still honours it */ }
+    if (this.dragController) this.dragController.setTouchSnapMode(mode);
+  }
+
+  get orientationPreference() {
+    try {
+      const raw = localStorage.getItem(KlndrApp.ORIENTATION_STORAGE_KEY);
+      return raw === 'horizontal' || raw === 'vertical' ? raw : 'auto';
+    } catch (e) {
+      return 'auto';
+    }
+  }
+
+  setOrientationPreference(value) {
+    try {
+      if (value === 'auto') localStorage.removeItem(KlndrApp.ORIENTATION_STORAGE_KEY);
+      else localStorage.setItem(KlndrApp.ORIENTATION_STORAGE_KEY, value);
+    } catch (e) { /* storage unavailable; the session still honours it */ }
+    this._orientationOverride = value === 'auto' ? null : value;
+    window.dispatchEvent(new Event('resize'));
+  }
+
+  resolveOrientation(autoWantsVertical) {
+    const pref = this._orientationOverride || this.orientationPreference;
+    if (pref === 'horizontal' || pref === 'vertical') return pref;
+    return autoWantsVertical ? 'vertical' : 'horizontal';
+  }
+
+  syncMobileTabs() {
+    const onTasks = Boolean(this.isCalendarCollapsed);
+    const pairs = [
+      [document.getElementById('mobileTabCalendar'), !onTasks],
+      [document.getElementById('mobileTabTasks'), onTasks]
+    ];
+    pairs.forEach(([el, active]) => {
+      if (!el) return;
+      el.classList.toggle('is-active', active);
+      el.setAttribute('aria-pressed', String(active));
+    });
   }
 
   // Mutual exclusion: Collapsing Tasks panel
@@ -585,6 +1015,37 @@ class KlndrApp {
     this.renderAll();
   }
 
+  /**
+   * Swap a task with the row above or below it.
+   *
+   * Reads the order off the DOM rather than off this.tasks, because what the
+   * arrows have to move past is the row the person can actually see - filters
+   * and the completed toggle both take rows out, and stepping over a hidden one
+   * would look like the press did nothing.
+   */
+  moveTaskInList(taskId, direction) {
+    const rows = [...document.querySelectorAll('#sidebarTasksList .sidebar-task-card')]
+      .map(el => el.dataset.taskId);
+    const at = rows.indexOf(taskId);
+    const neighbour = rows[at + direction];
+    if (at === -1 || !neighbour) return;
+
+    const a = this.tasks.findIndex(t => t.id === taskId);
+    const b = this.tasks.findIndex(t => t.id === neighbour);
+    if (a === -1 || b === -1) return;
+
+    const orderBefore = this.tasks.map(t => t.id);
+    [this.tasks[a], this.tasks[b]] = [this.tasks[b], this.tasks[a]];
+    this.recordHistory({ label: 'Reorder tasks' },
+      [{ kind: 'order', before: orderBefore, after: this.tasks.map(t => t.id) }]);
+    this.renderAll();
+
+    // The row is a new element after that render, and pressing the arrow
+    // repeatedly walks a task down a list longer than the screen.
+    document.querySelector(`#sidebarTasksList .sidebar-task-card[data-task-id="${taskId}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }
+
   // Rearrange the list to match a recorded order. Anything the order does not
   // mention (created since) keeps its place at the end rather than vanishing.
   applyTaskOrder(ids) {
@@ -601,33 +1062,21 @@ class KlndrApp {
     const nextBtn = document.getElementById('btnNextWeek');
     const todayBtn = document.getElementById('btnTodayWeek');
 
-    if (prevBtn) {
-      prevBtn.addEventListener('click', () => {
-        if (this.weekOffset > -this.MAX_MONTH_WEEKS) {
-          this.weekOffset--;
-          this.computeWeekDays();
-          this.renderAll();
-        }
-      });
-    }
-
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => {
-        if (this.weekOffset < this.MAX_MONTH_WEEKS) {
-          this.weekOffset++;
-          this.computeWeekDays();
-          this.renderAll();
-        }
-      });
-    }
+    if (prevBtn) prevBtn.addEventListener('click', () => this.stepRange(-1));
+    if (nextBtn) nextBtn.addEventListener('click', () => this.stepRange(1));
 
     if (todayBtn) {
       todayBtn.addEventListener('click', () => {
-        this.weekOffset = 0;
-        this.computeWeekDays();
-        this.renderAll();
+        if (this.dayOffset === 0) return;
+        this.dayOffset = 0;
+        void this.showRange();
       });
     }
+
+    document.querySelectorAll('.day-count-btn').forEach(btn => {
+      btn.addEventListener('click', () => void this.setDayCount(Number(btn.dataset.days)));
+    });
+    this.syncDayCountUI();
 
     const zoomInBtn = document.getElementById('btnZoomIn');
     const zoomOutBtn = document.getElementById('btnZoomOut');
@@ -1023,9 +1472,16 @@ class KlndrApp {
    * away work the person could still undo.
    */
   async reloadTasksPreservingHistory() {
+    const token = ++this._rangeToken;
     const startDate = this.days[0].startTimestamp;
-    const endDate = this.days[6].endTimestamp;
+    const endDate = this.lastVisibleDay.endTimestamp;
     const tasks = await API.getTasks(startDate, endDate);
+
+    // A held arrow key and a background sync both issue these, and a slow one
+    // can come back after the view has already moved on - which would repaint
+    // a range nobody is looking at any more. Only the newest may publish.
+    if (token !== this._rangeToken) return;
+
     tasks.forEach(t => TaskModel.ensureSegments(t));
     this.tasks = tasks;
     this.renderAll();
@@ -1694,7 +2150,7 @@ class KlndrApp {
 
   async loadTasks() {
     const startDate = this.days[0].startTimestamp;
-    const endDate = this.days[6].endTimestamp;
+    const endDate = this.lastVisibleDay.endTimestamp;
     this.applyTasks(await API.getTasks(startDate, endDate));
   }
 
@@ -2224,8 +2680,13 @@ class KlndrApp {
         break;
       }
 
+      case 'moveTaskInList': {
+        this.moveTaskInList(payload.task.id, payload.direction);
+        break;
+      }
+
       case 'openEditModal': {
-        this.openBlockPreviewModal(payload.task);
+        this.openBlockPreviewModal(payload.task, payload.segmentId);
         break;
       }
 
@@ -2281,8 +2742,11 @@ class KlndrApp {
     if (categoryBtn) categoryBtn.title = KlndrApp.categoryButtonTitle(nextName);
   }
 
-  openBlockPreviewModal(task) {
+  openBlockPreviewModal(task, segmentId = null) {
     this.closeAllModals();
+    // Remembered for the "More actions" route below, which hands it straight
+    // back to the same menu a right-click opens.
+    this._editorSegmentId = segmentId;
     if (this.canvasRenderer) {
       this.canvasRenderer.setPlayhead(null);
       this.canvasRenderer.setSnapGuide(null);
@@ -2317,9 +2781,49 @@ class KlndrApp {
         scopeNote.style.display = blocks > 1 ? 'block' : 'none';
       }
 
+      const scheduleBtn = document.getElementById('btnScheduleFromEditor');
+      if (scheduleBtn) scheduleBtn.onclick = () => void this.scheduleTaskNearNow(task);
+
+      const moreBtn = document.getElementById('btnBlockMoreActions');
+      if (moreBtn) {
+        // Everything on that menu except "Edit Details" is otherwise reachable
+        // only by right-clicking, which a finger cannot do. Rather than rebuild
+        // six actions here, hand off to the menu that already has them wired -
+        // it renders as a sheet at phone width.
+        moreBtn.onclick = () => this.openBlockActionsForTouch(task);
+      }
+
       modal.classList.add('active');
-      titleInput.focus();
+      // Not on touch: focusing the title raises the keyboard over the sheet
+      // before the person has said they want to rename anything.
+      if (!TimelineDOM.isTouchInput()) titleInput.focus();
     }
+  }
+
+  /**
+   * The block action list, opened from the editor rather than from a right
+   * click.
+   *
+   * The split point is the block's midpoint, because there is no click point to
+   * take it from - which is the same answer Phase 1 settled on, and it composes:
+   * split at the middle, then drag the seam to where you actually wanted it.
+   */
+  openBlockActionsForTouch(task) {
+    const segmentId = this._editorSegmentId;
+    const segment = segmentId ? TaskModel.segmentById(task, segmentId) : null;
+    const splitTimestamp = segment
+      ? segment.start_time + (segment.duration * 60) / 2
+      : null;
+
+    this.openContextMenu({
+      task,
+      segmentId,
+      splitTimestamp,
+      // Ignored at phone width, where the menu is a full-width sheet pinned to
+      // the bottom; still used on a tablet, where it stays a popup.
+      clientX: window.innerWidth / 2,
+      clientY: window.innerHeight / 2
+    });
   }
 
   openAccountModal() {
@@ -2347,6 +2851,29 @@ class KlndrApp {
       document.getElementById('settingsBucketHours').value = this.settings.bucketHours || 2;
       document.getElementById('settingsSnapToRuler').checked = Boolean(this.settings.snapToRuler);
       document.getElementById('settingsTickPercent').value = this.settings.tickPercent || 25;
+
+      // Applied on change rather than on save, because it is a device
+      // preference and never travels to the server with the rest of this form.
+      const orientationSelect = document.getElementById('settingsOrientation');
+      if (orientationSelect) {
+        orientationSelect.value = this.orientationPreference;
+        orientationSelect.onchange = () => this.setOrientationPreference(orientationSelect.value);
+      }
+
+      // The same setting as the header's 1/3/5/7 control, which only appears on
+      // a phone - this is how it is reached, and tested, at every other width.
+      const dayCountSelect = document.getElementById('settingsDayCount');
+      if (dayCountSelect) {
+        dayCountSelect.value = String(this.dayCount);
+        dayCountSelect.onchange = () => void this.setDayCount(Number(dayCountSelect.value));
+      }
+
+      const snapSelect = document.getElementById('settingsTouchSnap');
+      if (snapSelect) {
+        snapSelect.value = this.touchSnapPreference;
+        snapSelect.onchange = () => this.setTouchSnapPreference(snapSelect.value);
+      }
+
       modal.classList.add('active');
     }
   }
@@ -2396,7 +2923,7 @@ class KlndrApp {
 
     // Show where the cut will land while the menu covers the block.
     if (this.canvasRenderer) {
-      this.canvasRenderer.setCutMarker(canSplit ? this.cutMarkerXFor(task, segment, splitTimestamp) : null);
+      this.canvasRenderer.setCutMarker(canSplit ? this.cutMarkerFor(task, segment, splitTimestamp) : null);
     }
 
     if (lockOpt) {
@@ -2410,8 +2937,13 @@ class KlndrApp {
       unscheduleOpt.style.display = isScheduled ? 'flex' : 'none';
     }
 
-    menu.style.left = `${Math.min(window.innerWidth - 200, clientX)}px`;
-    menu.style.top = `${Math.min(window.innerHeight - 200, clientY)}px`;
+    // At phone width the stylesheet makes this a full-width sheet pinned to the
+    // bottom, so the coordinates are cleared rather than written: an inline
+    // left/top would beat any rule that is not !important, and the point of
+    // keeping responsive.css free of those is that it stays revertible.
+    const asSheet = document.body.dataset.layout === 'phone';
+    menu.style.left = asSheet ? '' : `${Math.min(window.innerWidth - 200, clientX)}px`;
+    menu.style.top = asSheet ? '' : `${Math.min(window.innerHeight - 200, clientY)}px`;
     menu.classList.add('active');
 
     if (editOpt) {
@@ -2431,10 +2963,12 @@ class KlndrApp {
     }
 
     if (splitOpt) {
-      splitOpt.onclick = async () => {
+      splitOpt.onclick = () => {
         if (!canSplit) return;
-        this.closeAllModals();
-        await this.splitSegmentAt(task, segmentId, splitTimestamp);
+        // Places the cut rather than making it: the menu is covering the block,
+        // so this is the first moment the person can actually see where the
+        // line falls.
+        this.beginSplitPlacement(task, segmentId, splitTimestamp);
       };
     }
 
@@ -2465,7 +2999,12 @@ class KlndrApp {
 
     const closeContext = () => {
       menu.classList.remove('active');
-      if (this.canvasRenderer) this.canvasRenderer.setCutMarker(null);
+      // This path does NOT go through closeAllModals, so it has to release the
+      // tooltip itself or a dismissed menu leaves one stranded on screen.
+      if (this.domRenderer) this.domRenderer.unpinTooltip();
+      // Not while a split is being placed: this fires on the very click that
+      // started it, and the marker is now that mode's, not this menu's.
+      if (this.canvasRenderer && !this.pendingSplit) this.canvasRenderer.setCutMarker(null);
       window.removeEventListener('click', closeContext);
     };
     setTimeout(() => window.addEventListener('click', closeContext), 10);
@@ -2473,27 +3012,259 @@ class KlndrApp {
 
   // Mirrors the clamping splitSegmentAt applies, so the marker cannot promise a
   // cut in a place the split would refuse.
-  cutMarkerXFor(task, segment, rawTimestamp) {
-    if (!segment) return null;
-    const dayIndex = this.days.findIndex(
-      d => segment.start_time >= d.startTimestamp && segment.start_time < d.startTimestamp + 86400
-    );
-    if (dayIndex === -1) return null;
-
+  /**
+   * Where a cut would actually land: snapped to whatever grid is in force, then
+   * pulled inside the block far enough that neither half is shorter than a
+   * segment is allowed to be.
+   *
+   * The marker, the confirm label and the commit all have to agree about this
+   * or the line is drawn somewhere the cut does not happen - so all three ask
+   * here rather than each doing the arithmetic. It used to be spelled out twice.
+   */
+  clampedCutTimestamp(segment, rawTimestamp) {
     const floor = TaskModel.MIN_SEGMENT_MINUTES * 60;
     const end = segment.start_time + segment.duration * 60;
-
     let cut = rawTimestamp;
     const snap = this.dragController ? this.dragController.snapMinutes() : 0;
     if (snap > 0) cut = PhysicsEngine.snapTimestamp(cut, snap);
-    cut = Math.max(segment.start_time + floor, Math.min(end - floor, cut));
+    return Math.max(segment.start_time + floor, Math.min(end - floor, cut));
+  }
 
+  dayIndexOfSegment(segment) {
+    return this.days.findIndex(
+      d => segment.start_time >= d.startTimestamp && segment.start_time < d.startTimestamp + 86400
+    );
+  }
+
+  cutMarkerFor(task, segment, rawTimestamp) {
+    if (!segment) return null;
+    const dayIndex = this.dayIndexOfSegment(segment);
+    if (dayIndex === -1) return null;
+
+    const cut = this.clampedCutTimestamp(segment, rawTimestamp);
     const day = this.days[dayIndex];
-    return {
-      x: this.canvasRenderer.timeToX((cut - day.startTimestamp) / 60),
-      top: this.canvasRenderer.dayIndexToY(dayIndex),
-      height: this.canvasRenderer.rowHeight
+    return this.canvasRenderer.cutRectFor(dayIndex, (cut - day.startTimestamp) / 60);
+  }
+
+  /**
+   * Show the cut and let it be moved before it happens.
+   *
+   * A right click already puts the line exactly where the pointer was, so this
+   * earns its keep mainly on touch, where the split point can only start at the
+   * block's midpoint - there is no click point to take it from. Dragging is how
+   * you say where you actually meant.
+   *
+   * Deliberately not a DragController drag type. It has no block to move and no
+   * physics to run; it is a mode that ends in one commit, and the controller is
+   * the riskiest file here. It borrows the controller's silence through
+   * isModalOrOverlayActive() and owns nothing else.
+   */
+  beginSplitPlacement(task, segmentId, rawTimestamp) {
+    const segment = TaskModel.segmentById(task, segmentId);
+    if (!segment || segment.duration < TaskModel.MIN_SEGMENT_MINUTES * 2) return;
+
+    const dayIndex = this.dayIndexOfSegment(segment);
+    if (dayIndex === -1) return;
+
+    this.endAnyPlacement();
+
+    // Set before closing anything: both the modal teardown and the context
+    // menu's own deferred window-click handler clear the cut marker, and the
+    // marker now belongs to this mode rather than to the menu that opened it.
+    // The click that chose "Split here" is still bubbling as this runs.
+    this.pendingSplit = {
+      task, segmentId, dayIndex,
+      timestamp: this.clampedCutTimestamp(segment, rawTimestamp)
     };
+    document.body.classList.add('is-placing-split');
+    this.closeAllModals();
+
+    this.bindPlacementSurface((x, y) => this.moveSplitPlacement(x, y));
+    this.renderSplitPlacement();
+  }
+
+  // ==========================================
+  // PLACEMENT MODES
+  // ==========================================
+  // Two things get positioned before they happen: where a block will be cut,
+  // and where a task will land on the calendar. Both are a MODE rather than a
+  // modal - the board stays visible and gets pointed at - so both borrow the
+  // same bottom bar, the same pointer plumbing, and the same silence from the
+  // drag controller. Only one can be active at a time, which is why they share
+  // one bar rather than owning two that must never both appear.
+
+  get placementActive() {
+    return Boolean(this.pendingSplit);
+  }
+
+  endAnyPlacement() {
+    if (this.pendingSplit) void this.endSplitPlacement(false);
+  }
+
+  /**
+   * The pointer plumbing both modes share.
+   *
+   * Capture phase, so it sees the pointer before anything that might still want
+   * to act on it. The pointer-type split is the important part: a mouse drags
+   * to position, because its wheel still scrolls the timeline - but a finger's
+   * move belongs to the scroll. At any useful zoom the day is several screens
+   * tall, and taking the move would make every time off screen unreachable, so
+   * touch positions by tapping and keeps its scrolling.
+   */
+  bindPlacementSurface(onMove) {
+    const surface = document.getElementById('timeline-workspace');
+    if (!surface) return;
+
+    this._placementMove = (e) => {
+      if (!this.placementActive) return;
+      if (e.type === 'pointermove') {
+        if (e.pointerType !== 'mouse') return;
+        // Otherwise the line would chase the mouse on its way to the button.
+        if (!(e.buttons & 1)) return;
+      }
+      // Never on touch: preventDefault here cannot stop a pan the browser has
+      // already claimed, and only risks the tap it is about to deliver.
+      if (e.pointerType === 'mouse') e.preventDefault();
+      onMove(e.clientX, e.clientY);
+    };
+
+    surface.addEventListener('pointerdown', this._placementMove, { capture: true });
+    surface.addEventListener('pointermove', this._placementMove, { capture: true, passive: false });
+    this._placementSurface = surface;
+  }
+
+  unbindPlacementSurface() {
+    if (this._placementSurface && this._placementMove) {
+      this._placementSurface.removeEventListener('pointerdown', this._placementMove, { capture: true });
+      this._placementSurface.removeEventListener('pointermove', this._placementMove, { capture: true });
+    }
+    this._placementSurface = null;
+    this._placementMove = null;
+  }
+
+  showPlacementBar(label, confirmText) {
+    const bar = document.getElementById('placementBar');
+    if (!bar) return;
+    const labelEl = document.getElementById('placementLabel');
+    if (labelEl) labelEl.textContent = label;
+    const confirmEl = document.getElementById('placementConfirm');
+    if (confirmEl) confirmEl.textContent = confirmText;
+    bar.classList.add('is-visible');
+  }
+
+  hidePlacementBar() {
+    const bar = document.getElementById('placementBar');
+    if (bar) bar.classList.remove('is-visible');
+  }
+
+  initPlacementBar() {
+    const confirm = document.getElementById('placementConfirm');
+    const cancel = document.getElementById('placementCancel');
+    if (confirm) confirm.addEventListener('click', () => void this.confirmPlacement());
+    if (cancel) cancel.addEventListener('click', () => void this.cancelPlacement());
+  }
+
+  async confirmPlacement() {
+    if (this.pendingSplit) return this.endSplitPlacement(true);
+  }
+
+  async cancelPlacement() {
+    if (this.pendingSplit) return this.endSplitPlacement(false);
+  }
+
+  /**
+   * Put a task on the calendar without a drag, near the current time.
+   *
+   * The discoverable route, and the fallback for anyone who never finds the
+   * long press. It commits rather than opening a mode: a real block that can be
+   * seen and then dragged beats a preview that has to be aimed, which is what
+   * the placement mode got wrong. PhysicsEngine flows it around whatever is
+   * already there, so "near now" means the first slot that actually fits, and
+   * undo is one press away if it is the wrong day entirely.
+   */
+  async scheduleTaskNearNow(task) {
+    if (!task || !this.dragController || !this.days.length) return;
+
+    const now = this.canvasRenderer ? this.canvasRenderer.nowPosition() : null;
+    const dayIndex = now ? now.dayIndex : 0;
+    const day = this.days[dayIndex];
+    const duration = task.default_timing || task.total_duration || 120;
+    const minutes = Math.max(0, Math.min(1440 - duration,
+      this.dragController.snapMinutesValue(now ? now.minutes : 9 * 60)));
+
+    // The same object a real drop builds, so a button and a drag land in the
+    // same place by the same physics.
+    const updates = this.dragController.resolveDragOutcome({
+      type: 'sidebar-drop',
+      taskId: task.id,
+      taskRef: task,
+      segmentId: null,
+      currentStartTime: day.startTimestamp + minutes * 60,
+      currentDayIndex: dayIndex,
+      initialDuration: duration,
+      currentDuration: duration
+    });
+    if (!updates.length) return;
+
+    this.closeAllModals();
+    this.setCalendarCollapsed(false);
+    await this.commitTaskUpdates(updates, { label: 'Schedule task' });
+
+    if (this.canvasRenderer) this.canvasRenderer.scrollToNow();
+    // Say where it went, using the flash the focus machinery already owns.
+    if (this.domRenderer) this.domRenderer.flashTask(task.id);
+  }
+
+  static clockLabel(date) {
+    const h = date.getHours() % 12 || 12;
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${h}:${m} ${date.getHours() < 12 ? 'AM' : 'PM'}`;
+  }
+
+  moveSplitPlacement(clientX, clientY) {
+    const pending = this.pendingSplit;
+    if (!pending) return;
+    const segment = TaskModel.segmentById(pending.task, pending.segmentId);
+    if (!segment) return;
+
+    const day = this.days[pending.dayIndex];
+    if (!day) return;
+
+    const { minutes } = this.canvasRenderer.pointToTimeDay(clientX, clientY);
+    pending.timestamp = this.clampedCutTimestamp(segment, day.startTimestamp + minutes * 60);
+    this.renderSplitPlacement();
+  }
+
+  renderSplitPlacement() {
+    const pending = this.pendingSplit;
+    if (!pending) return;
+    const segment = TaskModel.segmentById(pending.task, pending.segmentId);
+    if (!segment) return this.endSplitPlacement(false);
+
+    this.canvasRenderer.setCutMarker(
+      this.cutMarkerFor(pending.task, segment, pending.timestamp)
+    );
+
+    const left = Math.round((pending.timestamp - segment.start_time) / 60);
+    const right = segment.duration - left;
+    this.showPlacementBar(
+      `Cut at ${KlndrApp.clockLabel(new Date(pending.timestamp * 1000))} — ${left}m + ${right}m`,
+      'Split'
+    );
+  }
+
+  async endSplitPlacement(commit) {
+    const pending = this.pendingSplit;
+    this.pendingSplit = null;
+    document.body.classList.remove('is-placing-split');
+
+    this.unbindPlacementSurface();
+    this.hidePlacementBar();
+    if (this.canvasRenderer) this.canvasRenderer.setCutMarker(null);
+
+    if (commit && pending) {
+      await this.splitSegmentAt(pending.task, pending.segmentId, pending.timestamp);
+    }
   }
 
   // ==========================================
@@ -2823,12 +3594,16 @@ class KlndrApp {
   closeAllModals() {
     document.querySelectorAll('.modal-container, .context-menu').forEach(m => m.classList.remove('active'));
     this.selectedTask = null;
+    // The one place a pinned tooltip is released. Every menu and modal close
+    // funnels through here, so it cannot be left hanging on screen.
+    if (this.domRenderer) this.domRenderer.unpinTooltip();
     if (this.canvasRenderer) {
       this.canvasRenderer.setPlayhead(null);
       this.canvasRenderer.setSnapGuide(null);
       // Every menu and modal close funnels through here, so the cut marker
-      // cannot outlive the menu that placed it.
-      this.canvasRenderer.setCutMarker(null);
+      // cannot outlive the menu that placed it - unless a split placement has
+      // taken ownership of it, which is a mode rather than a menu.
+      if (!this.pendingSplit) this.canvasRenderer.setCutMarker(null);
     }
   }
 

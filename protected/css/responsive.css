@@ -1,0 +1,1271 @@
+/* Klndr Responsive Layer
+   ====================================================
+   Loaded after app.css, which is written for the desktop dual-pane workspace
+   and carries no width queries of its own. Everything here lives inside a
+   max-width or a pointer/hover query, so the desktop cascade is untouched by
+   construction and this whole file can be unlinked to revert the mobile work.
+
+   Overriding app.css's collapse rules needs care: .calendar-pane.is-collapsed
+   and .tasks-sidebar-pane.is-collapsed are declared !important, so the rule is
+   to make the state unreachable rather than to escalate the war. */
+
+/* ====================================================
+   LAYOUT
+   ====================================================
+   The bug this exists to fix: .calendar-pane is flex:1 1 0% with
+   overflow:hidden, which forces its automatic minimum size to 0, while
+   .tasks-sidebar-pane has a 340px basis and no flex-shrink:0. Shrink is
+   distributed by SCALED factor and the calendar's is 1 x 0 = 0, so the sidebar
+   absorbs the entire deficit and the calendar renders at literally 0px.
+
+   There is no flex-level fix. flex-shrink:0 on the sidebar zeroes both scaled
+   factors, so nothing shrinks and the calendar is STILL 0px, now overflowing.
+   min-width:0 changes nothing overflow:hidden had not already done. A real
+   min-width on the calendar just pushes the sidebar off the clipped edge.
+
+   Hence two different shapes rather than one that scales: a tablet still fits
+   both panes once the header is condensed; a phone never does, and shows one at
+   a time. app.js stamps which on body[data-layout]. */
+
+/* ---------------------------------------------------- TABLET: 768 - 1023px
+   min-height guards against a landscape phone, which is 844px wide and would
+   otherwise collect the two-pane tablet shape on top of the phone rules it has
+   already matched. */
+@media (min-width: 768px) and (max-width: 1023px) and (min-height: 501px) {
+  body {
+    padding: 10px 12px 12px;
+  }
+
+  .tasks-sidebar-pane {
+    width: 264px;
+    /* The one place flex-shrink:0 IS right: with the header condensed both
+       panes genuinely fit, so the sidebar should hold its width rather than
+       shrink toward the calendar. */
+    flex-shrink: 0;
+  }
+
+  /* ~700px of controls in a 52px no-wrap row inside an overflow:hidden pane
+     means the right-hand group is clipped, not scrolled to. Reclaim the space
+     the title was spending. */
+  .calendar-title {
+    display: none;
+  }
+
+  .calendar-pane-header {
+    padding: 0 10px;
+  }
+
+  .calendar-header-left {
+    gap: 6px;
+  }
+
+  /* Chip to dot: "Saving" is the least load-bearing text in the row. */
+  .sync-status-chip {
+    font-size: 0;
+    gap: 0;
+    padding: 0 6px;
+  }
+}
+
+/* ----------------------------------------------- PHONE: narrow OR short
+   Both clauses, because "phone" is not one measurement. On its side a phone is
+   844x390: wide enough to pass any max-width test written for a phone, and far
+   too short for the two-pane shape that test would hand it. Height is what runs
+   out in landscape, so it gets a clause of its own - and app.js's phone
+   matchMedia is written to exactly this pair so the two can never disagree.
+
+   The LANDSCAPE PHONE section further down puts back the things that only the
+   narrow case wanted, chiefly the two-row header. */
+@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+  body {
+    padding: 8px;
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+    /* Clear the fixed tab bar and the home indicator beneath it. */
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
+
+  .app-workspace-layout {
+    gap: 0;
+  }
+
+  /* One pane at a time. The collapsed pane is GONE rather than a 64px rail -
+     a rail is a desktop affordance and there is no room to spend on it.
+     `display` is not among the properties those .is-collapsed rules declare
+     !important, so this wins without escalating the war. */
+  .calendar-pane.is-collapsed {
+    display: none;
+  }
+
+  .tasks-sidebar-pane {
+    display: none;
+  }
+
+  /* .is-full-view is set by setCalendarCollapsed() through the existing
+     setFullView() call, so the pane that is showing is already the one flexed
+     to fill. On a phone it stays a flat list - see TasksSidebar.usesKanban. */
+  .tasks-sidebar-pane.is-full-view {
+    display: flex;
+  }
+
+  /* The header wants ~700px in one row, so give it two: date navigation on top,
+     the tools beneath it. The collapse chevron goes because the tab bar is now
+     the way between panes, and the title goes because the tab bar already
+     names the pane. */
+  .calendar-pane-header {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .calendar-header-left {
+    display: none;
+  }
+
+  .calendar-header-center,
+  .calendar-header-right {
+    flex: 1 0 100%;
+    justify-content: space-between;
+  }
+
+  .calendar-date-nav-group {
+    flex: 1;
+    justify-content: space-between;
+  }
+
+  .date-range-label {
+    flex: 1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sidebar-header {
+    padding: 0 10px;
+  }
+
+  /* A kanban column is 280px against a 375px screen. The flat list says more at
+     the same width; this is the belt to usesKanban's braces. */
+  .task-category-column {
+    min-width: 100%;
+    width: 100%;
+  }
+
+  /* ---- Modals become bottom sheets. Twelve lines, and all nine of them feel
+     native at once - the best value-per-line in this file. */
+  .modal-container {
+    align-items: flex-end;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-width: none;
+    max-height: 88dvh;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    border-bottom: none;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    animation: modalSheetUp 0.2s ease-out;
+  }
+
+  /* The dual-pane account modal is a sidebar layout; column-reverse keeps the
+     nav ABOVE the content it navigates, which is where a phone expects it. */
+  .modal-card-dual {
+    flex-direction: column-reverse;
+    height: 88dvh;
+    padding: 0;
+  }
+
+  .modal-nav-pane {
+    width: 100%;
+    flex-shrink: 0;
+    border-left: none;
+    border-bottom: 2px solid var(--color-border);
+  }
+
+  .modal-nav-list {
+    flex: 0 0 auto;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px;
+  }
+
+  .modal-pane-header {
+    padding: 0 14px;
+  }
+
+  .modal-pane-body {
+    padding: 16px 14px 20px;
+  }
+
+  .block-preview-card {
+    width: min(320px, 100%);
+  }
+
+  /* This editor is NOT a .modal-card - it is a bare floating card - so none of
+     the sheet rules above reach it, while .modal-container above HAS been
+     switched to align-items:flex-end. That left its action row resting on the
+     viewport's bottom edge, inside the gesture-bar strip.
+
+     Padding rather than a max-height with overflow: the icon, colour and
+     category pickers are absolutely positioned at bottom:64px and can be 220px
+     tall, so they overflow this card's top edge BY DESIGN. Any overflow rule
+     here would clip them, and take the badge circle at top:-8px with them. */
+  .floating-block-editor-wrapper {
+    width: 100%;
+    padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+    animation: modalSheetUp 0.2s ease-out;
+  }
+
+  /* Four buttons do not fit one 375px row. Wrapping beats shrinking them below
+     the 44px touch floor. */
+  .floating-block-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+/* A table cannot reflow, so it gets its own scroll rather than pushing the
+   layout wider than the screen. Applied on tablets too - it overflows there as
+   well - and set on the table itself so no markup has to change. */
+@media (max-width: 1023px) {
+  .admin-users-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+@keyframes modalSheetUp {
+  from { transform: translateY(14%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-card {
+    animation: none;
+  }
+}
+
+/* ====================================================
+   MOBILE TAB BAR
+   ====================================================
+   Fixed rather than a third flex row: the workspace does its own height maths
+   against body's content box, and body's padding-bottom already reserves this
+   strip, so staying out of that flow keeps the canvas geometry untouched. */
+.mobile-tabbar {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 900;
+  height: calc(56px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: #ffffff;
+  border-top: var(--border-thick);
+}
+
+.mobile-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  color: #9ca3af;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-tab .material-symbols-outlined {
+  font-size: 22px;
+}
+
+.mobile-tab.is-active {
+  color: #000000;
+}
+
+/* ====================================================
+   PHASE 1 — TOUCH INPUT
+   ====================================================
+   Keyed on how the user is actually pointing, never on viewport width: a
+   1280px touchscreen laptop needs every one of these rules and a 700px desktop
+   window needs none of them.
+
+   CSS asks what the DEVICE can do, via (hover: none) and (pointer: coarse),
+   because it has to be right before the first paint. The JS side asks what the
+   HAND just did, via body[data-input] which app.js restamps on every
+   pointerdown - so a hybrid machine follows the mouse back to its hover
+   affordances without a reflow. */
+
+/* touch-action is consulted when a gesture BEGINS and cannot be revoked once it
+   has, which is the whole reason the drag controller watches a candidate press
+   rather than claiming it outright. These declarations are what let a finger
+   scroll the timeline at all; the drag controller then refuses individual moves
+   once a long press has matured. */
+.timeline-workspace-container {
+  touch-action: pan-x pan-y;
+}
+
+/* The one that decides whether a block can be dragged at all.
+   A press starting on a block used to inherit the pan-x pan-y above, so Android
+   handed the gesture to the compositor at touch-start. Raising
+   body.is-touch-dragging 400ms later cannot take it back - touch-action is
+   latched when the gesture begins - and the preventDefault meant to compensate
+   is guarded on e.cancelable, which Chrome sets to false the moment a
+   compositor scroll is running. So the block stayed put and the timeline
+   scrolled. Declaring it here, before any gesture, is the only place the answer
+   can be given.
+
+   The cost is real: a finger starting on a block can no longer scroll. It
+   scrolls from the empty grid instead, which is most of a day, and a drag that
+   needs to reach off-screen time gets there by the edge auto-scroll. The
+   handles below have always had this bargain, which is exactly why THEY worked
+   on the device while block bodies did not. */
+@media (pointer: coarse) {
+  .timeline-task-card {
+    touch-action: none;
+  }
+}
+
+/* A press on a handle is unambiguous, so it never needs to be a scroll. */
+.resize-handle,
+.timeline-seam-handle {
+  touch-action: none;
+}
+
+.sidebar-tasks-scroll {
+  touch-action: pan-y;
+}
+
+/* Same bargain as the timeline above: the list is scrollable by default, and
+   only stands down once a long press has matured into a drag. Without this a
+   finger drags a card and scrolls the list underneath it at the same time,
+   because .sidebar-task-card has no touch-action of its own and inherits the
+   pan-y granted here. */
+body.is-touch-dragging .sidebar-tasks-scroll,
+body.is-touch-dragging .tasks-multicolumn-container {
+  touch-action: none;
+}
+
+.tasks-multicolumn-container,
+.sidebar-filter-bar {
+  touch-action: pan-x;
+}
+
+body {
+  /* Kills the 300ms double-tap-to-zoom delay app-wide. */
+  touch-action: manipulation;
+}
+
+@media (hover: none) {
+  /* Grips are revealed by hover, which touch does not have, so a finger cannot
+     find them at all. Show them outright and widen the target. */
+  .timeline-task-card .resize-handle {
+    opacity: 1;
+    width: 22px;
+  }
+
+  .timeline-task-card.has-seam-left .resize-handle-left,
+  .timeline-task-card.has-seam-right .resize-handle-right {
+    width: 30px;
+  }
+
+  /* Two 22px handles inside a 60px block leave nothing to grab for the move
+     itself, so below that width the block is moved and tapped, and its duration
+     is edited from the block editor instead. Honest beats cramped. */
+  /* Deliberately NOT display:none, which is what used to be here. A block that
+     loses its handles can never be dragged back to a bigger size - it is soft
+     locked at whatever it shrank to, and the block editor has no duration
+     control to rescue it with. Shrinking keeps the way out open at every size,
+     and the 30% cap above stops the pair from swallowing a small block. */
+  .timeline-task-card.is-xs .resize-handle,
+  .timeline-task-card.is-min .resize-handle {
+    opacity: 1;
+  }
+
+  .timeline-task-card .resize-handle {
+    width: min(22px, 30%);
+  }
+
+  body[data-orientation="vertical"] .timeline-task-card .resize-handle {
+    width: auto;
+  }
+
+  /* Seams arm by mouse proximity, which means they are not merely hard to hit
+     on touch - they are unreachable. Arm them all, permanently, and let the
+     reduced-opacity grip say they are available rather than active. */
+  .timeline-seam-handle {
+    pointer-events: auto;
+    width: 28px;
+  }
+
+  .timeline-seam-handle .seam-grip {
+    opacity: 0.55;
+    transform: scale(1);
+    animation: none;
+  }
+
+  .timeline-seam-handle.is-active .seam-grip {
+    opacity: 1;
+  }
+
+  /* The OS text-selection callout fires on exactly the long press that starts a
+     drag. */
+  .timeline-task-card,
+  .sidebar-task-card {
+    -webkit-touch-callout: none;
+  }
+}
+
+/* Hover transforms fire on tap and then stick, because nothing ever un-hovers
+   a finger. */
+@media (hover: none) {
+  .sidebar-task-card:hover,
+  .btn-sidebar-icon:hover,
+  .btn-icon-square:hover,
+  .btn-calendar-collapse:hover {
+    transform: none;
+  }
+}
+
+/* ====================================================
+   TOUCH TARGETS
+   ==================================================== */
+@media (pointer: coarse) {
+  .btn-nav-arrow,
+  .btn-zoom,
+  .btn-today {
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .btn-sidebar-icon,
+  .btn-icon-square {
+    width: 40px;
+    height: 40px;
+  }
+
+  .category-filter-pill {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+  }
+
+  .modal-close-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+
+  /* These two sit ON a block that can be 30px tall, so the visual can only grow
+     a little. The hit area grows instead, invisibly, past the control's own
+     bounds - the only technique that fits inside a block this small.
+
+     Both are already position:absolute, so the pseudo-element has a containing
+     block without any position declaration here - and adding one would drop
+     them out of their top/right placement. -8px around 28px reaches the 44px
+     guideline without spilling far enough to steal taps from the next card. */
+  .task-checkbox {
+    width: 28px;
+    height: 28px;
+  }
+
+  .task-checkbox::before,
+  .segment-pill::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+}
+
+/* ====================================================
+   TOUCH MODE CHIP
+   ====================================================
+   Only ever shown during a touch drag, by the drag controller. Sized and placed
+   for the thumb that is not dragging, and lifted clear of the home indicator. */
+.drag-mode-chip {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 3300;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 0 22px;
+  background: #ffffff;
+  border: var(--border-thick);
+  border-radius: 28px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  color: #000000;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  /* The gesture that opened this chip is still live; the chip must never be
+     mistaken for part of it. */
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+}
+
+.drag-mode-chip.is-ripple {
+  background: var(--accent-mint);
+}
+
+/* Revealed here, not up in the phone block: this rule and the `display: none`
+   above it have equal specificity, so whichever comes last wins - and the base
+   block is last. Source order is the whole mechanism. */
+@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+  .mobile-tabbar {
+    display: flex;
+  }
+}
+
+/* ====================================================
+   VERTICAL TIMELINE
+   ====================================================
+   Time runs DOWN and days are columns. app.js stamps body[data-orientation]
+   after TimelineCanvas.setOrientation, so the two can never disagree.
+
+   The canvas transposes itself; what cannot follow from that alone is anything
+   whose shape was chosen for a wide, short box - the card interior, the seam's
+   centring transform, and the resize cursors. Those are here. */
+
+body[data-orientation="vertical"] {
+  /* Resizing now moves an edge up or down. */
+  --resize-cursor: ns-resize;
+
+  /* How thick the two grab bars are: the HIT area, which is invisible. It is a
+     custom property rather than a media-query override on the handle because
+     the earlier attempt set `width`, which this section forces back to `auto`
+     at higher specificity, leaving them 14px thick on a phone. */
+  --v-handle: 14px;
+
+  /* How much room the grab bars are allowed to COST, which is a different
+     question and a much smaller number: the grip line is 4px and sits 4px in
+     from the edge, so nine is all the text has to keep clear of.
+
+     Reserving the whole 22px band at each end instead - which is what padding
+     against --v-handle did - spends 44px of a block that is routinely 65px
+     tall, and buys nothing: the band is transparent, a tap on it still reaches
+     the card underneath, and a drag on it that close to the edge is a resize,
+     which is what you were reaching for anyway.
+
+     Kept as the two measurements it is made of plus a pixel of air, so the
+     padding and the line can never drift apart. */
+  --v-grip-inset: 4px;
+  --v-grip-thick: 4px;
+  --v-grip-lane: calc(var(--v-grip-inset) + var(--v-grip-thick) + 1px);
+
+  /* The badge and the pill are smaller here than across a horizontal block for
+     one reason: a column is ~87px wide at three days and every pixel either of
+     them takes is a pixel of title. */
+  --v-badge: 18px;
+  --v-pill: 16px;
+
+  /* How thick the bottom grab band actually is on this block. Normally the
+     handle's own thickness; at a seam the handle widens, and anything measuring
+     itself against the band has to widen with it. */
+  --v-band: var(--v-handle);
+
+  /* How far the bar along the foot sits above the bottom edge. Small blocks
+     tuck it just clear of the grip LINE, because that is all the room there is.
+     Big ones clear the whole grab BAND - see the note on the bar below. */
+  --v-pill-lift: calc(var(--v-grip-lane) + 3px);
+}
+
+@media (hover: none) {
+  body[data-orientation="vertical"] {
+    --v-handle: 22px;
+  }
+}
+
+body[data-orientation="vertical"] .resize-handle {
+  cursor: ns-resize;
+  /* Handles run ACROSS the block, hugging its top and bottom edges. */
+  top: auto;
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  /* Never more than a third of the block. Two 22px bars in a 40px block leave
+     nothing to grab for a move, and shrinking them is the alternative to the
+     thing that must not happen - see the note on soft-locking below. */
+  height: min(var(--v-handle), 30%);
+}
+
+/* Pinned to the OUTER end of the band rather than floating in the middle of
+   it. The band is 22px on touch and the grip is 4px; centred, the line lands
+   9-13px inside the block, and everything else then has to start below 13px
+   instead of below 8px. Against a 65px block that is a line of title. */
+body[data-orientation="vertical"] .resize-handle-left {
+  top: 0;
+  align-items: flex-start;
+  padding-top: var(--v-grip-inset);
+}
+
+body[data-orientation="vertical"] .resize-handle-right {
+  bottom: 0;
+  align-items: flex-end;
+  padding-bottom: var(--v-grip-inset);
+}
+
+body[data-orientation="vertical"] .resize-handle-grip {
+  width: 46%;
+  min-width: 12px;
+  height: var(--v-grip-thick);
+  min-height: 0;
+}
+
+body[data-orientation="vertical"] .resize-handle:hover .resize-handle-grip {
+  transform: scaleY(1.4);
+}
+
+/* The widened handle at a shared boundary widens along the same axis it
+   occupies, which is now the vertical one. */
+body[data-orientation="vertical"] .timeline-task-card.has-seam-left .resize-handle-left,
+body[data-orientation="vertical"] .timeline-task-card.has-seam-right .resize-handle-right {
+  width: auto;
+  height: 26px;
+}
+
+/* Declared on the CARD, not on the handle, because the bar along the foot is
+   what has to know - and it reads this at the same element, so it picks up 26
+   rather than the token it would have inherited from the body. */
+body[data-orientation="vertical"] .timeline-task-card.has-seam-right {
+  --v-band: 26px;
+}
+
+/* Horizontally, a block at a seam pushes its own grip sideways so the seam's
+   grip and its own are both visible and both reachable. There is no room for
+   that trick down a column: the seam handle is centred on the shared boundary
+   and reaches 14px into this block, so moving this block's grip clear of it
+   would put the line 23px in - straight through the first line of the title.
+
+   So the line goes instead. The band stays, and stays widened, so resizing this
+   block alone is still a real target just past the seam; what is gone is a
+   second white dash 4px from a boundary that already has one on it. */
+body[data-orientation="vertical"] .timeline-task-card.has-seam-left .resize-handle-left .resize-handle-grip,
+body[data-orientation="vertical"] .timeline-task-card.has-seam-right .resize-handle-right .resize-handle-grip {
+  display: none;
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-xs .resize-handle,
+body[data-orientation="vertical"] .timeline-task-card.is-min .resize-handle {
+  width: auto;
+  height: 9px;
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-min .resize-handle-grip {
+  height: 2px;
+  width: 30%;
+}
+
+/* The seam is a horizontal line between two stacked blocks, so it is centred on
+   the boundary along Y instead of X. JS writes `width` for its lane extent (see
+   seamRectFor's crossProp); the thickness it used to get from `width` has to
+   come from `height` now. */
+body[data-orientation="vertical"] .timeline-seam-handle {
+  transform: translateY(-50%);
+  width: auto;
+  height: 18px;
+  cursor: row-resize;
+}
+
+@media (hover: none) {
+  body[data-orientation="vertical"] .timeline-seam-handle {
+    height: 28px;
+  }
+}
+
+body[data-orientation="vertical"] .seam-grip {
+  width: 54%;
+  min-width: 16px;
+  height: 6px;
+  min-height: 0;
+}
+
+body[data-orientation="vertical"].is-seam-dragging,
+body[data-orientation="vertical"].is-seam-dragging * {
+  cursor: row-resize !important;
+}
+
+/* ---- Card interior.
+
+   A horizontal block has three fixtures: a badge pinned to the start edge, a
+   pill in the far top corner, and a grip in the middle of each resize edge.
+   Turning that a quarter turn is not quite enough on its own, because the two
+   edges a vertical block can spare are the LEFT one and the BOTTOM one - its
+   top and bottom belong to the grab bars. So the badge takes the left edge and
+   the pill takes the foot of the block.
+
+   What makes that work is how narrow a grip is: it covers the middle 46% of an
+   edge and no more, which leaves 27% free at each end. The badge and the pill
+   live in that free space. They are allowed to overlap the grab BAND, which is
+   invisible and does not care; they never overlap the grip, which is neither.
+   That is the same bargain the horizontal badge has always made across the top
+   of a block.
+
+   Then the tiers, in the order things earn their place. A column is 87px wide
+   at three days, so this ladder is shorter than the horizontal one and reaches
+   the title sooner:
+
+     is-min   icon and pill, one row, no text
+     is-xs    ONE LINE OF TITLE, and the badge steps aside to make room for it
+     is-sm    badge back, title over two lines, pill along the foot, lock
+     is-md    + the category
+     is-lg    + the full time range, wrapped
+
+   is-xs dropping the badge is the point of the whole ladder: a name you can
+   read beats an icon that only repeats what the block's colour already said. */
+body[data-orientation="vertical"] .timeline-task-card {
+  padding:
+    var(--v-grip-lane)
+    6px
+    calc(var(--v-pill-lift) + var(--v-pill) + 3px)
+    5px;
+  /* Anchored to the start of the block, which is its start time. */
+  justify-content: flex-start;
+}
+
+/* Only the TITLE steps around the badge. The category is a caption for the
+   whole block and reads better as one - starting it at the left edge above the
+   icon gives it the full width of the column instead of the 47px left over
+   beside one, and the same is true of the time range underneath. The badge then
+   sits in the gutter the title alone has opened, which is what the drawings
+   show. */
+body[data-orientation="vertical"] .timeline-task-card .task-title-text {
+  padding-left: calc(var(--v-badge) + 4px);
+}
+
+/* A 32px block is 28px inside its border, and a 9px lane at each end leaves
+   ten - which is less than a line of type. The line and its inset both come
+   down here so the title has somewhere to be; a shorter block has a shorter
+   grip in every drawing of this, and it is still 3px of white on a colour. */
+body[data-orientation="vertical"] .timeline-task-card.is-xs,
+body[data-orientation="vertical"] .timeline-task-card.is-min {
+  --v-grip-inset: 2px;
+  --v-grip-thick: 3px;
+  /* Restated, not inherited. A custom property's var()s are substituted where
+     the property is DECLARED, so --v-grip-lane resolved against the body's 4px
+     and 4px and arrived here as the token stream `calc(4px + 4px + 1px)` -
+     still nine, with both overrides above it doing nothing at all. */
+  --v-grip-lane: calc(var(--v-grip-inset) + var(--v-grip-thick) + 1px);
+}
+
+/* Big blocks have the room, so they spend it. Nine pixels of clearance is what
+   a 60px block can afford and no more; at is-md and is-lg the same nine leaves
+   the grab bars sitting right on top of the text for no reason at all.
+
+   The bar along the foot moves further than the text does, and for a second
+   reason: at these tiers it clears the whole grab BAND rather than just the
+   grip line. A 16px bar tucked 9px up covers thirteen of the band's twenty-two
+   pixels, and it covers them with a button - so the lower half of the bar was
+   toggling completion where a drag was meant, and the handle had nine pixels of
+   itself left to be grabbed by. Lifting the bar past the band gives each of
+   them the whole of its own target back. */
+body[data-orientation="vertical"] .timeline-task-card.is-md {
+  /* Twelve, not fourteen: is-md starts at 104px and a seamed one spends 48 of
+     them below the text, so the two extra pixels up here are the difference
+     between two lines of title and one and a half. */
+  --v-grip-lane: 12px;
+  --v-pill-lift: calc(var(--v-band) + 3px);
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-lg {
+  --v-grip-lane: 18px;
+  --v-pill-lift: calc(var(--v-band) + 3px);
+}
+
+/* One line, centred between the two grips, with the pill beside it. */
+body[data-orientation="vertical"] .timeline-task-card.is-xs {
+  padding: var(--v-grip-lane) calc(var(--v-pill) + 8px) var(--v-grip-lane) 5px;
+  justify-content: center;
+  /* The base rule centres the content box, which horizontally means centring an
+     icon in a sliver of a block. Here there is a line of text in it, and text
+     starts at the left. */
+  align-items: stretch;
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-min {
+  padding: 0;
+}
+
+/* Restores the text the base stylesheet hides at this tier: horizontally is-xs
+   means a block a few pixels wide, and vertically it means a short one that is
+   still a whole column across. */
+body[data-orientation="vertical"] .timeline-task-card.is-xs .task-content-inner {
+  display: flex;
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-xs .task-title-text {
+  -webkit-line-clamp: 1;
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+/* The base stylesheet only has to drop the category at is-sm, because every
+   tier below that hides the content block whole. This one does not, so it has
+   to say so: eight pixels of uppercase category above a single line of title
+   is two half-legible lines where there was room for one legible one. */
+body[data-orientation="vertical"] .timeline-task-card.is-xs .task-category-text {
+  display: none;
+}
+
+/* One line, not two, and it is the bar along the foot that decides it: is-sm
+   starts at 60px, of which 41 are border, grip lanes and pill, so a second line
+   would be cut through the middle of its own descenders at the bottom of the
+   tier. Two lines arrive at is-md, where there is room for them. */
+body[data-orientation="vertical"] .timeline-task-card.is-sm .task-title-text {
+  -webkit-line-clamp: 1;
+  font-size: 11.5px;
+  line-height: 1.15;
+}
+
+/* A narrow column has no room for a badge AND a title side by side - at seven
+   days the whole block is 34px across, and the grip alone takes sixteen of
+   them. Everything that lives at an end of a grip row goes, and the title,
+   which does not, stays.
+
+   The lock goes with the badge for the same arithmetic: at 34px it sits from
+   16px to 29px and the grip runs 9px to 25px, so one is drawn over the other.
+   It is the most disposable mark on a block - a 13px padlock at 0.65 opacity
+   restating a property the editor spells out. */
+body[data-orientation="vertical"] .timeline-task-card.is-short {
+  padding-left: 5px;
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-short .task-badge-circle,
+body[data-orientation="vertical"] .timeline-task-card.is-short .task-lock-indicator {
+  display: none;
+}
+
+/* No badge, no gutter for one. is-xs sends the badge away for the title's sake
+   and a narrow column has no room for either; both would otherwise be left
+   indenting the title past a circle that is not there. */
+body[data-orientation="vertical"] .timeline-task-card.is-xs .task-title-text,
+body[data-orientation="vertical"] .timeline-task-card.is-short .task-title-text {
+  padding-left: 0;
+}
+
+/* and with the lock gone the bar can have the corner it was keeping clear. */
+body[data-orientation="vertical"] .timeline-task-card.is-short .segment-pill {
+  right: 6px;
+}
+
+/* The bar along the foot survives a narrow column; the DOT at the end of a grip
+   row does not. A grip keeps the middle 46% and a 12px dot wants the last 35%
+   of 34px, so on the two smallest tiers of a seven-day column they are drawn
+   over each other, and no amount of shrinking either one fixes it - the dot's
+   left edge is already past the middle of the block.
+
+   So it goes. Completion is not lost with it: a finished block is greyed and
+   struck through by .is-completed, which is the only part of the signal that is
+   legible at 34x21 anyway, and one tap opens an editor with a real control in
+   it. Everything from is-sm up still gets the bar. */
+body[data-orientation="vertical"] .timeline-task-card.is-short.is-min .segment-pill,
+body[data-orientation="vertical"] .timeline-task-card.is-short.is-xs .segment-pill {
+  display: none;
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-short.is-xs {
+  padding-right: 5px;
+}
+
+/* ---- Badge: down the left edge, level with the text it belongs to. */
+body[data-orientation="vertical"] .timeline-task-card .task-badge-circle {
+  top: var(--v-grip-lane);
+  left: 5px;
+  transform: none;
+  width: var(--v-badge);
+  height: var(--v-badge);
+}
+
+body[data-orientation="vertical"] .timeline-task-card .task-badge-circle .task-icon-symbol {
+  font-size: 11px;
+}
+
+/* Level with the TITLE, not with the top of the content block - the two are the
+   same thing until the category line appears above it and pushes the title
+   down. A badge floating beside a category caption reads as belonging to it. */
+body[data-orientation="vertical"] .timeline-task-card.is-md .task-badge-circle,
+body[data-orientation="vertical"] .timeline-task-card.is-lg .task-badge-circle {
+  top: calc(var(--v-grip-lane) + 12px);
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-xs .task-badge-circle {
+  display: none;
+}
+
+/* is-min is the one tier with no text at all, so the icon is the only thing
+   left that says what the block is. It comes back, at the left end of the grip
+   row rather than under the grips. */
+body[data-orientation="vertical"] .timeline-task-card.is-min:not(.is-short) .task-badge-circle {
+  display: flex;
+  top: 50%;
+  left: 4px;
+  transform: translateY(-50%);
+  /* A five-minute block is 11px tall at the default zoom, and a fixed 15px
+     circle hangs out of both ends of it. Height leads and the circle follows,
+     because down here the block's height is the only measurement that is
+     actually scarce - it is a full column wide either way. */
+  height: min(15px, 76%);
+  width: auto;
+  aspect-ratio: 1;
+  /* Without this the shrink-to-fit width falls back to the icon's min-content
+     size and the circle comes out 13px wide by 5px tall. */
+  min-width: 0;
+  overflow: hidden;
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-min:not(.is-short) .task-badge-circle .task-icon-symbol {
+  font-size: 9px;
+}
+
+/* ---- Pill: a bar across the foot of the block.
+
+   Anchored between the two edges rather than centred on the block, because the
+   lock sits in the bottom right corner and a centred bar wide enough to look
+   deliberate would run straight into it. Anchoring also means the bar grows
+   with the column instead of staying a fixed fraction of it. */
+body[data-orientation="vertical"] .timeline-task-card .segment-pill {
+  top: auto;
+  bottom: var(--v-pill-lift);
+  left: 6px;
+  right: 26px;
+  width: auto;
+  min-width: 0;
+  height: var(--v-pill);
+  padding: 0;
+  border-radius: 6px;
+  transform: none;
+}
+
+body[data-orientation="vertical"] .timeline-task-card .segment-pill:hover {
+  transform: scaleY(1.08);
+}
+
+/* The 26px on the right is a gutter for the lock, and only some blocks have
+   one: it is dropped on a split, and on anything the person has unlocked. When
+   there is nothing to dodge the bar takes the corner back and comes out centred
+   on the block, which is what it should have looked like all along. */
+body[data-orientation="vertical"] .timeline-task-card:not(:has(.task-lock-indicator)) .segment-pill {
+  right: 6px;
+}
+
+/* Too small for a bar. Back to a dot, at the free end of the grip row - the
+   badge has the other end at is-min, and is out of the way at is-xs. */
+body[data-orientation="vertical"] .timeline-task-card.is-xs .segment-pill,
+body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill {
+  top: 50%;
+  bottom: auto;
+  left: auto;
+  right: 4px;
+  width: var(--v-pill);
+  height: var(--v-pill);
+  border-radius: 5px;
+  transform: translateY(-50%);
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-xs .segment-pill:hover,
+body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill:hover {
+  transform: translateY(-50%) scale(1.12);
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill {
+  height: min(13px, 68%);
+  width: auto;
+  aspect-ratio: 1;
+}
+
+/* A 14px glyph in a 16px box, which is how the tick was drawn, is a tick with
+   its ends against the walls. The box is smaller here than the 18px one this
+   was sized for, and it reads as a control rather than as a checked control. */
+body[data-orientation="vertical"] .timeline-task-card .segment-pill-check {
+  font-size: 11px;
+}
+
+/* "1/2" is three glyphs in a 16px square. Which block this is survives; how
+   many there are goes, and comes back at is-sm where the bar has the width for
+   it. See buildPill for why the label is two spans. */
+body[data-orientation="vertical"] .timeline-task-card.is-xs .segment-pill-total,
+body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill-total {
+  display: none;
+}
+
+/* ---- Lock: the bottom right corner, level with the bottom grip and clear of
+   the pill's right edge. The base stylesheet drops it at is-sm because a short
+   WIDE block has no corner to spare; a column does. */
+body[data-orientation="vertical"] .timeline-task-card.is-sm:not(.is-short) .task-lock-indicator {
+  display: block;
+}
+
+body[data-orientation="vertical"] .timeline-task-card .task-lock-indicator {
+  bottom: 2px;
+  right: 5px;
+}
+
+/* ---- The time range is the last thing to arrive, and only the tallest tier
+   has the height for it. Below that the block has already spent its lines on
+   the title and the category, and half a range cut off by an ellipsis says
+   less than no range at all. */
+body[data-orientation="vertical"] .timeline-task-card.is-md .task-meta-text {
+  display: none;
+}
+
+body[data-orientation="vertical"] .timeline-task-card.is-lg .task-meta-text {
+  display: block;
+  white-space: normal;
+  line-height: 1.3;
+  /* Half a pixel under the category, and chosen by measurement rather than by
+     eye: at 10px the middle line is 48px wide against 47px of column and loses
+     the M off "1:30 PM" to the ellipsis. */
+  font-size: 9.5px;
+}
+
+/* A clock reading is one word. One line each, and none of them may break: left
+   to wrap freely in 47px of column, "11:00 AM - 1:30 PM (150m)" comes out as
+   four lines with a bare "11:00" at the top of them. */
+body[data-orientation="vertical"] .timeline-task-card.is-lg .task-meta-text > span {
+  display: block;
+  white-space: nowrap;
+}
+
+/* Two lines is the base clamp and it is right here too: a column that shows a
+   third line of title is a column showing less of everything else. */
+body[data-orientation="vertical"] .timeline-task-card.is-lg .task-title-text {
+  -webkit-line-clamp: 2;
+}
+
+/* ====================================================
+   DAY COUNT
+   ====================================================
+   1 / 3 / 5 / 7 days on screen.
+
+   Two conditions, and it needs both. VERTICAL, because that is where the day
+   count decides how wide a column - and so how wide a block - can be: seven
+   days on a phone give each column 44px, which cannot carry a title, and one
+   press of "3" takes it to 99px, which can. Horizontally the count sets a
+   lane's HEIGHT and a block keeps its full width whatever the count, so the
+   time-zoom group is the better use of the space there.
+
+   And PHONE, which is a room measurement rather than a principle: the phone
+   header is already two rows, so the swap is free. A portrait tablet is
+   vertical too and would benefit, but its header is a single row that measures
+   488px of content into 439px of space once this group is in it - the deficit
+   lands on the date label, which truncates to "Mon..." - so it keeps the
+   one-row shape Phase 2 gave it. Every layout that does not show this control
+   reaches the same setting from Calendar Options. */
+.calendar-daycount-group {
+  display: none;
+}
+
+.day-count-btn.is-active {
+  background: var(--accent-mint);
+  border-color: #000;
+  box-shadow: inset 0 0 0 1px #000;
+}
+
+@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+  body[data-orientation="vertical"] .calendar-daycount-group {
+    display: flex;
+    flex: 1;
+  }
+
+  /* The undo/redo group shares the zoom group's class and must survive this:
+     undo is worth more on a phone than a Fit button, and pinch already covers
+     the zoom being displaced. */
+  body[data-orientation="vertical"] .calendar-timezoom-group {
+    display: none;
+  }
+
+  .day-count-btn {
+    flex: 1;
+  }
+}
+
+/* ====================================================
+   BLOCK ACTIONS ON TOUCH
+   ====================================================
+   A right-click reaches six actions on this block. A finger has no second
+   button and its long press is already spent on starting a drag, so on touch
+   the tap opens the editor and the editor opens the same menu - rather than the
+   six being rebuilt as a second set of buttons that would then have to be kept
+   in step with the first. */
+.btn-block-more {
+  display: none;
+}
+
+body[data-input="touch"] .btn-block-more {
+  /* inline-block, not inline-flex. A <button> centres its content in an
+     anonymous internal box that ONLY flex and grid displays replace - and its
+     two siblings declare no display at all, so they get that centring for free
+     while inline-flex was leaving this label stranded at the top. inline-block
+     restores the native behaviour instead of rebuilding it out of align-items
+     and justify-content. */
+  display: inline-block;
+}
+
+/* The menu itself becomes a sheet at phone width. app.js clears the inline
+   left/top it would otherwise position it with, so none of this needs
+   !important to win. */
+@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+  .context-menu {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    min-width: 0;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    border-bottom: none;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.18);
+    animation: modalSheetUp 0.2s ease-out;
+  }
+
+  /* 44px rows: this is now a primary control surface, not a secondary menu. */
+  .context-menu-item {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-menu {
+    animation: none;
+  }
+}
+
+/* ====================================================
+   LANDSCAPE PHONE
+   ====================================================
+   Short and wide. The phone block above gave the header two rows because 375px
+   cannot hold one; here there are 844px and only 390px of height, so the
+   trade reverses - width is the cheap axis and every pixel of height counts.
+
+   Time also runs ACROSS again here (app.js resolves orientation from the
+   portrait query, not from the layout mode), because 844px is a good home for a
+   day and 390px is not. */
+@media (max-height: 500px) and (orientation: landscape) {
+  body {
+    padding: 6px 8px;
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: calc(44px + env(safe-area-inset-bottom));
+  }
+
+  .calendar-pane-header {
+    height: 44px;
+    flex-wrap: nowrap;
+    padding: 0 8px;
+    gap: 8px;
+  }
+
+  .calendar-header-center,
+  .calendar-header-right {
+    flex: 0 1 auto;
+  }
+
+  .calendar-date-nav-group {
+    flex: 0 1 auto;
+  }
+
+  /* A 56px bar is 14% of this screen's height. */
+  .mobile-tabbar {
+    height: calc(44px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-tab {
+    flex-direction: row;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .mobile-tab .material-symbols-outlined {
+    font-size: 18px;
+  }
+
+  /* A bottom sheet with 390px to work in should not also spend it on padding. */
+  .modal-card {
+    max-height: 92dvh;
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .modal-card-dual {
+    height: 92dvh;
+  }
+}
+
+/* The split bar spans the width on a phone rather than floating: at 375px a
+   centred bar with a label and two buttons is wider than the screen. Clears the
+   tab bar, which is fixed at the same edge. */
+@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+  .placement-bar {
+    left: 8px;
+    right: 8px;
+    transform: none;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    justify-content: space-between;
+  }
+
+  .placement-label {
+    white-space: normal;
+    font-size: 12px;
+  }
+}
+
+/* The Tasks tab doubles as the way out of a drag that started in the list:
+   once the pane has been handed over there is no list left to drop back into.
+   Only ever set while such a drag is in flight. */
+.mobile-tab.is-drop-target {
+  background: var(--accent-mint);
+  color: #000000;
+  box-shadow: inset 0 2px 0 0 #000000;
+}
+
+/* ====================================================
+   REORDER ARROWS
+   ====================================================
+   Only here. A long press on a row is spoken for at this width - it hands the
+   task to the calendar - so the ordering needs a control of its own, and this
+   is the only place that trade was made. */
+@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+  .btn-task-nudge {
+    display: flex;
+  }
+
+  /* Room for the pair, and for the checkbox above them. The meta line is the
+     one that reaches this corner. */
+  .sidebar-task-card {
+    min-height: 88px;
+  }
+
+  .sidebar-task-card .task-meta-text {
+    padding-right: 86px;
+  }
+}
+
+@media (pointer: coarse) {
+  /* Small visual on a card that is itself a drag target, so the hit area grows
+     past the button instead - the same technique the checkbox uses. */
+  .btn-task-nudge::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+}

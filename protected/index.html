@@ -2,13 +2,26 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) report real
+         numbers; without it every inset resolves to 0 on notched iOS. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f2ffec" />
     <title>klndr — Think of it. Schedule it.</title>
     <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
     <link rel="icon" href="/assets/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <!-- Served from /assets rather than from /protected, because the browser
+         fetches it to decide whether the app is installable and that fetch is
+         not carrying the session. -->
+    <link rel="manifest" href="/assets/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="klndr" />
 
     <!-- The boot overlay draws the lockup in ElmsSans Black before anything
          else is on screen, so the face has to be in flight from the first
@@ -66,6 +79,7 @@
 
     <link rel="stylesheet" href="/public/css/common.css" />
     <link rel="stylesheet" href="/protected/css/app.css" />
+    <link rel="stylesheet" href="/protected/css/responsive.css" />
 
     <!-- Third party and render-blocking, which on a cold start is the single
          longest thing between the request and a first paint. Loaded async so
@@ -400,7 +414,7 @@
                 >
               </button>
             </div>
-            <div class="calendar-zoom-group">
+            <div class="calendar-zoom-group calendar-timezoom-group">
               <button
                 type="button"
                 class="btn-zoom"
@@ -429,6 +443,16 @@
                   >add</span
                 >
               </button>
+            </div>
+            <!-- How many days are on screen. A range rather than a
+                 magnification - it decides what gets fetched - so it is a
+                 separate control from the zoom group beside it, and on a phone
+                 it takes that group's place. -->
+            <div class="calendar-zoom-group calendar-daycount-group">
+              <button type="button" class="btn-zoom day-count-btn" data-days="1" aria-pressed="false" title="One day">1</button>
+              <button type="button" class="btn-zoom day-count-btn" data-days="3" aria-pressed="false" title="Three days">3</button>
+              <button type="button" class="btn-zoom day-count-btn" data-days="5" aria-pressed="false" title="Five days">5</button>
+              <button type="button" class="btn-zoom day-count-btn" data-days="7" aria-pressed="false" title="Full week">7</button>
             </div>
             <button
               type="button"
@@ -644,6 +668,30 @@
         </div>
       </aside>
     </main>
+
+    <!-- Phone-only pane switcher. Both buttons drive setCalendarCollapsed(), the
+         same method the desktop chevron uses, so there is no second state
+         machine to keep in step with the first. Hidden above 767px. -->
+    <nav class="mobile-tabbar" id="mobileTabbar" aria-label="Switch pane">
+      <button
+        type="button"
+        class="mobile-tab is-active"
+        id="mobileTabCalendar"
+        aria-pressed="true"
+      >
+        <span class="material-symbols-outlined">calendar_month</span>
+        <span class="mobile-tab-label">Calendar</span>
+      </button>
+      <button
+        type="button"
+        class="mobile-tab"
+        id="mobileTabTasks"
+        aria-pressed="false"
+      >
+        <span class="material-symbols-outlined">checklist</span>
+        <span class="mobile-tab-label">Tasks</span>
+      </button>
+    </nav>
 
     <!-- ====================================================
        3. MODALS & FLOATING EDITOR
@@ -1040,6 +1088,27 @@
 
         <!-- Action Buttons below floating card -->
         <div class="floating-block-actions">
+          <!-- The way a finger reaches lock, split, remove and delete, all of
+               which a mouse gets from the right-click menu this hands off to.
+               Hidden unless the last pointer was a touch. -->
+          <button
+            type="button"
+            class="btn-modal-secondary btn-block-more"
+            id="btnBlockMoreActions"
+            title="More actions for this block"
+          >
+            More…
+          </button>
+          <!-- The second way onto the calendar, for when the editor is
+               already open. The row button in the tasks list is the first. -->
+          <button
+            type="button"
+            class="btn-modal-secondary"
+            id="btnScheduleFromEditor"
+            title="Put this task on the calendar"
+          >
+            Schedule
+          </button>
           <button
             type="button"
             class="btn-modal-secondary"
@@ -1071,6 +1140,38 @@
           </button>
         </div>
         <form id="settingsForm" class="modal-form">
+          <!-- Sits apart from the rest of this form on purpose: the others
+               are account settings saved to the server, while orientation
+               belongs to this device and is applied the moment it changes. -->
+          <div class="form-row">
+            <label for="settingsOrientation">Calendar Direction</label>
+            <select id="settingsOrientation">
+              <option value="auto">Automatic (Default)</option>
+              <option value="horizontal">Horizontal — time across</option>
+              <option value="vertical">Vertical — time down</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label for="settingsTouchSnap">Snap While Dragging (Touch)</label>
+            <select id="settingsTouchSnap">
+              <option value="auto">Follow the setting below</option>
+              <option value="off">Never snap</option>
+              <option value="tick">Snap to ticks</option>
+              <option value="bucket">Snap to header buckets</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label for="settingsDayCount">Days Shown</label>
+            <select id="settingsDayCount">
+              <option value="1">1 day</option>
+              <option value="3">3 days</option>
+              <option value="5">5 days</option>
+              <option value="7">Full week</option>
+            </select>
+          </div>
+
           <div class="form-row">
             <label for="settingsBucketHours">Header Bucket Size</label>
             <select id="settingsBucketHours">
@@ -1278,6 +1379,19 @@
     </div>
 
     <!-- Context Menu (All Google Icons, Uniform Sizing) -->
+    <!-- Shown only while a split is being placed. Fixed to the bottom centre
+         rather than anchored to the block, because the block is exactly what
+         the person is trying to look at. -->
+    <div class="placement-bar" id="placementBar">
+      <span class="placement-label" id="placementLabel"></span>
+      <button type="button" class="btn-modal-secondary" id="placementCancel">
+        Cancel
+      </button>
+      <button type="button" class="btn-modal-primary" id="placementConfirm">
+        Place
+      </button>
+    </div>
+
     <div class="context-menu" id="taskContextMenu">
       <div class="context-menu-item" id="ctxEdit">
         <span class="material-symbols-outlined">edit</span>

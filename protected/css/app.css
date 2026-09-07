@@ -21,6 +21,7 @@
 
 body {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -578,7 +579,7 @@ body {
   pointer-events: auto;
   border: var(--border-card);
   border-radius: var(--radius-block);
-  padding: 6px 32px 6px 36px; /* right side clears the status checkbox */
+  padding: 6px 32px 6px 36px; /* right side clears the completion pill */
   cursor: grab;
   user-select: none;
   display: flex;
@@ -659,13 +660,13 @@ body {
   border-radius: 5px;
 }
 
+/* buildCard has never put a checkbox on a timeline block - the pill carries
+   completion here, and only the sidebar card has a checkbox - so the three
+   .task-checkbox tiers that used to sit in this list were doing nothing. */
 .timeline-task-card.is-min .task-badge-circle,
 .timeline-task-card.is-sm .task-lock-indicator,
 .timeline-task-card.is-xs .task-lock-indicator,
-.timeline-task-card.is-min .task-lock-indicator,
-.timeline-task-card.is-sm .task-checkbox,
-.timeline-task-card.is-xs .task-checkbox,
-.timeline-task-card.is-min .task-checkbox {
+.timeline-task-card.is-min .task-lock-indicator {
   display: none;
 }
 
@@ -1601,8 +1602,14 @@ body.is-seam-dragging * {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
+  width: 100%;
   height: 100vh;
+  height: 100dvh;
+  /* The container is the only thing between a modal and the screen edge, so
+     the inset lives here rather than on every card. max() keeps the 16px
+     gutter on hardware with no notch to report. */
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
   display: none;
   align-items: center;
   justify-content: center;
@@ -1637,9 +1644,22 @@ body.is-seam-dragging * {
   z-index: 2;
   animation: modalPop 0.15s ease-out;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
   will-change: transform, opacity;
   transform: translateZ(0);
+}
+
+/* Found by the Phase 6 audit: modalPop drives every modal on the app and the
+   floating block editor, and was the one animation with no reduced-motion
+   guard - the phone's sheet animation that replaces it has had one since it was
+   written. Opening a dialog should not move for someone who asked motion not
+   to. */
+@media (prefers-reduced-motion: reduce) {
+  .modal-card,
+  .floating-block-editor-wrapper {
+    animation: none;
+  }
 }
 
 @keyframes modalPop {
@@ -2601,8 +2621,16 @@ body.is-seam-dragging * {
   color: #ffffff;
 }
 
-.segment-pill-check {
-  font-size: 14px;
+/* Two classes, not one, and that is the whole point of the selector.
+
+   Google's Material Symbols stylesheet declares `.material-symbols-outlined
+   { font-size: 24px }` and is linked AFTER this file, so a one-class rule here
+   ties on specificity and loses on order. This tick has therefore been drawing
+   at 24px inside an 18px pill since the pill was written - the only icon in the
+   app that loses that race, because every other one is sized by a rule with a
+   parent in front of it. Nothing else needs the treatment; measured. */
+.segment-pill .segment-pill-check {
+  font-size: 12px;
   font-weight: 800;
   color: transparent;
 }
@@ -2731,4 +2759,86 @@ body.is-seam-dragging * {
   font-size: 11px;
   font-weight: 700;
   color: #713f12;
+}
+
+/* ====================================================
+   SPLIT PLACEMENT
+   ====================================================
+   The cut is drawn on the canvas by setCutMarker; this is the bar that says
+   where it landed and commits it. Fixed to the bottom centre rather than
+   anchored near the block, because the block is the thing being looked at — and
+   because at 30px tall there is nowhere on it to put a control.
+
+   No backdrop: the point of the mode is that the board stays visible while the
+   line is moved across it. Drags, seam arming and tooltips are held off in JS
+   instead, through the same gate a modal uses. */
+.placement-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: var(--border-thick);
+  border-radius: var(--radius-card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  z-index: 2100;
+}
+
+.placement-bar.is-visible {
+  display: flex;
+}
+
+.placement-label {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* The cut line is the only thing that should read as interactive here. */
+body.is-placing-split .timeline-task-card {
+  cursor: crosshair;
+}
+
+
+
+/* ====================================================
+   REORDER ARROWS (tasks list)
+   ====================================================
+   Hidden by default: on a desktop the list is reordered by dragging a row, and
+   two buttons per row would be clutter earning nothing. responsive.css reveals
+   them at phone width, where that drag now means "put this on the calendar". */
+.btn-task-nudge {
+  display: none;
+  position: absolute;
+  bottom: 8px;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1.5px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: #000000;
+  padding: 0;
+}
+
+.btn-task-nudge.is-up { right: 46px; }
+.btn-task-nudge.is-down { right: 8px; }
+
+.btn-task-nudge .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.btn-task-nudge:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-task-nudge:hover:not(:disabled) {
+  background: var(--accent-mint);
 }

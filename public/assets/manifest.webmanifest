@@ -1,0 +1,30 @@
+{
+  "name": "klndr — Think of it. Schedule it.",
+  "short_name": "klndr",
+  "description": "A calendar you drag your work onto.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f2ffec",
+  "theme_color": "#f2ffec",
+  "icons": [
+    {
+      "src": "/assets/app-icon.png",
+      "sizes": "1144x1144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/app-icon.png",
+      "sizes": "1144x1144",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/assets/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

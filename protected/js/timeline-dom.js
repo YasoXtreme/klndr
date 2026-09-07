@@ -79,6 +79,8 @@ class TimelineDOM {
 
   // Blocks shrink with their duration and the zoom level. Rather than clipping
   // every element at once, drop them in order of least importance.
+  // Named for what it measures: room along the axis the text reads across,
+  // which is the MAIN axis - duration - in both orientations. See buildCard.
   static sizeClassForWidth(width) {
     if (width >= 160) return 'is-lg';
     if (width >= 104) return 'is-md';
@@ -98,6 +100,15 @@ class TimelineDOM {
   // TOOLTIP
   // ==========================================
 
+  /**
+   * Tooltips and the focus dim are hover affordances, and a tap synthesizes
+   * mouseover - so without this gate they fire on touch, where a 750ms rest is
+   * indistinguishable from the long press that starts a drag.
+   */
+  static isTouchInput() {
+    return document.body.dataset.input === 'touch';
+  }
+
   initTooltip() {
     this.tooltipEl = document.createElement('div');
     this.tooltipEl.className = 'timeline-tooltip';
@@ -106,6 +117,7 @@ class TimelineDOM {
 
     // Delegated so the listener count does not scale with the number of blocks.
     this.blockLayer.addEventListener('mouseover', (e) => {
+      if (TimelineDOM.isTouchInput()) return;
       const card = e.target.closest('.timeline-task-card[data-tip-title]');
       if (!card || card.classList.contains('is-dragging')) return;
       this.queueTooltip(card);
@@ -199,14 +211,55 @@ class TimelineDOM {
     tip.classList.toggle('is-below', top < margin);
     if (top < margin) top = cardRect.bottom + 10;
 
+    // At phone width the context menu is a sheet across the bottom of the
+    // screen, and "below the block" for a block low in the day means behind it.
+    // Whatever the block's own position wanted, the tooltip goes above the
+    // sheet - it is there to be read alongside it.
+    const sheet = document.querySelector('.context-menu.active');
+    if (sheet) {
+      const sheetRect = sheet.getBoundingClientRect();
+      if (sheetRect.height && top + tipRect.height > sheetRect.top - 6) {
+        top = Math.max(margin, sheetRect.top - tipRect.height - 10);
+        tip.classList.toggle('is-below', top >= cardRect.bottom);
+      }
+    }
+
     tip.style.left = `${Math.round(left)}px`;
     tip.style.top = `${Math.round(top)}px`;
     tip.style.visibility = 'visible';
   }
 
+  /**
+   * Hold the tooltip open until something explicitly lets it go.
+   *
+   * A long press on Android raises the OS callout at about 500ms, which this
+   * app answers with its own context menu - and everything that follows from
+   * that was closing the tooltip the press had just opened at 400ms: the menu's
+   * own handler, then closeAllModals, then endDrag when the finger came up. The
+   * tooltip was correct for about a tenth of a second.
+   *
+   * Pinning it is better than teaching each of those three not to fire. They
+   * are all right to close a HOVER tooltip; what they are wrong about is
+   * closing one that is deliberately part of the open menu.
+   */
+  pinTooltip(card) {
+    if (!card || !card.dataset.tipTitle) return;
+    this._tooltipPinned = true;
+    this.showTooltip(card);
+  }
+
+  unpinTooltip() {
+    if (!this._tooltipPinned) return;
+    this._tooltipPinned = false;
+    this.hideTooltip();
+  }
+
   hideTooltip() {
     clearTimeout(this._tooltipTimer);
     clearTimeout(this._tooltipCloseTimer);
+    // A pinned tooltip belongs to whatever pinned it, and only that thing may
+    // take it away - see unpinTooltip, which closeAllModals calls.
+    if (this._tooltipPinned) return;
     this._tooltipOpen = false;
     if (this.tooltipEl) this.tooltipEl.style.display = 'none';
   }
@@ -222,8 +275,14 @@ class TimelineDOM {
     const workspace = document.getElementById('timeline-workspace');
     if (!workspace) return;
 
-    workspace.addEventListener('mousemove', (e) => this.updateSeamArming(e.clientX, e.clientY));
-    workspace.addEventListener('mouseleave', () => {
+    workspace.addEventListener('pointermove', (e) => {
+      // Proximity arming is a mouse affordance: it needs a pointer that hovers
+      // without pressing, which touch does not have. Touch gets every seam
+      // armed up front instead - see .is-touch-input in the stylesheet.
+      if (e.pointerType !== 'mouse') return;
+      this.updateSeamArming(e.clientX, e.clientY);
+    });
+    workspace.addEventListener('pointerleave', () => {
       if (!this.isDragActive()) this.armSeam(null);
     });
   }
@@ -233,13 +292,11 @@ class TimelineDOM {
   updateSeamArming(clientX, clientY) {
     if (this.isDragActive() || !this.seamRecords.length) return;
 
-    const rect = this.canvas.canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const { main, cross } = this.canvas.clientToLocal(clientX, clientY);
 
     const hit = this.seamRecords.find(seam =>
-      Math.abs(x - seam.boundaryX) <= TimelineDOM.SEAM_ARM_RADIUS &&
-      y >= seam.top && y <= seam.bottom
+      Math.abs(main - seam.main) <= TimelineDOM.SEAM_ARM_RADIUS &&
+      cross >= seam.crossStart && cross <= seam.crossEnd
     );
 
     this.armSeam(hit || null);
@@ -272,6 +329,7 @@ class TimelineDOM {
 
   initFocusHighlight() {
     this.blockLayer.addEventListener('mouseover', (e) => {
+      if (TimelineDOM.isTouchInput()) return;
       const card = e.target.closest('.timeline-task-card');
       if (!card || this.isDragActive()) return;
       this.focusSegment(card);
@@ -422,15 +480,14 @@ class TimelineDOM {
     return { placements, seams };
   }
 
+  // One line, and it is the whole reason transposing the timeline does not
+  // touch buildCard or renderProjection: they consume {left,top,width,height}
+  // and never learn which axis carried the time.
   geometryFor(placement) {
-    const x1 = this.canvas.timeToX(placement.startMin);
-    const x2 = this.canvas.timeToX(placement.endMin);
-    return {
-      left: x1,
-      width: Math.max(10, x2 - x1),
-      top: this.canvas.dayIndexToY(placement.dayIdx) + 5,
-      height: this.canvas.rowHeight - 10
-    };
+    return this.canvas.rectFor(placement.dayIdx, placement.startMin, placement.endMin, {
+      crossInset: TimelineCanvas.LANE_INSET,
+      minMain: TimelineCanvas.MIN_BLOCK_MAIN
+    });
   }
 
   // ==========================================
@@ -455,12 +512,12 @@ class TimelineDOM {
       const el = this.buildSeamHandle(seam);
       this.blockLayer.appendChild(el);
 
-      const top = this.canvas.dayIndexToY(seam.dayIdx) + 5;
+      const rect = this.canvas.seamRectFor(seam.dayIdx, seam.boundaryMin);
       this.seamRecords.push({
         el,
-        boundaryX: this.canvas.timeToX(seam.boundaryMin),
-        top,
-        bottom: top + this.canvas.rowHeight - 10,
+        main: rect.main,
+        crossStart: rect.crossStart,
+        crossEnd: rect.crossEnd,
         leftCard: seam.left.cardEl,
         rightCard: seam.right.cardEl
       });
@@ -474,8 +531,19 @@ class TimelineDOM {
     const isSplit = segTotal > 1;
     const startLabel = this.canvas.formatTimeLabel(placement.startMin);
     const endLabel = this.canvas.formatTimeLabel(placement.endMin);
-    const sizeClass = TimelineDOM.sizeClassForWidth(geo.width);
-    const isShort = geo.height < 58;
+    // The tier measures the MAIN axis - the one time runs along - and the short
+    // test measures the CROSS axis. Horizontally that is width and height, which
+    // is what this has always done; vertically the two swap over.
+    //
+    // Getting this the wrong way round is what made vertical blocks unusable.
+    // The tier ladder exists to shrink a block's chrome as the block shrinks,
+    // and vertically it was reading the COLUMN - a function of the day count
+    // that never changes with duration - so the chrome never shrank. An 80px
+    // block spent 74px of itself on padding and showed nothing at all.
+    const mainSize = this.canvas.mainIsX ? geo.width : geo.height;
+    const crossSize = this.canvas.mainIsX ? geo.height : geo.width;
+    const sizeClass = TimelineDOM.sizeClassForWidth(mainSize);
+    const isShort = crossSize < 58;
     const collapsed = TimelineDOM.hidesContent(sizeClass, isShort);
 
     const card = document.createElement('div');
@@ -532,9 +600,23 @@ class TimelineDOM {
     titleEl.textContent = task.title || 'Untitled Task';
     content.appendChild(titleEl);
 
+    // Three spans, not one string. A column is under 50px of text, and left to
+    // wrap freely "11:00 AM - 1:30 PM (150m)" breaks mid-clock: the first line
+    // reads "11:00" with no meridiem on it. Split at the joins the eye already
+    // uses and the vertical stylesheet can give each part its own line, while a
+    // horizontal block still reads all three as one sentence.
     const metaEl = document.createElement('div');
     metaEl.className = 'task-meta-text';
-    metaEl.textContent = `${startLabel} - ${endLabel} (${duration}m)`;
+    for (const [cls, text] of [
+      ['task-meta-start', startLabel],
+      ['task-meta-end', ` - ${endLabel}`],
+      ['task-meta-dur', ` (${duration}m)`]
+    ]) {
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      metaEl.appendChild(span);
+    }
     content.appendChild(metaEl);
 
     card.appendChild(content);
@@ -564,26 +646,38 @@ class TimelineDOM {
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.hideTooltip();
+      // A mouse has hover, so the tooltip has already had its turn and the menu
+      // is landing right on top of the pointer. A finger has neither: this
+      // gesture is the only way to read a block too small to print its own
+      // title, so the tooltip comes WITH the menu. Pinned after the menu opens,
+      // never before - openContextMenu runs closeAllModals on its way in, and
+      // that is exactly what unpins.
+      const withTip = TimelineDOM.isTouchInput();
+      if (!withTip) this.hideTooltip();
       this.onTaskInteraction('openContextMenu', {
         task,
         segmentId: segment.id,
         // Captured HERE, while the pointer is still over the cut point. It will
         // have moved to the menu by the time anything is clicked.
-        splitTimestamp: this.timestampAtClientX(e.clientX, placement.dayIdx),
+        splitTimestamp: this.timestampAtPoint(e.clientX, e.clientY, placement.dayIdx),
         clientX: e.clientX,
         clientY: e.clientY
       });
+      // Now that the menu is up and has finished unpinning whatever came
+      // before. Pinning is what carries the tooltip past the finger coming off
+      // the glass, which ends the drag this press also armed - and endDrag
+      // closes tooltips.
+      if (withTip) this.pinTooltip(card);
     });
 
     return card;
   }
 
-  timestampAtClientX(clientX, dayIdx) {
+  timestampAtPoint(clientX, clientY, dayIdx) {
     const day = (this.state.days || [])[dayIdx];
     if (!day) return null;
-    const rect = this.canvas.canvas.getBoundingClientRect();
-    return day.startTimestamp + this.canvas.xToMinutes(clientX - rect.left) * 60;
+    const { main } = this.canvas.clientToLocal(clientX, clientY);
+    return day.startTimestamp + this.canvas.mainToTime(main) * 60;
   }
 
   /**
@@ -605,7 +699,17 @@ class TimelineDOM {
     if (isSplit) {
       const label = document.createElement('span');
       label.className = 'segment-pill-label';
-      label.textContent = `${segIdx + 1}/${segTotal}`;
+      // Two spans so the denominator can be dropped on its own. "1/2" at 9px in
+      // a 16px square is three glyphs where there is room for one, and which
+      // block you are looking at is the half that carries the information -
+      // how many there are in total is on the tooltip and in the editor.
+      const idx = document.createElement('span');
+      idx.className = 'segment-pill-index';
+      idx.textContent = String(segIdx + 1);
+      const total = document.createElement('span');
+      total.className = 'segment-pill-total';
+      total.textContent = `/${segTotal}`;
+      label.append(idx, total);
       pill.appendChild(label);
       pill.setAttribute('aria-label',
         `Block ${segIdx + 1} of ${segTotal}, ${segment.completed ? 'done' : 'not done'}`);
@@ -616,7 +720,9 @@ class TimelineDOM {
 
     // Must swallow its own pointer events: on a narrow block the pill covers
     // most of the surface, and a missed click would start a drag instead.
-    pill.addEventListener('mousedown', (e) => e.stopPropagation());
+    // pointerdown, not mousedown - drags now begin on the pointer event, and a
+    // mousedown guard would arrive after the drag it was meant to prevent.
+    pill.addEventListener('pointerdown', (e) => e.stopPropagation());
     pill.addEventListener('click', (e) => {
       e.stopPropagation();
       this.onTaskInteraction('toggleSegmentComplete', {
@@ -652,9 +758,12 @@ class TimelineDOM {
     el.dataset.rightSegmentId = seam.right.segment.id;
     el.dataset.dayIndex = seam.dayIdx;
 
-    el.style.left = `${this.canvas.timeToX(seam.boundaryMin)}px`;
-    el.style.top = `${this.canvas.dayIndexToY(seam.dayIdx) + 5}px`;
-    el.style.height = `${this.canvas.rowHeight - 10}px`;
+    const rect = this.canvas.seamRectFor(seam.dayIdx, seam.boundaryMin);
+    el.style.left = `${rect.left}px`;
+    el.style.top = `${rect.top}px`;
+    // Which property runs across the lane depends on the orientation; the CSS
+    // translate that centres the handle on the boundary follows the same rule.
+    el.style[rect.crossProp] = `${rect.crossSize}px`;
 
     const grip = document.createElement('span');
     grip.className = 'seam-grip';
@@ -757,6 +866,19 @@ class TimelineDOM {
     }
     ghost.style.display = 'block';
     return ghost;
+  }
+
+  // Point at a block that just appeared somewhere the eye was not looking.
+  // Reuses the focus flash rather than inventing a second highlight.
+  flashTask(taskId) {
+    this.blockLayer.querySelectorAll(`.timeline-task-card[data-task-id="${taskId}"]`)
+      .forEach(el => {
+        el.classList.remove('is-focus-flash');
+        // Reading offsetWidth restarts the animation; without it a second flash
+        // on the same element does nothing at all.
+        void el.offsetWidth;
+        el.classList.add('is-focus-flash');
+      });
   }
 
   clearProjection() {
