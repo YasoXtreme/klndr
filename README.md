@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="brand/png/klndr-lockup-horizontal.png" alt="klndr" width="320">
+<img src="brand/png/klndr-lockup-card.png" alt="klndr" width="380">
 
 **A fluid time-blocking workspace.**
 

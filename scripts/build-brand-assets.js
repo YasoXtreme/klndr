@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
- * Builds the icons the app serves out of the brand kit in `brand/`.
+ * Builds the derived brand assets out of the kit in `brand/`: the icons the app
+ * serves, and the carded lockup the README uses.
  *
  * Run it after changing anything in brand/png:
  *   node scripts/build-brand-assets.js
+ *
+ * It writes one file back into brand/png (the card). That is not circular - the
+ * card is composed from klndr-lockup-horizontal.png and never from itself, so
+ * re-running is idempotent.
  *
  * No dependencies on purpose. klndr ships four production packages, and pulling
  * in an image toolchain for two resizes and an .ico would be the largest thing
@@ -27,6 +32,13 @@ const SRC = path.join(ROOT, 'brand', 'png');
 const OUT = path.join(ROOT, 'public', 'assets');
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+// The card around the README lockup. The kit renders at 2x, so these are the
+// app's own tokens doubled: --radius-xl 20px, --border-thick 2.5px, and a
+// 28px breathing space around the mark.
+const CARD_PADDING = 56;
+const CARD_RADIUS = 40;
+const CARD_BORDER = 5;
 
 const CRC_TABLE = (() => {
   const table = new Int32Array(256);
@@ -231,6 +243,116 @@ function flatten(img, [br, bg, bb]) {
 }
 
 // ==========================================
+// Card
+// ==========================================
+
+/** Is (x, y) inside the rounded rect at (x0, y0, w, h) with corner radius r? */
+function insideRoundedRect(x, y, x0, y0, w, h, r) {
+  const x1 = x0 + w;
+  const y1 = y0 + h;
+  if (x < x0 || x > x1 || y < y0 || y > y1) return false;
+  if (r <= 0) return true;
+  // Clamp to the straight core: on an edge one delta is zero and the test
+  // reduces to the edge itself, in a corner both land on the arc's centre.
+  const cx = Math.min(Math.max(x, x0 + r), x1 - r);
+  const cy = Math.min(Math.max(y, y0 + r), y1 - r);
+  const dx = x - cx;
+  const dy = y - cy;
+  return dx * dx + dy * dy <= r * r;
+}
+
+/**
+ * A rounded card: opaque `fill` inside a hard `border`, transparent outside.
+ *
+ * This exists for surfaces klndr does not control. Every mark in the kit is
+ * black on transparency, so anything that renders one on a dark ground - a
+ * GitHub README in dark mode, a dark email client - gets black on black. The
+ * card supplies the light ground the marks were drawn for, and it has to be
+ * baked into the pixels because the places that need it are the same places
+ * that strip CSS.
+ *
+ * Coverage is sampled rather than tested once per pixel. A hard border on a
+ * 40px radius is exactly where a binary inside/outside test shows its stairs.
+ */
+function roundedCard(width, height, radius, border, fill, borderColor) {
+  const data = Buffer.alloc(width * height * 4);
+  const SAMPLES = 4;
+  const total = SAMPLES * SAMPLES;
+  const step = 1 / SAMPLES;
+  const origin = step / 2;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let outer = 0;
+      let inner = 0;
+
+      for (let sy = 0; sy < SAMPLES; sy++) {
+        const py = y + origin + sy * step;
+        for (let sx = 0; sx < SAMPLES; sx++) {
+          const px = x + origin + sx * step;
+          if (insideRoundedRect(px, py, 0, 0, width, height, radius)) outer++;
+          if (
+            insideRoundedRect(
+              px, py,
+              border, border,
+              width - border * 2, height - border * 2,
+              radius - border
+            )
+          ) inner++;
+        }
+      }
+
+      if (outer === 0) continue;
+
+      const alpha = outer / total;
+      const fillWeight = inner / total;
+      // The border is whatever the outline covers that the fill does not.
+      const borderWeight = Math.max(0, alpha - fillWeight);
+      const o = (y * width + x) * 4;
+
+      // Average in premultiplied space, then divide the coverage back out -
+      // straight-alpha averaging would drag the transparent outside into the
+      // corners as a light halo, the same trap resize() avoids.
+      for (let c = 0; c < 3; c++) {
+        data[o + c] = Math.round(
+          (fill[c] * fillWeight + borderColor[c] * borderWeight) / alpha
+        );
+      }
+      data[o + 3] = Math.round(alpha * 255);
+    }
+  }
+
+  return { width, height, data };
+}
+
+/** Source-over composite of `src` onto `dst` at (dx, dy). Both straight RGBA. */
+function drawOnto(dst, src, dx, dy) {
+  for (let y = 0; y < src.height; y++) {
+    const ty = y + dy;
+    if (ty < 0 || ty >= dst.height) continue;
+    for (let x = 0; x < src.width; x++) {
+      const tx = x + dx;
+      if (tx < 0 || tx >= dst.width) continue;
+
+      const s = (y * src.width + x) * 4;
+      const d = (ty * dst.width + tx) * 4;
+      const sa = src.data[s + 3] / 255;
+      if (sa === 0) continue;
+
+      const da = dst.data[d + 3] / 255;
+      const outA = sa + da * (1 - sa);
+      for (let c = 0; c < 3; c++) {
+        dst.data[d + c] = Math.round(
+          (src.data[s + c] * sa + dst.data[d + c] * da * (1 - sa)) / outA
+        );
+      }
+      dst.data[d + 3] = Math.round(outA * 255);
+    }
+  }
+  return dst;
+}
+
+// ==========================================
 // ICO
 // ==========================================
 
@@ -300,7 +422,12 @@ function load(name) {
 
 function write(name, buf) {
   fs.writeFileSync(path.join(OUT, name), buf);
-  console.log(`  ${name.padEnd(22)} ${String(buf.length).padStart(7)} bytes`);
+  console.log(`  ${name.padEnd(24)} ${String(buf.length).padStart(7)} bytes  public/assets`);
+}
+
+function writeKit(name, buf) {
+  fs.writeFileSync(path.join(SRC, name), buf);
+  console.log(`  ${name.padEnd(24)} ${String(buf.length).padStart(7)} bytes  brand/png`);
 }
 
 function main() {
@@ -322,6 +449,24 @@ function main() {
   // because Apple asks for no transparency.
   const appIcon = load('klndr-app-icon.png');
   write('apple-touch-icon.png', encodePng(flatten(resize(appIcon, 180, 180), [255, 255, 255])));
+
+  // The carded lockup. Everything above serves the app, where the page owns the
+  // background; this one serves the README, where it does not.
+  //
+  // The card is WHITE rather than mint, by the kit's own rule that the plate
+  // takes the colour its surface is not: these exports are mint-plated, and a
+  // mint card would collapse the badge into a bare outline.
+  const lockup = load('klndr-lockup-horizontal.png');
+  const card = roundedCard(
+    lockup.width + CARD_PADDING * 2,
+    lockup.height + CARD_PADDING * 2,
+    CARD_RADIUS,
+    CARD_BORDER,
+    [255, 255, 255],
+    [0, 0, 0]
+  );
+  drawOnto(card, lockup, CARD_PADDING, CARD_PADDING);
+  writeKit('klndr-lockup-card.png', encodePng(card));
 }
 
 main();

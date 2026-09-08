@@ -21,6 +21,11 @@ SVGs draw the "k" as live text in ElmsSans and reference `ElmsSans.ttf` (kept in
 ## PNG (raster, transparent)
 `png/` holds each mark rendered at 2x with a transparent background.
 
+One file there is generated rather than exported: `klndr-lockup-card.png`, the
+horizontal lockup on an opaque white card. It is the only mark in the kit with a
+background of its own, and it is built by `scripts/build-brand-assets.js` from
+`klndr-lockup-horizontal.png` — see **Uncontrolled surfaces** below.
+
 ## Animated state
 `klndr-logo-animation.html` — self-contained (needs `ElmsSans.ttf` beside it). Bounce-in: plate lands, wordmark wipes out from behind it, tagline fades up. Respects `prefers-reduced-motion`. Copy the `.klndr-anim` block straight into a page.
 
@@ -42,6 +47,29 @@ handing them to print.
 In the product the lockup is not an SVG at all: `.klndr-lockup` in
 `public/css/common.css` draws the plate and wordmark from markup, so it inherits the
 `@font-face` the page already loads and can be animated a part at a time.
+
+## Uncontrolled surfaces
+
+Every mark here is black on transparency, which assumes a light background. On a
+dark one — a GitHub README in dark mode, a dark email client — the wordmark is
+black on black and simply disappears. The `k` plate survives, so what is left
+reads as a logo that lost its name.
+
+Two marks answer this, and they answer different questions:
+
+| | Use when |
+| --- | --- |
+| `klndr-mark-inverse` | you want the mark to sit *on* the dark surface, adopting it |
+| `klndr-lockup-card` | you want the lockup to bring its own ground, unchanged |
+
+The card is the right answer wherever the surface is not merely dark but
+*unknown*, or where you cannot style it. A GitHub README is both: the theme is
+the reader's, and GitHub strips `style` attributes out of the HTML in a markdown
+file, so a `<div>` with a background will not render. The card has to be baked
+into the pixels, which is why it is a build step and not CSS.
+
+It is white rather than mint, by the rule below: the lockup's own plate is mint
+in these exports, and mint on mint collapses the badge into a bare outline.
 
 ## The plate takes the colour its surface is not
 
@@ -72,5 +100,10 @@ node scripts/build-brand-assets.js
 ```
 
 That writes `favicon-16.png`, `favicon-32.png`, `favicon-48.png`,
-`favicon.ico` (16/32/48) and `apple-touch-icon.png` into `public/assets/`. Re-run
-it after changing anything in `png/`.
+`favicon.ico` (16/32/48) and `apple-touch-icon.png` into `public/assets/`, and
+`klndr-lockup-card.png` back into `png/`. Re-run it after changing anything in
+`png/`.
+
+The card is written into its own source directory, which is not circular: it is
+composed from `klndr-lockup-horizontal.png` and never from itself, so re-running
+the build is idempotent.
