@@ -566,7 +566,7 @@ class TimelineDOM {
     card.style.top = `${geo.top}px`;
     card.style.width = `${geo.width}px`;
     card.style.height = `${geo.height}px`;
-    card.style.backgroundColor = task.color || '#9ae659';
+    KlndrTheme.paint(card, task.color || '#9ae659');
 
     card.dataset.tipTitle = task.title || 'Untitled Task';
     card.dataset.tipMeta = `${startLabel} – ${endLabel} · ${duration}m`;
@@ -634,7 +634,7 @@ class TimelineDOM {
     if (task.is_locked !== false && !isSplit) {
       const lockPill = document.createElement('div');
       lockPill.className = 'task-lock-indicator';
-      lockPill.innerHTML = '<span class="material-symbols-outlined" style="font-size: 13px; color: #000;">lock</span>';
+      lockPill.innerHTML = '<span class="material-symbols-outlined" style="font-size: 13px; color: var(--on-color-ink);">lock</span>';
       card.appendChild(lockPill);
     }
 
@@ -828,7 +828,7 @@ class TimelineDOM {
         ghost.style.top = `${geo.top}px`;
         ghost.style.width = `${geo.width}px`;
         ghost.style.height = `${geo.height}px`;
-        ghost.style.backgroundColor = task.color || '#9ae659';
+        KlndrTheme.paint(ghost, task.color || '#9ae659');
         ghost.classList.toggle('is-active-task', update.id === activeTaskId);
 
         const label = ghost.firstChild;

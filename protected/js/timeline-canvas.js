@@ -75,6 +75,18 @@ class TimelineCanvas {
     this._chromeRafId = null;
     this._layoutRafId = null;
 
+    // The grid is pixels, not DOM, so none of theme.css reaches it by
+    // inheritance. It is read out once per theme instead of once per frame:
+    // getComputedStyle is a layout read, and this one would otherwise land in
+    // the middle of a drag at 60fps.
+    this._palette = null;
+    this._onThemeChange = () => {
+      this._palette = null;
+      this.requestRender();
+      this.requestChromeRender();
+    };
+    window.addEventListener('klndr:themechange', this._onThemeChange);
+
     // When the last scroll happened, which requestLayout() needs: a mobile
     // browser collapses its URL bar THROUGH a scroll, so a viewport height
     // measured mid-gesture is not the one it will settle at.
@@ -730,6 +742,40 @@ class TimelineCanvas {
   // RENDER ENTRY POINTS
   // ==========================================
 
+  /**
+   * Theme colours for the canvas, keyed by the role they play rather than by
+   * the token they came from. Cached until klndr:themechange says otherwise.
+   */
+  palette() {
+    if (this._palette) return this._palette;
+
+    const css = getComputedStyle(document.documentElement);
+    const read = (name, fallback) => {
+      const value = css.getPropertyValue(name).trim();
+      return value || fallback;
+    };
+
+    this._palette = {
+      gridBg: read('--canvas-grid-bg', '#ffffff'),
+      laneToday: read('--canvas-lane-today', '#fbfff8'),
+      lineMinor: read('--canvas-line-minor', '#e5e7eb'),
+      lineMajor: read('--canvas-line-major', '#9ca3af'),
+      lineLane: read('--canvas-line-lane', '#000000'),
+      rulerBg: read('--canvas-ruler-bg', '#ffffff'),
+      rulerShiftBg: read('--canvas-ruler-shift-bg', '#f2ffec'),
+      gutterBg: read('--canvas-gutter-bg', '#f9fafb'),
+      gutterToday: read('--canvas-gutter-today', '#e6fbd8'),
+      tickMinor: read('--canvas-tick-minor', '#9ca3af'),
+      now: read('--canvas-now', '#ef4444'),
+      guide: read('--success-guide', '#16a34a'),
+      ink: read('--ink-strong', '#000000'),
+      inkDim: read('--ink-dim', '#6b7280'),
+      inkInverse: read('--ink-inverse', '#ffffff'),
+      border: read('--color-border', '#000000')
+    };
+    return this._palette;
+  }
+
   render() {
     if (this._rafId) {
       cancelAnimationFrame(this._rafId);
@@ -834,17 +880,18 @@ class TimelineCanvas {
   drawGrid(ctx) {
     const bucketHours = this.state.bucketHours || 2;
     const numDays = this.state.days.length;
+    const theme = this.palette();
 
     ctx.save();
 
     // Today's lane gets a tint so the current day is findable at a glance.
-    ctx.fillStyle = '#fbfff8';
+    ctx.fillStyle = theme.laneToday;
     this.state.days.forEach((day, index) => {
       if (day.isToday) this.fillLane(ctx, index);
     });
 
     // Minor hour lines
-    ctx.strokeStyle = '#e5e7eb';
+    ctx.strokeStyle = theme.lineMinor;
     ctx.lineWidth = 1;
     for (let hour = 1; hour < 24; hour++) {
       if (hour % bucketHours === 0) continue;
@@ -852,14 +899,14 @@ class TimelineCanvas {
     }
 
     // Major bucket lines
-    ctx.strokeStyle = '#9ca3af';
+    ctx.strokeStyle = theme.lineMajor;
     ctx.lineWidth = 1.5;
     for (let hour = 0; hour <= 24; hour += bucketHours) {
       this.strokeAtTime(ctx, hour * 60, 1.5);
     }
 
     // Lane dividers
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = theme.lineLane;
     ctx.lineWidth = 1.8;
     for (let i = 0; i <= numDays; i++) {
       this.strokeAtDay(ctx, i, 1.8);
@@ -883,14 +930,14 @@ class TimelineCanvas {
     const dot = this.toXY(main, crossTop + 5);
 
     ctx.save();
-    ctx.strokeStyle = '#ef4444';
+    ctx.strokeStyle = this.palette().now;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
 
-    ctx.fillStyle = '#ef4444';
+    ctx.fillStyle = this.palette().now;
     ctx.beginPath();
     ctx.arc(dot.x, dot.y, 4, 0, Math.PI * 2);
     ctx.fill();
@@ -898,13 +945,14 @@ class TimelineCanvas {
   }
 
   drawGuides(ctx) {
+    const theme = this.palette();
     ctx.save();
 
     if (this.snapGuideMain !== null) {
       const span = this.mainIsX ? this.height : this.width;
       const a = this.toXY(this.snapGuideMain, 0);
       const b = this.toXY(this.snapGuideMain, span);
-      ctx.strokeStyle = '#16a34a';
+      ctx.strokeStyle = theme.guide;
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
@@ -922,7 +970,7 @@ class TimelineCanvas {
 
       const a = this.toXY(cut, near);
       const b = this.toXY(cut, far);
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = theme.ink;
       ctx.lineWidth = 2.5;
       ctx.setLineDash([7, 4]);
       ctx.beginPath();
@@ -946,13 +994,13 @@ class TimelineCanvas {
         ctx.fill();
       };
 
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = theme.ink;
       notch(near, crossStart + 9);
       notch(far, crossStart + crossSize - 9);
     }
 
     if (this.hoverPlayheadMain !== null) {
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = theme.ink;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       const span = this.mainIsX ? this.height : this.width;
@@ -1013,7 +1061,8 @@ class TimelineCanvas {
     ctx.clearRect(0, 0, w, h);
     ctx.save();
 
-    ctx.fillStyle = this.isShiftMode ? '#f2ffec' : '#ffffff';
+    const theme = this.palette();
+    ctx.fillStyle = this.isShiftMode ? theme.rulerShiftBg : theme.rulerBg;
     ctx.fillRect(0, 0, w, h);
 
     if (this.isShiftMode) {
@@ -1026,7 +1075,7 @@ class TimelineCanvas {
     // edge, which is the bottom when it sits on top and the right when it sits
     // down the side. Same arithmetic either way, because depth always runs
     // inward from the outer edge.
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = theme.border;
     ctx.lineWidth = 2.2;
     const edge = this.crisp(depth - 1.1, 2.2);
     const a = this.surfacePoint(surface, 0, edge);
@@ -1062,6 +1111,7 @@ class TimelineCanvas {
     const tickMinutes = (bucketHours * 60) * (tickPercent / 100);
     const labelStep = this.hourLabelStep(bucketHours);
     const offset = this.mainScroll;
+    const theme = this.palette();
 
     // Only walk the ticks that can actually be on screen.
     const step = Math.max(5, Math.min(15, tickMinutes));
@@ -1079,16 +1129,16 @@ class TimelineCanvas {
         ? { hour: 18, half: 11, minor: 6 }
         : { hour: 10, half: 7, minor: 4 };
 
-      if (m % 60 === 0) this.paintTick(surface, along, tick.hour, 2, '#000000');
-      else if (m % 30 === 0) this.paintTick(surface, along, tick.half, 1.4, '#000000');
-      else this.paintTick(surface, along, tick.minor, 1, '#9ca3af');
+      if (m % 60 === 0) this.paintTick(surface, along, tick.hour, 2, theme.ink);
+      else if (m % 30 === 0) this.paintTick(surface, along, tick.half, 1.4, theme.ink);
+      else this.paintTick(surface, along, tick.minor, 1, theme.tickMinor);
     }
 
     // Hour labels, on their own pass so ticks never overdraw them. The text
     // stays horizontal in both orientations: reading direction is a property of
     // the reader, not of the axis, so this is the one part that does not
     // transpose.
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = theme.ink;
     ctx.font = '700 12px ElmsSans, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1123,6 +1173,7 @@ class TimelineCanvas {
     const offset = this.mainScroll;
     const bucketPx = bucketHours * 60 * this.pxPerMinute;
     const compact = bucketPx < 96;
+    const theme = this.palette();
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1132,7 +1183,7 @@ class TimelineCanvas {
       const a2 = this.timeToMain((hour + bucketHours) * 60) - offset;
       if (a2 < -4 || a1 > length + 4) continue;
 
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = theme.ink;
       ctx.lineWidth = 1.5;
       const p1 = this.surfacePoint(surface, this.crisp(a1, 1.5), 0);
       const p2 = this.surfacePoint(surface, this.crisp(a1, 1.5), depth);
@@ -1142,7 +1193,7 @@ class TimelineCanvas {
       ctx.stroke();
 
       const centre = a1 + (a2 - a1) / 2;
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = theme.ink;
 
       // The two label lines stack along DEPTH in both orientations, which is
       // why their offsets go through surfacePoint rather than straight into y.
@@ -1184,12 +1235,13 @@ class TimelineCanvas {
     const w = alongX ? chipAlong : chipDepth;
     const h = alongX ? chipDepth : chipAlong;
 
-    ctx.fillStyle = '#000000';
+    const theme = this.palette();
+    ctx.fillStyle = theme.ink;
     ctx.beginPath();
     ctx.roundRect(origin.x, origin.y, w, h, 4);
     ctx.fill();
 
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = theme.inkInverse;
     ctx.font = '700 11px ElmsSans, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1202,15 +1254,16 @@ class TimelineCanvas {
     const offset = this.crossScroll;
     const w = alongX ? length : depth;
     const h = alongX ? depth : length;
+    const theme = this.palette();
 
     ctx.clearRect(0, 0, w, h);
     ctx.save();
 
     // The surface spans the whole scroll viewport, but the lanes cover only part
     // of it; past their end it should match the empty grid, not the gutter.
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = theme.gridBg;
     ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#f9fafb';
+    ctx.fillStyle = theme.gutterBg;
     const lanesOrigin = this.surfacePoint(surface, -offset, 0);
     const lanesExtent = this.mainIsX ? this.height : this.width;
     ctx.fillRect(
@@ -1224,7 +1277,7 @@ class TimelineCanvas {
       if (along + this.laneSize < 0 || along > length) return;
 
       if (day.isToday) {
-        ctx.fillStyle = '#e6fbd8';
+        ctx.fillStyle = theme.gutterToday;
         const p = this.surfacePoint(surface, along, 0);
         ctx.fillRect(
           p.x, p.y,
@@ -1234,7 +1287,7 @@ class TimelineCanvas {
       }
 
       // Lane divider
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = theme.lineLane;
       ctx.lineWidth = 1.8;
       const d1 = this.surfacePoint(surface, this.crisp(along, 1.8), 0);
       const d2 = this.surfacePoint(surface, this.crisp(along, 1.8), depth);
@@ -1258,14 +1311,14 @@ class TimelineCanvas {
       ctx.textBaseline = 'middle';
 
       // Day name and date number, so you can tell which Saturday you are on.
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = theme.ink;
       ctx.font = '800 13px ElmsSans, sans-serif';
       ctx.letterSpacing = '1px';
       ctx.fillText(day.name.toUpperCase(), 0, -8);
 
       ctx.font = day.isToday ? '800 13px ElmsSans, sans-serif' : '600 12px ElmsSans, sans-serif';
       ctx.letterSpacing = '0px';
-      ctx.fillStyle = day.isToday ? '#000000' : '#6b7280';
+      ctx.fillStyle = day.isToday ? theme.ink : theme.inkDim;
       ctx.fillText(String(day.date.getDate()), 0, 9);
       ctx.restore();
     });
@@ -1273,7 +1326,7 @@ class TimelineCanvas {
     // Closing divider past the last lane
     const lastAlong = this.dayToCross(this.state.days.length) - offset;
     if (lastAlong >= 0 && lastAlong <= length) {
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = theme.lineLane;
       ctx.lineWidth = 1.8;
       const e1 = this.surfacePoint(surface, this.crisp(lastAlong, 1.8), 0);
       const e2 = this.surfacePoint(surface, this.crisp(lastAlong, 1.8), depth);
@@ -1284,7 +1337,7 @@ class TimelineCanvas {
     }
 
     // Border against the grid, along this surface's inner edge.
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = theme.border;
     ctx.lineWidth = 2;
     const edge = this.crisp(depth - 1, 2);
     const b1 = this.surfacePoint(surface, 0, edge);
@@ -1300,5 +1353,6 @@ class TimelineCanvas {
 
   destroy() {
     if (this._resizeObserver) this._resizeObserver.disconnect();
+    window.removeEventListener('klndr:themechange', this._onThemeChange);
   }
 }

@@ -5,7 +5,7 @@
       "src": "server.js",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["public/**", "protected/**", "server/**", "data/**"]
+        "includeFiles": ["public/**", "protected/**", "admin/**", "server/**", "data/**"]
       }
     }
   ],

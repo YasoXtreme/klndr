@@ -155,7 +155,7 @@ class TasksSidebar {
     const categoryPopup = document.getElementById('inlineCategoryPopup');
 
     if (createBox) {
-      createBox.style.backgroundColor = this.newTaskState.color;
+      KlndrTheme.paint(createBox, this.newTaskState.color);
     }
 
     const closeAllPopups = () => {
@@ -190,12 +190,12 @@ class TasksSidebar {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'picker-item-color';
-        item.style.backgroundColor = colorHex;
+        KlndrTheme.paint(item, colorHex);
         item.title = colorHex;
         item.addEventListener('click', (e) => {
           e.stopPropagation();
           this.newTaskState.color = colorHex;
-          if (createBox) createBox.style.backgroundColor = colorHex;
+          if (createBox) KlndrTheme.paint(createBox, colorHex);
           closeAllPopups();
         });
         colorPopup.appendChild(item);
@@ -302,7 +302,7 @@ class TasksSidebar {
     draft.category = nextName;
     if (category.color) draft.color = category.color;
     if (category.icon) draft.icon = category.icon;
-    if (createBox) createBox.style.backgroundColor = draft.color;
+    if (createBox) KlndrTheme.paint(createBox, draft.color);
   }
 
   toggleCollapse() {
@@ -403,7 +403,7 @@ class TasksSidebar {
     card.className = `sidebar-task-card ${task.completed ? 'is-completed' : ''}`;
     if (TaskModel.isSplit(task)) card.dataset.blockCount = (task.segments || []).length;
     card.dataset.taskId = task.id;
-    card.style.backgroundColor = task.color || '#3ba4f6';
+    KlndrTheme.paint(card, task.color || KlndrPalette.DEFAULT_COLOR);
 
     // Circular Category Badge
     const badge = document.createElement('div');
@@ -427,7 +427,7 @@ class TasksSidebar {
         ? `${(task.segments || []).filter(seg => seg.completed).length} of ${(task.segments || []).length} blocks done — click to finish all`
         : 'Mark completed';
     checkbox.innerHTML = completionState === 'all' ? `
-      <span class="material-symbols-outlined" style="font-size: 16px; color: #000; font-weight: 800;">check</span>
+      <span class="material-symbols-outlined" style="font-size: 16px; color: var(--on-color-ink); font-weight: 800;">check</span>
     ` : completionState === 'partial' ? '<span class="task-checkbox-partial"></span>' : '';
     checkbox.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -676,7 +676,7 @@ class TasksSidebar {
         // but has no category record behind it any more.
         const swatch = document.createElement('span');
         swatch.className = `category-column-swatch ${category.color ? '' : 'is-blank'}`.trim();
-        if (category.color) swatch.style.backgroundColor = category.color;
+        if (category.color) KlndrTheme.paint(swatch, category.color);
         if (category.icon) {
           swatch.innerHTML = `<span class="material-symbols-outlined">${category.icon}</span>`;
         }

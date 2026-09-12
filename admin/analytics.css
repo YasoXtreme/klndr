@@ -1,0 +1,890 @@
+/* Analytics page.
+   ====================================================
+   Loads theme.css and common.css but NOT app.css: the workspace stylesheet is
+   3,000 lines built around a canvas timeline and a dual-pane layout, none of
+   which exists here. The visual language is re-stated from the same tokens
+   instead - the hard line, the flat fill, the offset slab - so the page belongs
+   to klndr without inheriting a layout it does not use.
+
+   Geometry comes from common.css's scale, the same one the app reads - this
+   page used to restate every value and land one step off on most of them, but this page does not load app.css, so it takes common.css's
+   value and writes the shorthand out, exactly as login.css does. */
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-family);
+  background: var(--bg-gradient);
+  background-attachment: fixed;
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ----------------------------------------------------
+   TOPBAR
+   ---------------------------------------------------- */
+
+.an-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 18px;
+  background: var(--surface-1);
+  border-bottom: var(--border-container);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-wrap: wrap;
+}
+
+.an-topbar-left,
+.an-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.an-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-strong);
+  text-decoration: none;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+
+.an-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--ink-strong);
+}
+
+.an-range-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.an-range {
+  height: var(--control-sm);
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--surface-1);
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.an-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-strong);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+
+
+/* ----------------------------------------------------
+   TABS
+   ---------------------------------------------------- */
+
+.an-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.an-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--surface-2);
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.12s ease, color 0.12s ease;
+}
+
+.an-tab .material-symbols-outlined {
+  font-size: 17px;
+}
+
+
+
+/* ----------------------------------------------------
+   LAYOUT
+   ---------------------------------------------------- */
+
+.an-main {
+  padding: 18px;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+.an-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+/* A wide card spans the row rather than being squeezed: a 90-point time series
+   in a 320px column is a smear, not a chart. */
+.an-card.is-wide {
+  grid-column: 1 / -1;
+}
+
+.an-card {
+  background: var(--surface-1);
+  border: var(--border-container);
+  border-radius: var(--radius-lg);
+box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
+  overflow: hidden;
+}
+
+.an-card-head {
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-bottom: var(--border-control);
+}
+
+.an-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: var(--ink-strong);
+}
+
+.an-card-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+.an-card-body {
+  padding: 16px;
+}
+
+.an-subgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.an-sub-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ink-dim);
+}
+
+/* ----------------------------------------------------
+   STAT TILES
+   ---------------------------------------------------- */
+
+.an-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.stat-tile {
+  padding: 14px 16px;
+  background: var(--surface-1);
+  border: var(--border-container);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
+}
+
+.stat-tile-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ink-dim);
+}
+
+.stat-tile-value {
+  margin-top: 4px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--ink-strong);
+  line-height: 1.1;
+}
+
+.stat-tile-hint {
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+/* ----------------------------------------------------
+   CHARTS
+   ---------------------------------------------------- */
+
+.chart-wrap {
+  display: block;
+}
+
+.chart-wrap-donut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chart-gridline {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+
+/* Axis and grid stay recessive - the marks are the figure. */
+.chart-axis-label {
+  fill: var(--ink-faint);
+  font-family: var(--font-family);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.chart-mark {
+  transition: opacity 0.1s ease;
+}
+
+.chart-mark:hover,
+.chart-arc:hover {
+  opacity: 0.78;
+}
+
+.chart-arc {
+  /* The 2px surface ring that keeps touching arcs separable without leaning on
+     the hue difference alone. */
+  stroke-linecap: butt;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-hit {
+  cursor: crosshair;
+}
+
+.chart-centre-value {
+  fill: var(--ink-strong);
+  font-family: var(--font-family);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.chart-centre-label {
+  fill: var(--ink-faint);
+  font-family: var(--font-family);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-bottom: 10px;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* Text wears an ink token, never the series colour - the swatch beside it
+     carries identity. */
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.chart-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-xs);
+  border: var(--border-control);
+}
+
+.chart-empty {
+  margin: 0;
+  padding: 18px 0;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+/* ---- horizontal bars ---- */
+
+.hbar {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.hbar-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 34%) 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.hbar-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hbar-track {
+  height: 14px;
+  background: var(--surface-3);
+  border: var(--border-control);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+
+.hbar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+}
+
+.hbar-value {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- heatmap ---- */
+
+.heatmap-grid {
+  display: grid;
+  gap: 2px;
+  min-width: 560px;
+}
+
+.heatmap-cell {
+  aspect-ratio: 1 / 1;
+  min-height: 14px;
+  border-radius: var(--radius-xs);
+  border: var(--border-hair);
+}
+
+.heatmap-row-label,
+.heatmap-col-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.heatmap-row-label {
+  justify-content: flex-end;
+  padding-right: 6px;
+}
+
+.heatmap {
+  overflow-x: auto;
+}
+
+.heatmap-scale {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 10px;
+}
+
+.heatmap-scale-step {
+  width: 18px;
+  height: 10px;
+  border: var(--border-hair);
+  border-radius: var(--radius-xs);
+}
+
+.heatmap-scale-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-faint);
+  margin: 0 4px;
+}
+
+/* ---- table view (the relief the light palette owes) ---- */
+
+.chart-table-toggle {
+  margin-top: 10px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--surface-2);
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+
+.chart-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.chart-table th,
+.chart-table td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: var(--border-hair);
+}
+
+.chart-table th {
+  background: var(--surface-2);
+  font-weight: 700;
+}
+
+/* ---- tooltip ---- */
+
+.chart-tip {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  padding: 7px 10px;
+  max-width: 260px;
+  font-family: var(--font-family);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--surface-1);
+  border: var(--border-container);
+  border-radius: var(--radius-md);
+box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
+}
+
+.chart-tip strong {
+  font-weight: 800;
+  color: var(--ink-strong);
+}
+
+.tip-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-xs);
+  margin-right: 5px;
+  border: var(--line-hair) solid var(--color-border);
+}
+
+/* ----------------------------------------------------
+   TABLES
+   ---------------------------------------------------- */
+
+/* Wide content scrolls inside its own container; the page body never scrolls
+   sideways. */
+.an-table-scroll {
+  overflow-x: auto;
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+}
+
+.an-table,
+.an-cohort {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.an-table th,
+.an-table td,
+.an-cohort th,
+.an-cohort td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: var(--border-hair);
+}
+
+.an-table th,
+.an-cohort th {
+  background: var(--surface-2);
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.an-table th.is-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.an-table th.is-sortable:hover {
+  background: var(--surface-3);
+}
+
+.an-table th.is-sorted::after {
+  content: "";
+  margin-left: 4px;
+  font-size: 10px;
+}
+
+.an-table th.is-sorted[data-dir="asc"]::after {
+  content: " \25B2";
+}
+
+.an-table th.is-sorted[data-dir="desc"]::after {
+  content: " \25BC";
+}
+
+.an-table tbody tr {
+  cursor: pointer;
+}
+
+
+
+/* These cells name their own ink, so on a selected row they would keep the
+   chrome ramp - bone - over the accent fill and stop being readable. The row's
+   own colour cannot reach them; they have to be told. */
+.an-table tbody tr.is-selected .an-cell-name {
+  color: var(--accent-active-ink);
+}
+
+.an-table tbody tr.is-selected td.is-muted {
+  color: var(--accent-active-ink-soft);
+}
+
+.an-cell-name {
+  font-weight: 800;
+  color: var(--ink-strong);
+}
+
+.an-table td.is-muted {
+  color: var(--ink-faint);
+}
+
+.an-inferred {
+  margin-left: 3px;
+  font-weight: 800;
+  color: var(--ink-faint);
+  cursor: help;
+}
+
+.an-cohort-cell {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.an-cohort-cell.is-empty {
+  background: transparent;
+}
+
+/* ----------------------------------------------------
+   BADGES, NOTES, LISTS
+   ---------------------------------------------------- */
+
+.an-badge,
+.role-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-md);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.an-badge.is-ok {
+  background: var(--success-bg);
+  color: var(--success-ink);
+  border: var(--line-hair) solid var(--success-line);
+}
+
+.an-badge.is-warn {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  border: var(--line-hair) solid var(--warn-line);
+}
+
+.an-badge.is-danger {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  border: var(--line-hair) solid var(--danger-line);
+}
+
+.an-badge.is-muted {
+  background: var(--surface-3);
+  color: var(--ink-dim);
+  border: var(--line-hair) solid var(--line-faint);
+}
+
+.role-badge.is-admin {
+  background: var(--success-bg);
+  color: var(--success-ink);
+  border: var(--line-hair) solid var(--success-line);
+}
+
+.role-badge.is-user {
+  background: var(--surface-3);
+  color: var(--ink-muted);
+  border: var(--line-hair) solid var(--line-faint);
+}
+
+/* The honesty layer: every place a number is absent because it was never
+   measured, rather than because it is zero. */
+.an-note {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.an-note.is-warn {
+  padding: 7px 10px;
+  color: var(--warn-ink);
+  background: var(--warn-bg-soft);
+  border: var(--line-hair) solid var(--warn-line);
+  border-radius: var(--radius-sm);
+}
+
+.an-generated {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+.an-loading {
+  padding: 48px 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-faint);
+}
+
+.an-error {
+  padding: 20px;
+  background: var(--danger-bg);
+  border: var(--line-control) solid var(--danger-line);
+  border-radius: var(--radius-md);
+  color: var(--danger-ink-strong);
+  font-weight: 700;
+}
+
+.an-error-detail {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.an-health,
+.an-plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.an-health li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: var(--surface-2);
+  border: var(--border-hair);
+  border-radius: var(--radius-sm);
+}
+
+.an-health li.is-flagged,
+.an-plain-list li.is-flagged {
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+  color: var(--warn-ink);
+}
+
+.an-plain-list li {
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--surface-2);
+  border: var(--border-hair);
+  border-radius: var(--radius-sm);
+}
+
+/* ----------------------------------------------------
+   PER-ACCOUNT DETAIL
+   ---------------------------------------------------- */
+
+.an-detail {
+  margin-top: 18px;
+  padding: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  text-align: center;
+  border: var(--line-control) dashed var(--line-mid);
+  border-radius: var(--radius-lg);
+}
+
+.an-detail.is-open {
+  text-align: left;
+  border-style: solid;
+  border-color: var(--color-border);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.an-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.an-detail-head h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  color: var(--ink-strong);
+}
+
+.an-detail-meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-dim);
+}
+
+.an-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.an-facts dt {
+  font-weight: 700;
+  color: var(--ink-dim);
+}
+
+.an-facts dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--ink-strong);
+}
+
+/* ----------------------------------------------------
+   RESPONSIVE
+   ---------------------------------------------------- */
+
+@media (max-width: 767px) {
+  .an-topbar {
+    padding: 10px 12px;
+  }
+
+  .an-title {
+    font-size: 17px;
+  }
+
+  .an-main {
+    padding: 12px;
+  }
+
+  .an-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .an-stats {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  }
+
+  .stat-tile-value {
+    font-size: 21px;
+  }
+
+  .hbar-row {
+    grid-template-columns: minmax(70px, 40%) 1fr auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .an-tab,
+  .an-back,
+  .an-refresh,
+  .chart-mark,
+  .chart-arc {
+    transition: none;
+  }
+}
+
+/* Used by analytics.html and analytics.js and matched no rule at all until now.
+   A panel is a container, so it takes the container tier like every other one. */
+.an-panel {
+  background: var(--surface-1);
+  border: var(--border-container);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
+  padding: 16px;
+}

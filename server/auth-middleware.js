@@ -1,4 +1,5 @@
 const db = require("./db");
+const { recordActivity } = require("./activity");
 
 // Session auth, extracted from server.js so route modules can require it.
 // Leaving it inline meant a router could not use it without server.js and the
@@ -46,6 +47,23 @@ async function requireApiAuth(req, res, next) {
     });
   }
 
+  // After the gate on purpose: an account locked behind a password reset
+  // hammering the API is not engagement.
+  //
+  // Awaited rather than fired and forgotten, because on Vercel the invocation
+  // is frozen the moment the response is sent and a pending write is simply
+  // dropped. The cost is two small writes at most once every five minutes per
+  // person, against the two reads validateSession already does every time.
+  //
+  // The try/catch is the whole safety guarantee, and next() sits outside it:
+  // there is no path where a database hiccup in analytics turns into a 500 on
+  // somebody's task save.
+  try {
+    await recordActivity(user, pathname);
+  } catch (err) {
+    console.error("Activity write failed (ignored):", err.message);
+  }
+
   next();
 }
 
@@ -72,9 +90,24 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// The page-navigation counterpart to requireAdmin, for the same reason
+// requirePageAuth exists: the browser is following a top-level navigation and
+// would render a JSON 403 as raw text.
+//
+// Redirects to / rather than /login because the person IS logged in - they are
+// simply not an admin - and /login bounces a valid session straight back to /
+// anyway, which would look like a redirect loop.
+function requirePageAdmin(req, res, next) {
+  if (!req.user || req.user.role !== "admin") {
+    return res.redirect("/");
+  }
+  next();
+}
+
 module.exports = {
   getSessionToken,
   requireApiAuth,
   requirePageAuth,
   requireAdmin,
+  requirePageAdmin,
 };

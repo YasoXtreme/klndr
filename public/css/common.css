@@ -6,22 +6,69 @@
   font-display: swap;
 }
 
+/* ====================================================
+   THE SCALE
+   ====================================================
+   Colour lives in theme.css, which is loaded before this file. Every NUMBER in
+   the product lives here, and all three pages read it, because the alternative
+   is what this file used to be half of: login and analytics speaking one
+   dialect, the app speaking another, and --border-thick meaning 2.5px in one
+   and 2.8px in the other because one declared a width and the other a whole
+   shorthand under the same name.
+
+   The counts these replace, measured across the six stylesheets: nine border
+   widths, seventeen radii, six slab depths, thirteen untokenised blurred
+   shadows. Nothing below is a preference - they are the tiers everything else
+   is now expressed in, and a value that is not here does not belong in a rule.
+   ---------------------------------------------------- */
 :root {
   --font-family: 'ElmsSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --bg-gradient: linear-gradient(135deg, #f2ffec 0%, #ffffff 100%);
-  --accent-mint: #f2ffec;
-  --accent-mint-hover: #e0f9d4;
-  --color-border: #000000;
-  --border-width: 2.2px;
-  --border-thick: 2.5px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-  --text-main: #000000;
-  --text-muted: #4b5563;
-  --text-light: #6b7280;
-  
+
+  /* ---- Lines ----
+     Three, by what the line is drawn AROUND: a division inside something, a
+     control you can press, or the box that holds them. */
+  --line-hair: 1.5px;       /* dividers within a container, table rules, badges */
+  --line-control: 2px;      /* buttons, inputs, pills, tabs, swatches, blocks */
+  --line-container: 2.8px;  /* panes, cards, modals, overlays */
+
+  /* ---- Radii ----
+     Bigger box, rounder corner, no exceptions. --radius-pill is the only one
+     that is a shape rather than a step. */
+  --radius-xs: 4px;         /* checkboxes, swatch dots, scrollbar thumbs, tracks */
+  --radius-sm: 8px;         /* controls */
+  --radius-md: 12px;        /* content objects: blocks, list rows, menus */
+  --radius-lg: 16px;        /* containers */
+  --radius-pill: 999px;     /* capsules */
+
+  /* ---- Elevation ----
+     Two depths, and only two, because there are only two things a box can be
+     doing: sitting in the layout, or floating over it. The COLOUR of a slab is
+     never chosen here - see theme.css. It is always the colour of the border
+     the slab sits under. */
+  --slab: 4px;
+  --slab-float: 6px;
+
+  /* ---- Control heights ----
+     One scale, three steps. Login takes lg and keeps the room it has; the app's
+     forms take md; the dense calendar chrome takes sm. */
+  --control-sm: 32px;
+  --control-md: 38px;
+  --control-lg: 44px;
+
+  --dur-fast: 0.12s;
+
+  /* ---- The composite borders ----
+     Written out so a rule says which TIER it belongs to rather than restating
+     a width and a colour that can drift apart. */
+  --border-control: var(--line-control) solid var(--color-border);
+  --border-container: var(--line-container) solid var(--container-line);
+  --border-block: var(--line-control) solid var(--on-color-border);
+  --border-hair: var(--line-hair) solid var(--line-soft);
+
+  --text-main: var(--ink-strong);
+  --text-muted: var(--ink-soft);
+  --text-light: var(--ink-dim);
+
   /* Subject pastel colors matching mockups */
   --card-blue: #3ba4f6;
   --card-blue-bg: #3ba4f6;
@@ -76,12 +123,11 @@ html, body {
 .klndr-lockup {
   --klndr-size: 64px;
   --klndr-shadow: 3px;
-  /* A plate has to read as a plate, so it takes the colour its surface is
-     not. Every klndr surface that carries the lockup is the mint gradient,
-     hence white here - mint on mint collapses the badge into a bare outline.
-     The kit does the same: its animation puts --paper on a --mint body. Flip
-     this to var(--accent-mint) for a lockup on white. */
-  --klndr-plate-fill: #ffffff;
+  /* The mark's drawing is fixed - black k, black line, black slab, both themes.
+     Only its GROUND moves, and only to the colour of the wordmark standing next
+     to it (--klndr-plate-fill is literally var(--ink-strong) in the dark), so
+     the plate and the type always read as one lockup while the badge stays a
+     badge rather than repainting itself with the UI around it. */
   display: inline-flex;
   align-items: center;
   gap: calc(var(--klndr-size) * 0.239);
@@ -96,9 +142,11 @@ html, body {
   display: grid;
   place-items: center;
   background: var(--klndr-plate-fill);
-  border: calc(var(--klndr-size) * 0.0435) solid #000;
+  border: calc(var(--klndr-size) * 0.0435) solid var(--klndr-ink);
   border-radius: calc(var(--klndr-size) * 0.174);
-  box-shadow: var(--klndr-shadow) var(--klndr-shadow) 0 #000;
+  /* The badge's own ink, not --shadow-slab: the slab belongs to the mark, and
+     the mark does not invert. Identical to --shadow-slab in the light. */
+  box-shadow: var(--klndr-shadow) var(--klndr-shadow) 0 var(--klndr-ink);
 }
 
 .klndr-plate,
@@ -106,7 +154,14 @@ html, body {
   font-size: calc(var(--klndr-size) * 0.674);
   font-weight: 900;
   letter-spacing: -0.058em;
-  color: #000;
+  color: var(--klndr-ink);
+}
+
+/* The one half of the lockup that DOES follow the theme. It is set on the page
+   surface rather than on the plate, so it reads like every other piece of type
+   around it - black on the mint ground, bone on the dark one. */
+.klndr-wordmark {
+  color: var(--ink-strong);
 }
 
 /* The glyph sits high in its em box; drop it onto the plate's optical centre.
@@ -123,7 +178,7 @@ html, body {
 .klndr-tagline {
   font-size: calc(var(--klndr-size) * 0.163);
   font-weight: 700;
-  color: #000;
+  color: var(--ink-strong);
 }
 
 /* Stacked variant: the wordmark and tagline as a column beside the plate. */
@@ -168,5 +223,181 @@ html, body {
   .klndr-lockup-animated .klndr-wordmark,
   .klndr-lockup-animated .klndr-tagline {
     animation: none;
+  }
+}
+
+/* ====================================================
+   INTERACTIVE STATES
+   ====================================================
+   One hover, one press, one selected, one focus, one disabled - for every
+   control on all three pages.
+
+   It is a long selector list rather than a shared class because that needs no
+   markup change, and the list IS the audit: these are the controls that existed
+   already, each of which used to answer hover in its own way. Two identically
+   sized 34px buttons - .btn-icon-square and .btn-carousel-nav - hovered to
+   different colours. Six different things meant "selected". Two buttons out of
+   about forty had a press state. Exactly one control in the product had a focus
+   ring, while six inputs set outline:none and put nothing in its place.
+
+   These rules live in common.css, which loads FIRST, so any page stylesheet can
+   still beat them on source order. That is deliberate and it is also why the
+   per-component hover and selected rules were deleted from app.css, login.css
+   and analytics.css rather than left to fight this block.
+   ---------------------------------------------------- */
+
+/* Group A - neutral controls: a line, a surface, and something to press. */
+.btn-nav-arrow, .btn-calendar-collapse, .btn-sidebar-icon, .btn-icon-square,
+.btn-carousel-nav, .btn-carousel-dismiss, .category-row-action, .btn-task-nudge,
+.btn-today, .btn-zoom, .btn-modal-secondary, .btn-modal-danger,
+.inline-picker-btn, .picker-item-icon, .picker-item-color, .picker-item-category,
+.picker-item-newcat, .picker-cat-edit, .modal-close-btn, .btn-delete-user,
+.btn-reset-user, .category-filter-pill, .user-profile-pill, .modal-tab-btn,
+.theme-option, .day-count-btn, .mobile-tab, .an-back, .an-refresh, .an-tab,
+.chart-table-toggle,
+/* Group B - controls that are already wearing the accent. */
+.btn-continue, .btn-boot-retry, .btn-modal-primary, .admin-analytics-link {
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) ease;
+}
+
+.btn-nav-arrow:hover:not(:disabled), .btn-calendar-collapse:hover:not(:disabled),
+.btn-sidebar-icon:hover:not(:disabled), .btn-icon-square:hover:not(:disabled),
+.btn-carousel-nav:hover:not(:disabled), .btn-carousel-dismiss:hover:not(:disabled),
+.category-row-action:hover:not(:disabled), .btn-task-nudge:hover:not(:disabled),
+.btn-today:hover:not(:disabled), .btn-zoom:hover:not(:disabled),
+.btn-modal-secondary:hover:not(:disabled), .btn-modal-danger:hover:not(:disabled),
+.inline-picker-btn:hover:not(:disabled), .picker-item-icon:hover:not(:disabled),
+.picker-item-color:hover:not(:disabled), .picker-item-category:hover:not(:disabled),
+.picker-item-newcat:hover:not(:disabled), .picker-cat-edit:hover:not(:disabled),
+.modal-close-btn:hover:not(:disabled), .btn-delete-user:hover:not(:disabled),
+.btn-reset-user:hover:not(:disabled), .category-filter-pill:hover:not(:disabled),
+.user-profile-pill:hover:not(:disabled), .modal-tab-btn:hover:not(:disabled),
+.theme-option:hover:not(:disabled), .day-count-btn:hover:not(:disabled),
+.mobile-tab:hover:not(:disabled), .an-back:hover, .an-refresh:hover:not(:disabled),
+.an-tab:hover:not(:disabled), .chart-table-toggle:hover:not(:disabled) {
+  background: var(--accent-mint);
+  transform: translateY(-1px);
+}
+
+/* Already accent-filled, so hovering them to mint would be a step DOWN in
+   emphasis. They go to the pressed step of the same accent instead. */
+.btn-continue:hover:not(:disabled), .btn-boot-retry:hover:not(:disabled),
+.btn-modal-primary:hover:not(:disabled), .admin-analytics-link:hover {
+  background: var(--accent-active-hover);
+  transform: translateY(-1px);
+}
+
+.btn-nav-arrow:active:not(:disabled), .btn-calendar-collapse:active:not(:disabled),
+.btn-sidebar-icon:active:not(:disabled), .btn-icon-square:active:not(:disabled),
+.btn-carousel-nav:active:not(:disabled), .btn-carousel-dismiss:active:not(:disabled),
+.category-row-action:active:not(:disabled), .btn-task-nudge:active:not(:disabled),
+.btn-today:active:not(:disabled), .btn-zoom:active:not(:disabled),
+.btn-modal-secondary:active:not(:disabled), .btn-modal-danger:active:not(:disabled),
+.inline-picker-btn:active:not(:disabled), .picker-item-icon:active:not(:disabled),
+.picker-item-color:active:not(:disabled), .picker-item-category:active:not(:disabled),
+.picker-item-newcat:active:not(:disabled), .picker-cat-edit:active:not(:disabled),
+.modal-close-btn:active:not(:disabled), .btn-delete-user:active:not(:disabled),
+.btn-reset-user:active:not(:disabled), .category-filter-pill:active:not(:disabled),
+.user-profile-pill:active:not(:disabled), .modal-tab-btn:active:not(:disabled),
+.theme-option:active:not(:disabled), .day-count-btn:active:not(:disabled),
+.mobile-tab:active:not(:disabled), .an-back:active, .an-refresh:active:not(:disabled),
+.an-tab:active:not(:disabled), .chart-table-toggle:active:not(:disabled),
+.btn-continue:active:not(:disabled), .btn-boot-retry:active:not(:disabled),
+.btn-modal-primary:active:not(:disabled), .admin-analytics-link:active {
+  transform: translateY(1px);
+}
+
+/* Group C - rows. A row has no border of its own to change and nowhere to lift
+   to, so it takes the wash and nothing else. */
+.context-menu-item:hover, .announcement-list-item:hover,
+.an-table tbody tr:hover, .an-health li:hover, .an-plain-list li:hover {
+  background: var(--accent-mint);
+}
+
+/* ---- Selected ----
+   ONE idiom, replacing six: the accent as a fill, the on-accent ink over it,
+   and the structural line turned opaque. Deleted along the way: the offset slab
+   on .an-tab.active, the inset 1px ring faking a thicker border on
+   .day-count-btn.is-active, the inset top rule on .mobile-tab.is-drop-target,
+   the colour-only .mobile-tab.is-active, and the 2.5px outline on a selected
+   swatch. Declared after the hover rules so it holds while hovered. */
+.category-filter-pill.active, .modal-tab-btn.active, .theme-option.is-active,
+.day-count-btn.is-active, .mobile-tab.is-active, .mobile-tab.is-drop-target,
+.an-tab.active, .picker-item-category.is-selected,
+.category-swatch-grid .picker-item-icon.is-selected,
+.category-swatch-grid .picker-item-color.is-selected,
+.an-table tbody tr.is-selected,
+.category-filter-pill.active:hover, .modal-tab-btn.active:hover,
+.theme-option.is-active:hover, .day-count-btn.is-active:hover,
+.mobile-tab.is-active:hover, .an-tab.active:hover,
+.picker-item-category.is-selected:hover {
+  background: var(--accent-active);
+  color: var(--accent-active-ink);
+  border-color: var(--color-border);
+}
+
+/* A selected swatch still has to show the colour it stands for, so the fill
+   stays and only the line speaks. */
+.category-swatch-grid .picker-item-color.is-selected {
+  background: var(--task-fill);
+}
+
+/* ---- Focus ----
+   Every interactive element, one ring. Keyboard-only: :focus-visible does not
+   fire on a mouse press, so this costs the pointer user nothing. */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible,
+[tabindex]:focus-visible, [role="button"]:focus-visible {
+  outline: var(--line-control) solid var(--focus-ring-line);
+  outline-offset: 2px;
+}
+
+/* ---- Disabled ---- */
+button:disabled, select:disabled, input:disabled,
+.is-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* A hover state on a touch screen is a state that sticks until you tap
+   something else. Applies to the whole list, not the four it used to. */
+@media (hover: none) {
+  .btn-nav-arrow:hover, .btn-calendar-collapse:hover, .btn-sidebar-icon:hover,
+  .btn-icon-square:hover, .btn-carousel-nav:hover, .btn-carousel-dismiss:hover,
+  .category-row-action:hover, .btn-task-nudge:hover, .btn-today:hover,
+  .btn-zoom:hover, .btn-modal-secondary:hover, .btn-modal-danger:hover,
+  .inline-picker-btn:hover, .picker-item-icon:hover, .picker-item-color:hover,
+  .picker-item-category:hover, .picker-item-newcat:hover, .picker-cat-edit:hover,
+  .modal-close-btn:hover, .btn-delete-user:hover, .btn-reset-user:hover,
+  .category-filter-pill:hover, .user-profile-pill:hover, .modal-tab-btn:hover,
+  .theme-option:hover, .day-count-btn:hover, .mobile-tab:hover, .an-back:hover,
+  .an-refresh:hover, .an-tab:hover, .chart-table-toggle:hover,
+  .btn-continue:hover, .btn-boot-retry:hover, .btn-modal-primary:hover,
+  .admin-analytics-link:hover, .sidebar-task-card:hover {
+    transform: none;
+  }
+}
+
+/* A finger needs 44px whatever the control was designed at. Previously six
+   controls were grown here and at least six comparable ones were left at
+   30-38px. */
+@media (pointer: coarse) {
+  button, select, [role="button"],
+  .category-filter-pill, .picker-item-category, .picker-item-newcat,
+  .context-menu-item, .mobile-tab {
+    min-height: 44px;
+  }
+
+  .btn-nav-arrow, .btn-calendar-collapse, .btn-sidebar-icon, .btn-icon-square,
+  .btn-carousel-nav, .category-row-action, .btn-task-nudge, .inline-picker-btn,
+  .picker-item-icon, .picker-item-color, .modal-close-btn, .an-back,
+  .an-refresh {
+    min-width: 44px;
   }
 }

@@ -46,6 +46,24 @@ async function getDatabase() {
       database
         .collection("integrations")
         .createIndex({ user_id: 1, provider: 1 }, { unique: true }),
+      // Analytics reads these two ways round and neither is a prefix of the
+      // other: instance-wide over a date range, and one person over all time.
+      // The first is a covered scan - the projection is exactly the key - so
+      // DAU over a year never reads a document off disk.
+      database
+        .collection("activity_daily")
+        .createIndex({ day_ts: 1, user_id: 1 }),
+      database
+        .collection("activity_daily")
+        .createIndex({ user_id: 1, day_ts: 1 }),
+      // Sparse for the same reason as the source_* index above: every task
+      // written before these fields existed lacks them, and would otherwise
+      // pile up under one null key. Sparseness is also what makes the
+      // "when did instrumentation start" probe a one-document index hit.
+      database.collection("tasks").createIndex({ created_at: 1 }, { sparse: true }),
+      database
+        .collection("tasks")
+        .createIndex({ completed_at: 1 }, { sparse: true }),
     ]);
   }
   return database;
@@ -74,8 +92,11 @@ async function collections() {
     settings: db.collection("settings"),
     announcements: db.collection("announcements"),
     integrations: db.collection("integrations"),
+    activity: db.collection("activity_daily"),
   };
 }
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 function withoutPassword(user) {
   if (!user) return null;
@@ -162,7 +183,7 @@ async function changePassword(userId, currentPassword, newPassword, keepToken) {
 }
 
 async function deleteUser(username) {
-  const { users, sessions, tasks, settings } = await collections();
+  const { users, sessions, tasks, settings, activity } = await collections();
   const user = await getUserByUsername(username);
   if (!user) return false;
   await Promise.all([
@@ -170,6 +191,11 @@ async function deleteUser(username) {
     sessions.deleteMany({ user_id: user.id }),
     tasks.deleteMany({ user_id: user.id }),
     settings.deleteOne({ user_id: user.id }),
+    // The activity trail has to go with the account. Left behind it would be
+    // both a record of someone who asked to be removed and a permanent orphan
+    // in the analytics: an id with no user still counts toward active-account
+    // numbers and never ages out, because this collection has no TTL.
+    activity.deleteMany({ user_id: user.id }),
   ]);
   return true;
 }
@@ -271,6 +297,95 @@ async function destroySession(token) {
   await sessions.deleteOne({ _id: token });
 }
 
+// ==========================================
+// ACTIVITY
+// ==========================================
+//
+// klndr recorded nothing about when anyone actually used it: users carried a
+// created_at and tasks an updated_at, and that was the whole temporal surface.
+// The sessions collection looks like login history but is not - rows are
+// deleted on logout, on password change and on an admin reset - so "who is
+// still showing up" had no honest answer.
+//
+// These three writes are that answer. They are deliberately the smallest thing
+// that works, because they hang off the hot path.
+
+/**
+ * Claim this person's five-minute activity window.
+ *
+ * Compare-and-swap rather than read-then-write, in the same shape as
+ * claimIntegrationRefresh: two requests arriving together both see the same
+ * stale last_seen_at on their own req.user and would otherwise both count the
+ * window. Exactly one caller wins the update, and only that one does the
+ * rollup, which is what keeps `pings` meaning "distinct windows".
+ */
+async function claimActivityWindow(userId, now, cutoff) {
+  const { users } = await collections();
+  const result = await users.updateOne(
+    {
+      id: userId,
+      $or: [
+        { last_seen_at: { $exists: false } },
+        { last_seen_at: { $lt: cutoff } },
+      ],
+    },
+    { $set: { last_seen_at: now } },
+  );
+  return result.modifiedCount === 1;
+}
+
+/**
+ * Fold one claimed window into the person's row for the day.
+ *
+ * Idempotent by construction: the _id IS the (day, person) pair, so a retry or
+ * two racing containers converge on one document instead of needing a unique
+ * index to catch them. The day comes first in the key because the query that
+ * matters is a date range across everyone - "user:day" would sort by person and
+ * leave that scan with no locality at all.
+ */
+async function recordActivityDay(userId, atSeconds) {
+  const { activity } = await collections();
+  const at = new Date(atSeconds * 1000);
+  const dayKey = at.toISOString().slice(0, 10);
+  const dayTs = Math.floor(
+    Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()) / 1000,
+  );
+
+  await activity.updateOne(
+    { _id: `${dayKey}:${userId}` },
+    {
+      // Fixed for a given _id, so written exactly once.
+      $setOnInsert: { user_id: userId, day_ts: dayTs },
+      $min: { first_at: atSeconds },
+      $max: { last_at: atSeconds },
+      // `hours` is a subdocument of counters, not an array and not a bitmask.
+      // $inc on a missing "hours.14" creates the object by itself, whereas
+      // pre-seeding a 24-slot array with $setOnInsert collides with this very
+      // $inc on the shared `hours` prefix and throws. Counts rather than
+      // presence bits because a heatmap of presence makes every weekday
+      // morning look identical.
+      //
+      // Invariant: sum(values(hours)) === pings. That is what lets a read
+      // re-bucket a day into a different timezone.
+      $inc: { pings: 1, [`hours.${at.getUTCHours()}`]: 1 },
+    },
+    { upsert: true },
+  );
+}
+
+/**
+ * Deliberately does not touch last_seen_at. Leaving it stale is what makes the
+ * very next API call open the day's activity window, so a login always shows up
+ * as activity without this function having to know how that works.
+ */
+async function recordLogin(userId) {
+  const { users } = await collections();
+  await users.updateOne(
+    { id: userId },
+    { $set: { last_login_at: nowSeconds() }, $inc: { login_count: 1 } },
+  );
+}
+
 async function getTasks(userId, filter = {}) {
   const { tasks } = await collections();
   let userTasks = await tasks.find({ user_id: userId }).toArray();
@@ -291,6 +406,70 @@ async function getTasks(userId, filter = {}) {
 async function getTaskById(taskId, userId) {
   const { tasks } = await collections();
   return tasks.findOne({ id: taskId, user_id: userId });
+}
+
+// klndr shipped in 2026, so anything older than this is not a task that was
+// really made then - it is a bad clock, a unit mix-up (milliseconds read as
+// seconds lands in the year 56000), or someone trying it on.
+const EARLIEST_PLAUSIBLE = Date.UTC(2025, 0, 1) / 1000;
+
+function plausiblePast(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  if (n < EARLIEST_PLAUSIBLE || n > fallback) return fallback;
+  return Math.floor(n);
+}
+
+/**
+ * Stamp or clear completion timestamps for one write.
+ *
+ * The server owns these fields outright, and there are two separate reasons it
+ * cannot simply keep what arrives.
+ *
+ * updateTask has no allowlist - it replaces the document with
+ * { ...existing, ...updates } - so a client could post any completion time it
+ * liked and the analytics page would report it as fact.
+ *
+ * And the client cannot carry a segment's stamp even in good faith:
+ * TaskModel.ensureSegments rebuilds every segment as exactly
+ * { id, start_time, duration, completed }, so a server-written completed_at is
+ * stripped on read and comes back missing on the next drag - which a
+ * replaceOne would then persist as gone.
+ *
+ * So the transition is recomputed here from what the database already knew,
+ * matched by segment id, and anything inbound under these names is discarded.
+ */
+function applyCompletionTimestamps(existing, next, at = nowSeconds()) {
+  const wasDone = Boolean(existing.completed);
+  const isDone = Boolean(next.completed);
+
+  delete next.completed_at;
+  if (isDone && !wasDone) next.completed_at = at;
+  else if (isDone && existing.completed_at) {
+    next.completed_at = existing.completed_at;
+  }
+
+  if (Array.isArray(next.segments)) {
+    const before = new Map(
+      (existing.segments || []).map((seg) => [seg.id, seg]),
+    );
+    next.segments = next.segments.map((seg) => {
+      const { completed_at: _inbound, ...clean } = seg;
+      if (!clean.completed) return clean;
+      const prior = before.get(clean.id);
+      // A segment id the server has never seen, arriving already ticked, is a
+      // split of a block that was finished earlier. There is no honest moment
+      // to stamp it with, so it goes without one rather than claiming it was
+      // finished just now and inventing a spike on today's chart.
+      if (!prior) return clean;
+      if (!prior.completed) return { ...clean, completed_at: at };
+      return prior.completed_at
+        ? { ...clean, completed_at: prior.completed_at }
+        : clean;
+    });
+  }
+
+  return next;
 }
 
 async function createTask(userId, taskData) {
@@ -335,8 +514,20 @@ async function createTask(userId, taskData) {
     // What the source last said about completion, so the next sync can tell
     // which side changed rather than guessing.
     source_completed: Boolean(taskData.source_completed),
+    // Undoing a delete replays the whole snapshot through here, and
+    // KlndrApp.mergeTask is a plain Object.assign, so the original creation
+    // time really does come back. A plausible past value is honoured so an undo
+    // does not re-date the work; anything else is discarded, because this is a
+    // field the analytics page treats as fact and the client is the one thing
+    // that can lie about it.
+    created_at: plausiblePast(taskData.created_at, nowSeconds()),
     updated_at: Math.floor(Date.now() / 1000),
   };
+  // A task can be created already ticked - an undone delete, or an import of
+  // something the source considers done.
+  if (newTask.completed) {
+    newTask.completed_at = plausiblePast(taskData.completed_at, nowSeconds());
+  }
   await tasks.insertOne(newTask);
 
   // Recreating an imported task clears its tombstone. Undo goes through here,
@@ -366,6 +557,10 @@ async function updateTask(userId, taskId, updates) {
     updatedTask.is_locked = Boolean(updates.is_locked);
   if (updates.completed !== undefined)
     updatedTask.completed = Boolean(updates.completed);
+  // created_at is written once, by createTask, and is never an input here.
+  delete updatedTask.created_at;
+  if (existing.created_at) updatedTask.created_at = existing.created_at;
+  applyCompletionTimestamps(existing, updatedTask);
   delete updatedTask._id;
   await tasks.replaceOne({ id: taskId, user_id: userId }, updatedTask);
   return updatedTask;
@@ -384,6 +579,9 @@ async function batchUpdateTasks(userId, taskUpdatesList) {
       user_id: userId,
       updated_at: Math.floor(Date.now() / 1000),
     };
+    delete updatedTask.created_at;
+    if (existing.created_at) updatedTask.created_at = existing.created_at;
+    applyCompletionTimestamps(existing, updatedTask);
     delete updatedTask._id;
     await tasks.replaceOne({ id: item.id, user_id: userId }, updatedTask);
     updatedResults.push(updatedTask);
@@ -679,6 +877,11 @@ async function updateUserLastSeenAnnouncementId(userId, announcementId) {
 
 module.exports = {
   ready,
+  // Exported so read-only reporting can run its own aggregations rather than
+  // growing a CRUD wrapper per chart. Writes still go through the functions
+  // below; nothing outside this file should be calling insert or update on a
+  // handle it got from here.
+  collections,
   getUserByUsername,
   getUserById,
   getAllUsers,
@@ -692,6 +895,9 @@ module.exports = {
   createSession,
   validateSession,
   destroySession,
+  claimActivityWindow,
+  recordActivityDay,
+  recordLogin,
   getTasks,
   getTaskById,
   createTask,

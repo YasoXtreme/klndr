@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f2ffec" />
+
+    <!-- Stamps the pinned theme before the first paint. Must stay the first
+         script on the page: anything above it renders in the wrong theme for a
+         frame. Same script as index.html and login.html. -->
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem("klndr:theme");
+          if (mode === "light" || mode === "dark") {
+            document.documentElement.setAttribute("data-theme", mode);
+          }
+        } catch (e) {}
+      })();
+    </script>
+
+    <title>klndr · Analytics</title>
+    <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" />
+    <link rel="icon" href="/assets/favicon-16.png" sizes="16x16" />
+    <link rel="shortcut icon" href="/assets/favicon.ico" />
+
+    <link
+      rel="preload"
+      as="font"
+      type="font/ttf"
+      href="/assets/ElmsSans.ttf"
+      crossorigin
+    />
+
+    <link rel="stylesheet" href="/public/css/theme.css" />
+    <link rel="stylesheet" href="/public/css/common.css" />
+    <link rel="stylesheet" href="/admin/analytics.css" />
+
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      onload="this.rel = 'stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      />
+    </noscript>
+  </head>
+  <body>
+    <header class="an-topbar">
+      <div class="an-topbar-left">
+        <a class="an-back" href="/" title="Back to klndr">
+          <span class="material-symbols-outlined">arrow_back</span>
+        </a>
+        <span class="klndr-lockup klndr-lockup-topbar" role="img" aria-label="klndr">
+          <span class="klndr-plate" aria-hidden="true"><span>k</span></span>
+          <span class="klndr-wordmark" aria-hidden="true">klndr</span>
+        </span>
+        <h1 class="an-title">Analytics</h1>
+      </div>
+
+      <div class="an-topbar-right">
+        <label class="an-range-label" for="anRange">Range</label>
+        <select id="anRange" class="an-range">
+          <option value="30">30 days</option>
+          <option value="90" selected>90 days</option>
+          <option value="180">6 months</option>
+          <option value="365">1 year</option>
+        </select>
+        <button type="button" class="an-refresh" id="anRefresh" title="Refresh">
+          <span class="material-symbols-outlined">refresh</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Privacy is a property of the endpoints, not of this markup: no task
+         title or note is ever sent to this page, and a category name only
+         arrives once two different people have used it. -->
+    <nav class="an-tabs" role="tablist" aria-label="Analytics sections">
+      <button type="button" class="an-tab active" role="tab" data-panel="panelOverview">
+        <span class="material-symbols-outlined">insights</span>Overview
+      </button>
+      <button type="button" class="an-tab" role="tab" data-panel="panelPeople">
+        <span class="material-symbols-outlined">group</span>People
+      </button>
+      <button type="button" class="an-tab" role="tab" data-panel="panelEngagement">
+        <span class="material-symbols-outlined">calendar_month</span>Engagement
+      </button>
+      <button type="button" class="an-tab" role="tab" data-panel="panelTasks">
+        <span class="material-symbols-outlined">event_note</span>Planning &amp; tasks
+      </button>
+      <button type="button" class="an-tab" role="tab" data-panel="panelSystem">
+        <span class="material-symbols-outlined">monitor_heart</span>System &amp; health
+      </button>
+    </nav>
+
+    <main class="an-main">
+      <section class="an-panel" id="panelOverview" role="tabpanel"></section>
+      <section class="an-panel" id="panelPeople" role="tabpanel" hidden></section>
+      <section class="an-panel" id="panelEngagement" role="tabpanel" hidden></section>
+      <section class="an-panel" id="panelTasks" role="tabpanel" hidden></section>
+      <section class="an-panel" id="panelSystem" role="tabpanel" hidden></section>
+    </main>
+
+    <script src="/public/js/theme.js"></script>
+    <script src="/protected/js/api.js"></script>
+    <script src="/admin/charts.js"></script>
+    <script src="/admin/analytics.js"></script>
+  </body>
+</html>

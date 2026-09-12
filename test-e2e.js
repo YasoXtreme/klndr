@@ -1,5 +1,10 @@
 const http = require('http');
 
+// The port the server is actually on. .env sets PORT, so hardcoding 3000 meant
+// this script could not reach a stock local instance.
+require('dotenv').config({ quiet: true });
+const PORT = Number(process.env.PORT) || 3000;
+
 function makeRequest(options, postData = null) {
   return new Promise((resolve, reject) => {
     const req = http.request(options, (res) => {
@@ -43,7 +48,7 @@ async function runTests() {
     // 1. Unauthenticated / route
     const unauthRoot = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/',
       method: 'GET'
     });
@@ -52,7 +57,7 @@ async function runTests() {
     // 2. Unauthenticated protected static asset
     const unauthJs = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/protected/js/app.js',
       method: 'GET'
     });
@@ -61,7 +66,7 @@ async function runTests() {
     // 3. Login with invalid password
     const badLogin = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/auth/login',
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
@@ -71,7 +76,7 @@ async function runTests() {
     // 4. Valid Login
     const validLogin = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/auth/login',
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
@@ -84,7 +89,7 @@ async function runTests() {
     // 5. Authenticated /api/auth/me
     const meRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/auth/me',
       method: 'GET',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -94,7 +99,7 @@ async function runTests() {
     // 6. Create Task
     const createdTaskRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/tasks',
       method: 'POST',
       headers: {
@@ -119,7 +124,7 @@ async function runTests() {
     // 7. Get Tasks
     const getTasksRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/tasks',
       method: 'GET',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -129,7 +134,7 @@ async function runTests() {
     // 8. Update Task (Splitting into 2 segments across a break)
     const updateTaskRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: `/api/tasks/${taskId}`,
       method: 'PUT',
       headers: {
@@ -146,7 +151,7 @@ async function runTests() {
     // 9. Batch Update (Cascading Ripple simulation)
     const batchRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/tasks/batch-update',
       method: 'POST',
       headers: {
@@ -167,7 +172,7 @@ async function runTests() {
     const testBetaUser = 'betatester_' + Math.floor(Math.random() * 10000);
     const adminCreateUser = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/admin/create-user',
       method: 'POST',
       headers: {
@@ -184,7 +189,7 @@ async function runTests() {
     // 11. Admin list users
     const adminListUsers = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/admin/users',
       method: 'GET',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -194,7 +199,7 @@ async function runTests() {
     // 12. Change Password
     const changePassRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/auth/change-password',
       method: 'POST',
       headers: {
@@ -211,7 +216,7 @@ async function runTests() {
     // Revert password back
     await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/auth/change-password',
       method: 'POST',
       headers: {
@@ -227,7 +232,7 @@ async function runTests() {
     // 13. Settings Update (0-24h bucket options)
     const settingsRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/settings',
       method: 'PUT',
       headers: {
@@ -244,7 +249,7 @@ async function runTests() {
     // 14. Delete Task
     const delRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: `/api/tasks/${taskId}`,
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -254,7 +259,7 @@ async function runTests() {
     // 15. Admin delete user
     const delUserRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: `/api/admin/users/${testBetaUser}`,
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -264,7 +269,7 @@ async function runTests() {
     // 16. Logout
     const logoutRes = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/auth/logout',
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -274,7 +279,7 @@ async function runTests() {
     // 17. Verify token no longer valid
     const postLogoutMe = await makeRequest({
       hostname: 'localhost',
-      port: 3000,
+      port: PORT,
       path: '/api/auth/me',
       method: 'GET',
       headers: { 'Authorization': `Bearer ${token}` }

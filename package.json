@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "check:tokens": "node scripts/check-design-tokens.js",
     "dev": "node --watch server.js",
     "add-user": "node scripts/manage-users.js add",
     "list-users": "node scripts/manage-users.js list",

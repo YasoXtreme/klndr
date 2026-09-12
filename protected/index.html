@@ -9,6 +9,22 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <meta name="theme-color" content="#f2ffec" />
+    <!-- The theme stamp, first statement on the page. Everything below - the
+         critical CSS, the stylesheets, the boot overlay - is written against
+         html[data-theme], so this has to land before any of it is parsed or
+         the app opens on the wrong ground and then lurches.
+
+         It writes an attribute and nothing else, and only for a PINNED
+         choice: the default is the OS, which the media queries below and in
+         theme.css already answer without any script running. The rest of the
+         controller is /public/js/theme.js. -->
+    <script>
+      try {
+        var t = localStorage.getItem('klndr:theme');
+        if (t === 'dark' || t === 'light')
+          document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    </script>
     <title>klndr — Think of it. Schedule it.</title>
     <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
@@ -52,6 +68,27 @@
         background: linear-gradient(135deg, #f2ffec 0%, #ffffff 100%);
         background-attachment: fixed;
       }
+      /* The dark ground, spelled out rather than var(--bg-gradient), because
+         the whole point of this block is that it paints before theme.css has
+         arrived - and an unresolved custom property paints nothing at all.
+         Keep both copies in step with --bg-gradient.
+
+         Twice, for the same reason theme.css says it twice: once for the OS
+         default, once for a pinned choice. */
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme='light']),
+        html:not([data-theme='light']) body,
+        html:not([data-theme='light']) .app-boot {
+          background: linear-gradient(135deg, #1e1e17 0%, #14140f 100%);
+          background-attachment: fixed;
+        }
+      }
+      [data-theme='dark'],
+      [data-theme='dark'] body,
+      [data-theme='dark'] .app-boot {
+        background: linear-gradient(135deg, #1e1e17 0%, #14140f 100%);
+        background-attachment: fixed;
+      }
       /* Nothing but the ground until the boot script decides otherwise. */
       .app-boot > * {
         opacity: 0;
@@ -77,6 +114,7 @@
       </style>
     </noscript>
 
+    <link rel="stylesheet" href="/public/css/theme.css" />
     <link rel="stylesheet" href="/public/css/common.css" />
     <link rel="stylesheet" href="/protected/css/app.css" />
     <link rel="stylesheet" href="/protected/css/responsive.css" />
@@ -318,7 +356,7 @@
           <div class="user-avatar-circle">
             <span
               class="material-symbols-outlined"
-              style="font-size: 18px; color: #000"
+              style="font-size: 18px; color: var(--accent-active-ink)"
               >person</span
             >
           </div>
@@ -342,7 +380,7 @@
             >
               <span
                 class="material-symbols-outlined"
-                style="font-size: 18px; color: #000"
+                style="font-size: 18px; color: var(--ink-strong)"
                 >chevron_left</span
               >
             </button>
@@ -462,7 +500,7 @@
             >
               <span
                 class="material-symbols-outlined"
-                style="font-size: 20px; color: #000"
+                style="font-size: 20px; color: var(--ink-strong)"
                 >tune</span
               >
             </button>
@@ -625,7 +663,7 @@
             >
               <span
                 class="material-symbols-outlined"
-                style="font-size: 18px; color: #000"
+                style="font-size: 18px"
                 >add_reaction</span
               >
             </button>
@@ -638,7 +676,7 @@
             >
               <span
                 class="material-symbols-outlined"
-                style="font-size: 18px; color: #000"
+                style="font-size: 18px"
                 >palette</span
               >
             </button>
@@ -651,7 +689,7 @@
             >
               <span
                 class="material-symbols-outlined"
-                style="font-size: 18px; color: #000"
+                style="font-size: 18px"
                 >category</span
               >
             </button>
@@ -711,16 +749,7 @@
           <div class="modal-pane-body">
             <!-- Tab 1: Account Settings -->
             <div class="modal-tab-panel" id="tabPanelSettings">
-              <div
-                style="
-                  margin-bottom: 16px;
-                  background: #f9fafb;
-                  padding: 10px 14px;
-                  border: 1.5px solid #000;
-                  border-radius: 8px;
-                  font-size: 13.5px;
-                "
-              >
+              <div class="settings-identity-box">
                 <div>
                   Logged in as: <strong id="displayCurrentUsername">user</strong>
                 </div>
@@ -732,6 +761,63 @@
                     >user</span
                   >
                 </div>
+              </div>
+
+              <!-- Appearance. A radiogroup rather than a switch, because
+                   there are three states and a switch only has two: the
+                   design system's default is the OS, and pinning a theme has
+                   to be undoable. -->
+              <div class="settings-block">
+                <span class="settings-block-label" id="themeChoiceLabel"
+                  >Appearance</span
+                >
+                <div
+                  class="theme-toggle"
+                  role="radiogroup"
+                  aria-labelledby="themeChoiceLabel"
+                >
+                  <button
+                    type="button"
+                    class="theme-option is-active"
+                    data-theme-choice="system"
+                    role="radio"
+                    aria-checked="true"
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true"
+                      >contrast</span
+                    >
+                    System
+                  </button>
+                  <button
+                    type="button"
+                    class="theme-option"
+                    data-theme-choice="light"
+                    role="radio"
+                    aria-checked="false"
+                    tabindex="-1"
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true"
+                      >light_mode</span
+                    >
+                    Light
+                  </button>
+                  <button
+                    type="button"
+                    class="theme-option"
+                    data-theme-choice="dark"
+                    role="radio"
+                    aria-checked="false"
+                    tabindex="-1"
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true"
+                      >dark_mode</span
+                    >
+                    Dark
+                  </button>
+                </div>
+                <p class="settings-block-note">
+                  System follows your device. Remembered on this device.
+                </p>
               </div>
 
               <!-- Change Username -->
@@ -827,7 +913,7 @@
                 style="
                   margin: 0 0 14px;
                   font-size: 13px;
-                  color: #4b5563;
+                  color: var(--ink-soft);
                   line-height: 1.5;
                 "
               >
@@ -840,6 +926,21 @@
 
             <!-- Tab 2: Admin Beta Users Manager -->
             <div class="modal-tab-panel" id="tabPanelAdmin" style="display: none">
+              <!-- This link is hidden for non-admins along with the whole tab,
+                   but hiding it is PRESENTATION, not the control. /analytics and
+                   every endpoint behind it are guarded server-side; do not
+                   "simplify" those guards away on the strength of this. -->
+              <a class="admin-analytics-link" href="/analytics">
+                <span class="material-symbols-outlined">insights</span>
+                <span>
+                  <strong>Open analytics</strong>
+                  <em>Usage, engagement and health across every account</em>
+                </span>
+                <span class="material-symbols-outlined admin-analytics-chevron"
+                  >chevron_right</span
+                >
+              </a>
+
               <form
                 id="adminAddUserForm"
                 class="modal-form"
@@ -885,14 +986,7 @@
               <h3 style="font-size: 15px; font-weight: 800; margin-bottom: 8px">
                 Active Beta Accounts
               </h3>
-              <div
-                style="
-                  max-height: 180px;
-                  overflow-y: auto;
-                  border: 1.5px solid #000;
-                  border-radius: 8px;
-                "
-              >
+              <div class="admin-users-scroll">
                 <table class="admin-users-table">
                   <thead>
                     <tr>
@@ -1025,7 +1119,7 @@
             <span
               class="material-symbols-outlined"
               id="previewCardBadgeIcon"
-              style="font-size: 18px; color: #000"
+              style="font-size: 18px"
               >square_foot</span
             >
           </div>
@@ -1050,7 +1144,7 @@
             >
               <span
                 class="material-symbols-outlined"
-                style="font-size: 18px; color: #000"
+                style="font-size: 18px"
                 >add_reaction</span
               >
             </button>
@@ -1062,7 +1156,7 @@
             >
               <span
                 class="material-symbols-outlined"
-                style="font-size: 18px; color: #000"
+                style="font-size: 18px"
                 >palette</span
               >
             </button>
@@ -1074,7 +1168,7 @@
             >
               <span
                 class="material-symbols-outlined"
-                style="font-size: 18px; color: #000"
+                style="font-size: 18px"
                 >category</span
               >
             </button>
@@ -1203,7 +1297,7 @@
           </div>
 
           <div class="modal-actions">
-            <button type="button" class="btn-modal-secondary modal-close-btn">
+            <button type="button" class="btn-modal-secondary js-modal-close">
               Cancel
             </button>
             <button type="submit" class="btn-modal-primary">
@@ -1414,7 +1508,7 @@
         <span>Remove from Calendar</span>
       </div>
       <div class="context-menu-item danger" id="ctxDelete">
-        <span class="material-symbols-outlined" style="color: #ef4444"
+        <span class="material-symbols-outlined" style="color: var(--danger-line)"
           >delete</span
         >
         <span>Delete Task</span>
@@ -1422,6 +1516,7 @@
     </div>
 
     <!-- Protected Frontend Scripts -->
+    <script src="/public/js/theme.js"></script>
     <script src="/protected/js/api.js"></script>
     <script src="/protected/js/palette.js"></script>
     <script src="/protected/js/category-picker.js"></script>

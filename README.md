@@ -107,6 +107,7 @@ work.
 | `MONGODB_DB` | | Database name. Defaults to `klndr`; use `klndr_dev` locally. |
 | `PORT` | | HTTP port. Defaults to `3000`. |
 | `SESSION_SECRET` | yes | Cookie signing secret. Keep it identical across every instance of one deployment. |
+| `ANALYTICS_TZ` | | IANA timezone the analytics page reports in. Activity is stored in UTC and converted on read, so changing this re-labels history rather than rewriting it. Defaults to `UTC`. |
 | `KLNDR_BASE_URL` | for integrations | This deployment's absolute public origin. Used to build OAuth redirect URIs, which must byte-match what the provider has registered — behind a proxy the `Host` header is not reliably the public name, so it cannot be derived from the request. |
 | `INTEGRATION_ENC_KEY` | for integrations | 32 random bytes, base64. Encrypts integration tokens at rest with AES-256-GCM. Rotating it makes existing connections unreadable and forces everyone to reconnect. |
 | `SYLLA_BASE_URL`, `SYLLA_CLIENT_ID`, `SYLLA_CLIENT_SECRET` | for Sylla | See [Integrations](#integrations). Omit them and Sylla simply lists as "Not configured"; nothing else is affected. |
@@ -175,12 +176,25 @@ docs/                        Manual regression checklists
 - **Derived fields stay on the wire.** `segments` is authoritative in memory, while `start_times` / `durations` / `total_duration` / `completed` are kept in sync so date-range queries work against records written before segments existed.
 - **The palette is shared, not duplicated.** `protected/js/palette.js` is loaded as a browser global *and* `require`d by the server, because "pick a colour no other category has taken" is only meaningful if both sides draw from the same twenty.
 - **Undo stores changes, not snapshots.** Each entry carries the before and after of the fields one gesture touched, so undo and redo are the same replay in opposite directions.
+- **Analytics reports its own blind spots instead of backfilling them.** klndr recorded nothing temporal before the analytics feature — no last login, no `tasks.created_at`, no activity log — and `updated_at` is an *upper bound* on creation, so deriving a creation date from it would drag every task forward in time and make the earliest weeks look empty, undetectably and permanently. Nothing is backfilled. Every report instead returns `meta.instrumented_since` and `meta.coverage`, probed from the data rather than hardcoded, and the page renders the gap ("1,290 tasks predate instrumentation") so totals stay reconcilable. The one exception is *derived at read time*, never stored: a missing `last_login_at` falls back to the newest surviving session row and is tagged `last_login_source`, so it self-heals as real logins arrive.
 
 ### Data model
 
 MongoDB collections: `users`, `sessions`, `tasks`, `settings`, `announcements`,
-`integrations`. Indexes are created on first connect; sessions expire through a
-TTL index on `expires_at`.
+`integrations`, `activity_daily`. Indexes are created on first connect; sessions
+expire through a TTL index on `expires_at`.
+
+**`activity_daily`** is one document per person per UTC day, keyed
+`"<YYYY-MM-DD>:<user_id>"` — day first, so a date range across everyone is a
+contiguous scan rather than one scattered by user. It carries `first_at`,
+`last_at`, `pings` and `hours`, and is written at most once per five minutes per
+person from a compare-and-swap in `requireApiAuth`. `pings` counts *distinct
+five-minute windows*, not requests, which is what makes `pings x 5min` a usable
+(and clearly labelled) proxy for time on the app; `hours` is a subdocument of
+counters rather than an array, because `$inc` on `hours.14` creates the object by
+itself on upsert whereas a pre-seeded 24-slot array collides with that same
+`$inc`. It has **no TTL**: its whole value is longitudinal, and a TTL would
+quietly amputate the retention grid a year from now.
 
 A **task** owns its identity — title, colour, icon, category, lock state — and
 carries `segments`, each `{ id, start_time, duration, completed }`. Imported
@@ -274,6 +288,22 @@ nor reach all of them.
 | `POST` | `/api/admin/create-user` | Create an account |
 | `DELETE` | `/api/admin/users/:username` | Delete an account |
 | `POST` | `/api/admin/users/:username/reset-password` | Issue a temporary password, returned exactly once |
+| `GET` | `/api/admin/analytics/overview` | Instance totals, active accounts, signup and task-creation trends |
+| `GET` | `/api/admin/analytics/users` | One row per account: activity, task counts, sessions, streaks |
+| `GET` | `/api/admin/analytics/engagement` | DAU/WAU/MAU, new vs returning, retention cohorts, activity heatmap |
+| `GET` | `/api/admin/analytics/tasks` | Task and scheduling shape, planned-time heatmaps, shared categories |
+| `GET` | `/api/admin/analytics/system` | Sessions, integrations, announcements, settings distribution |
+
+All five take `?days=` (clamped to 7–3650) and return a `meta` block describing
+what was measurable over that range. The page itself is `GET /analytics`.
+
+**Task content is never exposed.** No title and no note leaves these endpoints,
+and a category name appears only pooled instance-wide once **two distinct
+accounts** use it — enforced in the aggregation pipeline, not in the template, so
+no change to the page can leak one.
+
+Analytics requests are excluded from activity tracking, so an admin watching the
+dashboard does not register as engagement.
 
 </details>
 

@@ -595,7 +595,7 @@ class DragController {
 
     const ghost = document.createElement('div');
     ghost.className = 'global-drag-ghost';
-    ghost.style.backgroundColor = task.color || '#3ba4f6';
+    KlndrTheme.paint(ghost, task.color || KlndrPalette.DEFAULT_COLOR);
     ghost.style.left = `${clientX}px`;
     ghost.style.top = `${clientY}px`;
     ghost.style.width = '180px';

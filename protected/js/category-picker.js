@@ -79,7 +79,7 @@ const CategoryPicker = {
 
     const swatch = document.createElement('span');
     swatch.className = `picker-cat-swatch ${category.color ? '' : 'is-blank'}`.trim();
-    if (category.color) swatch.style.backgroundColor = category.color;
+    if (category.color) KlndrTheme.paint(swatch, category.color);
     if (category.icon) {
       swatch.innerHTML = `<span class="material-symbols-outlined">${category.icon}</span>`;
     }

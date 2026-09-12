@@ -8,6 +8,7 @@ const {
   requireApiAuth,
   requirePageAuth,
   requireAdmin,
+  requirePageAdmin,
 } = require("./server/auth-middleware");
 
 const app = express();
@@ -61,6 +62,12 @@ app.post("/api/auth/login", async (req, res) => {
   }
 
   const token = await db.createSession(user.id);
+
+  // The only place a login is observed. Deliberately does not touch
+  // last_seen_at: leaving that stale is what makes the next API call open the
+  // day's activity window, so a login always registers as activity without
+  // this handler having to know how that works.
+  await db.recordLogin(user.id);
 
   // Set secure HTTP-only cookie (30 days)
   res.cookie("klndr_session", token, {
@@ -210,9 +217,32 @@ app.use(
   express.static(path.join(__dirname, "protected")),
 );
 
+// The admin page's own assets. They live in a sibling directory rather than
+// under protected/, and that is a security boundary rather than tidiness.
+//
+// Route ordering cannot protect a subdirectory of a statically-served root.
+// Express matches layers against the raw, unnormalized pathname, so a request
+// for /protected/x/../admin/analytics.js never matches a /protected/admin
+// mount - it matches /protected, and send() then normalizes the path and
+// resolves it right back down into the directory the guard was supposed to
+// cover. send() only refuses when the ".." escapes ABOVE the root, which is
+// exactly what reaching a sibling requires. Hence: sibling.
+app.use(
+  "/admin",
+  requirePageAuth,
+  requirePageAdmin,
+  express.static(path.join(__dirname, "admin")),
+);
+
 // Root route: serves protected index.html only if authenticated
 app.get("/", requirePageAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "protected", "index.html"));
+});
+
+// Admin analytics. The link into this page is hidden for non-admins, but that
+// is presentation - these two guards are the control.
+app.get("/analytics", requirePageAuth, requirePageAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, "admin", "analytics.html"));
 });
 
 // ==========================================
@@ -383,6 +413,15 @@ app.put("/api/announcements/seen", requireApiAuth, async (req, res) => {
 // router: JSON 401s for the XHR endpoints, a redirect for the two that are
 // top-level navigations.
 app.use("/api/integrations", require("./server/routes/integrations"));
+
+// Guards hoisted to the mount, unlike the integrations router: every route
+// under this one is admin-only JSON, with no navigation among them.
+app.use(
+  "/api/admin/analytics",
+  requireApiAuth,
+  requireAdmin,
+  require("./server/routes/analytics"),
+);
 
 // Catch-all 404 handler
 app.use((req, res) => {

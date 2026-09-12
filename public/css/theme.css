@@ -1,0 +1,479 @@
+/* ====================================================
+   KLNDR THEME TOKENS
+   ====================================================
+   One place where every colour in the app is named, and the only place that
+   knows there is more than one theme.
+
+   The dark values come from the design system's tokens/colors-dark.css. That
+   file names seven neutrals (ink, paper, mint, mint-press, muted, tray) plus
+   the accents and the status pairs; klndr's stylesheets need more steps than
+   that, so the extra rungs below - surface-3, the four line weights, the ink
+   ramp between --ink and --muted - are interpolated ON THE SYSTEM'S HUE and
+   sit between values it gave. Where a token maps straight onto one of the
+   system's, the comment says which, so the next sync is mechanical.
+
+   ----------------------------------------------------
+   Default is the OS
+
+   The system's file follows prefers-color-scheme and treats data-theme as an
+   override in either direction, so this does too: no attribute means "ask the
+   OS", and Settings can pin it. That is why the dark values appear twice -
+   once under the media query, once under the explicit attribute - and why the
+   media query has to exclude [data-theme="light"]: light lives in :root, so
+   pinning light is not a block of its own, it is opting out of the dark one.
+
+   ----------------------------------------------------
+   The two families
+
+   Neo-brutalism here is a hard line and a flat fill, and half the app is not
+   drawn on a neutral surface at all: a task block's fill is its CATEGORY's
+   colour. So the tokens split in two.
+
+     CHROME    panes, modals, buttons, rulers - anything on a neutral ground.
+               Surfaces go to the warm near-blacks, and the structural line
+               inverts to the system's bone --ink so the borders and the hard
+               offset shadows survive.
+
+     ON-ACCENT anything sitting ON a category colour: block titles, badges,
+               checkboxes, segment pills. Barely moves - the system takes it
+               from #000000 to its warm near-black --on-accent and no further,
+               because the thing underneath it is still a bright pastel.
+
+   The accents themselves are not variables at the point of use: a task's
+   colour is a hex in the database. The dimming the system specifies for them
+   is applied as a transform instead - see --task-mix at the bottom.
+   ==================================================== */
+
+/* ----------------------------------------------------
+   LIGHT - today's app, unchanged
+   ---------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  /* ---- Ground ----
+     The system calls this a flat --surface-page: var(--mint). klndr has always
+     run a mint-to-white gradient under it, and that is the app as it stands,
+     so the gradient stays and --surface-page is its first stop. */
+  --surface-page: #f2ffec;
+  --bg-gradient: linear-gradient(135deg, #f2ffec 0%, #ffffff 100%);
+
+  /* ---- Chrome surfaces, lightest on top ---- */
+  --surface-1: #ffffff;        /* system --paper: panes, modals, buttons */
+  --surface-2: #f9fafb;        /* system --tray: section headers, nav pane */
+  --surface-3: #f3f4f6;        /* interpolated: neutral hover */
+  --surface-inset: #fdfdfd;    /* interpolated: search bar */
+  --surface-inset-2: #fafafa;  /* interpolated: filter bar */
+
+  /* ---- Chrome ink ---- */
+  --ink-strong: #000000;       /* system --ink */
+  --ink: #111827;
+  --ink-muted: #374151;
+  --ink-soft: #4b5563;         /* system --muted */
+  --ink-dim: #6b7280;
+  --ink-faint: #9ca3af;
+  --ink-inverse: #ffffff;      /* on the playhead chip and the drag hint */
+
+  /* ---- Chrome lines ---- */
+  --color-border: #000000;     /* THE line. Every brutalist border is this. */
+  --line-soft: #e5e7eb;
+  --line-mid: #9ca3af;
+  --line-faint: #d1d5db;
+  --line-scroll: #cbd5e1;
+  --line-scroll-hover: #94a3b8;
+
+  /* ---- Accent ---- */
+  --accent-mint: #f2ffec;       /* system --mint */
+  --accent-mint-hover: #ddf8ce; /* system --mint-press */
+
+  /* Mint does two jobs up here, because a pale tint can: it is the HOVER wash
+     on a neutral control AND the resting fill of anything selected, active or
+     primary. On a dark ground one value cannot be both - a tint quiet enough
+     to hover with is too quiet to mean "chosen" - so the two jobs get their
+     own names. In the light they resolve to the mint they always were, which
+     is why nothing above the fold moves; in the dark they part company. */
+  --accent-active: var(--accent-mint);
+  --accent-active-hover: var(--accent-mint-hover);
+  --accent-active-ink: var(--ink-strong);
+  --accent-active-ink-soft: var(--ink-soft);
+  --accent-active-ink-dim: var(--ink-dim);
+
+  /* ---- Elevation ----
+     The offset brutalist slab, twice, because the system draws the
+     distinction: the plain one is the structural ink, and the -accent one is
+     what a COLOURED block casts so it throws its own colour rather than bone.
+     The soft rgba(0, 0, 0, a) elevation shadows in app.css are left alone -
+     black is the right colour under a dark surface too, just quieter. */
+  --shadow-slab: #000000;
+
+  /* The two workspace panes and the login card are drawn as one accented
+     object: a line and the slab it throws, in a single colour. Up here that
+     colour is the structural ink, so a pane is black on black - the light
+     theme's own vocabulary, just at a size it had not been used at before.
+     (They used to carry a 4% black wash, which read as a whisper of weight on
+     white and as nothing whatsoever on a near-black.)
+
+     Down there both halves go green instead. The accent has to appear
+     somewhere a user actually looks - an accent first met inside a settings
+     modal is not an accent - and putting it on the line AND the slab keeps
+     the pane one object rather than a bone outline with a green shadow behind
+     it, which is two ideas fighting. */
+  --container-line: var(--color-border);
+  --shadow-container: var(--color-border);
+
+  /* ---- Scrims and overlays ---- */
+  --scrim: rgba(0, 0, 0, 0.45);
+  --focus-ring: rgba(0, 0, 0, 0.12);
+  --focus-ring-line: var(--color-border);
+  --ghost-outline: rgba(0, 0, 0, 0.6);
+  --nudge-bg: rgba(255, 255, 255, 0.92);
+  --sync-dot: var(--accent-mint);
+
+  /* ---- Status ---- */
+  --danger-bg: #fee2e2;
+  --danger-line: #ef4444;
+  --danger-ink: #b91c1c;
+  --danger-ink-strong: #991b1b;
+  --danger-ink-deep: #7f1d1d;
+  --danger-line-soft: #f87171;
+
+  --success-bg: #dcfce7;
+  --success-line: #22c55e;
+  --success-ink: #166534;
+  --success-guide: #16a34a;   /* the snap guide drawn on the canvas */
+
+  /* The system's file stops at danger and success. Warning follows the rule
+     those two set: keep the hue, swap figure and ground. */
+  --warn-bg: #fef3c7;
+  --warn-bg-soft: #fffbeb;
+  --warn-bg-note: #fef9c3;
+  --warn-line: #f59e0b;
+  --warn-ink: #92400e;
+  --warn-ink-deep: #713f12;
+  --warn-chip: #b45309;
+
+  /* ---- Canvas: the timeline grid, ruler and day gutter ----
+     The grid is drawn on a <canvas>, so it inherits none of the above -
+     TimelineCanvas reads these through getComputedStyle instead. Most are
+     aliases, which is the point: the ruler is the same surface as the pane
+     around it and has to stay that way in both themes. Only the two "today"
+     tints are their own value, being a hair off the surface they sit on
+     rather than a step in the ramp. */
+  --canvas-grid-bg: var(--surface-1);
+  --canvas-ruler-bg: var(--surface-1);
+  --canvas-ruler-shift-bg: var(--accent-mint);
+  --canvas-gutter-bg: var(--surface-2);
+  --canvas-line-minor: var(--line-soft);
+  --canvas-line-major: var(--line-mid);
+  --canvas-line-lane: var(--color-border);
+  --canvas-tick-minor: var(--line-mid);
+  --canvas-now: var(--danger-line);
+  --canvas-lane-today: #fbfff8;
+  --canvas-gutter-today: #e6fbd8;
+
+  /* ---- Brand lockup ----
+     Theme-INVARIANT, and deliberately so: a badge that restyles itself is not
+     a badge. White plate, black k, black slab, on every surface in both
+     themes. The wordmark beside it is type rather than mark, so it follows
+     --ink-strong like any other text - see .klndr-wordmark in common.css. */
+  --klndr-plate-fill: #ffffff;
+  --klndr-ink: #000000;   /* k glyph, plate line and plate slab - both themes */
+
+  /* ---- ON-ACCENT ---- */
+  --on-color-ink: #000000;              /* system --on-accent */
+  --on-color-border: #000000;           /* system --on-accent */
+  --on-color-ink-soft: rgba(0, 0, 0, 0.55);
+  --on-color-ink-meta: #374151;
+  --on-color-ink-dim: #6b7280;
+  --on-color-surface: #ffffff;
+  --on-color-hover: #f2ffec;
+  --on-color-halo: rgba(255, 255, 255, 0.8);
+
+  /* ---- Charts ----
+     A data palette, which is not the same thing as klndr's twenty task
+     colours: those are pastels chosen to sit under black text on a block, and
+     as chart series they are neither separable for colour-blind readers nor
+     legible on the dark ground. These eight are ordered, and the order is
+     fixed - slot 1 is always slot 1, so a filter that drops a series never
+     repaints the survivors.
+
+     Validated as a set against this mode's --surface-1 rather than eyeballed:
+     lightness band, chroma floor, colour-blind separation and normal-vision
+     separation all pass. Three of the light steps (aqua, yellow, magenta) sit
+     below 3:1 against white, which is why every chart here carries direct
+     labels or a table - that relief is a requirement, not a nicety. */
+  --chart-1: #2a78d6;  /* blue */
+  --chart-2: #eb6834;  /* orange */
+  --chart-3: #1baf7a;  /* aqua */
+  --chart-4: #eda100;  /* yellow */
+  --chart-5: #e87ba4;  /* magenta */
+  --chart-6: #008300;  /* green */
+  --chart-7: #4a3aa7;  /* violet */
+  --chart-8: #e34948;  /* red */
+
+  /* Sequential, for heatmap density. One hue, light to dark - never a rainbow,
+     because a hue ramp implies categories where there is only magnitude. */
+  --chart-seq-0: #f3f4f6;
+  --chart-seq-1: #d6e6f8;
+  --chart-seq-2: #a9cbf0;
+  --chart-seq-3: #74ade4;
+  --chart-seq-4: #3d8bd4;
+  --chart-seq-5: #1f5fa4;
+
+  --chart-grid: var(--line-soft);
+  --chart-axis: var(--ink-faint);
+  --chart-ink: var(--ink);
+}
+
+/* ----------------------------------------------------
+   DARK
+   ----------------------------------------------------
+   Warm near-black ground, NEUTRAL panes, warm bone line.
+
+   That split is the whole point and it is taken from the light theme: up there
+   the ground is the tinted one (#f2ffec mint) and the pane is the achromatic
+   one (#ffffff), which is why a pane reads as a separate material rather than
+   a lighter patch of the same thing. Dark used to put both on the same olive
+   and lost exactly that. So the gradient keeps its warmth and the chrome
+   surfaces - panes, trays, insets, and the timeline grid with them - are plain
+   grey. The brand tint has not gone anywhere: it moved to the ink, the border
+   and the slab, which is where it can be seen.
+
+   Values marked "system" are verbatim from tokens/colors-dark.css.
+
+   The structural line inverting to bone is the decision the whole theme rests
+   on - a black 2.4px border on #24241c is about 1.5:1 and stops existing,
+   taking the drawing with it. The hard offset shadows invert with it, which is
+   the system's call and the right one: on this ground a black slab is a slab
+   nobody can see.
+   ---------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --surface-page: #14140f;   /* system --surface-page */
+    --bg-gradient: linear-gradient(135deg, #1e1e17 0%, #14140f 100%);
+
+    --surface-1: #2a2a2a;      /* system --paper, neutralised */
+    --surface-2: #323232;      /* system --tray */
+    --surface-3: #3d3d3d;
+    --surface-inset: #202020;
+    --surface-inset-2: #1c1c1c;
+
+    --ink-strong: #eef7e4;     /* system --ink */
+    --ink: #dfe7d6;
+    --ink-muted: #c2c7b7;
+    --ink-soft: #b4b8a8;
+    --ink-dim: #a5a999;        /* system --muted */
+    --ink-faint: #8c8f88;      /* system --accent-gray */
+    --ink-inverse: #14140f;    /* system --on-accent */
+
+    --color-border: #eef7e4;   /* system --ink: the bone line */
+    --line-soft: #3f3f3f;
+    --line-mid: #6a6a6a;
+    --line-faint: #4d4d4d;
+    --line-scroll: #484848;
+    --line-scroll-hover: #6a6a6a;
+
+    /* Mint was the page ground here, which meant every hover and every active
+       tab in the app painted itself the exact colour of the thing behind it.
+       It is a real tint now - dark enough to hover with, light enough to see. */
+    --accent-mint: #334026;       /* system --mint */
+    --accent-mint-hover: #3f5030; /* system --mint-press */
+
+    /* And this is the half mint cannot carry down here: the solid fill that
+       says chosen. The brand green at full strength, with the near-black
+       on-accent ink over it - the same figure/ground the light theme gets
+       from black on mint, just louder, because the ground is louder. */
+    --accent-active: #9ae659;       /* system --accent-green, undimmed */
+    --accent-active-hover: #aaf06d;
+    --accent-active-ink: #14140f;    /* system --on-accent */
+    /* The muted rungs of that ink, for the one active surface that has
+       supporting text on it - the analytics link, and the selected row
+       in its tables. The chrome ramp is bone down here and would vanish
+       on the green. */
+    --accent-active-ink-soft: #31501a;
+    --accent-active-ink-dim: #3f5c22;
+
+    --shadow-slab: #eef7e4;        /* the bone line, cast */
+
+    --container-line: #9ae659;
+    --shadow-container: #9ae659;
+
+    --scrim: rgba(0, 0, 0, 0.65);
+    --focus-ring: rgba(238, 247, 228, 0.22);
+    --focus-ring-line: #9ae659;
+    /* The ghost outlines a projected position on the grid, so it follows the
+       grid's ink rather than the light theme's black. */
+    --ghost-outline: rgba(238, 247, 228, 0.7);
+    --nudge-bg: rgba(42, 42, 42, 0.92);
+    /* Mint is the ground down here, so a mint dot on the chip it sits on is
+       no dot at all; the sync light borrows the accent green. */
+    --sync-dot: #8cc961;
+
+    --danger-bg: #43201f;      /* system */
+    --danger-line: #e06666;    /* system --danger-border */
+    --danger-ink: #f3aeae;     /* system --danger-text */
+    --danger-ink-strong: #f3aeae;
+    --danger-ink-deep: #f3aeae;
+    --danger-line-soft: #e06666;
+
+    --success-bg: #1c3626;     /* system */
+    --success-line: #93d8a6;   /* system --success-text */
+    --success-ink: #93d8a6;    /* system --success-text */
+    --success-guide: #8cc961;  /* system --accent-green */
+
+    --warn-bg: #3a2c0d;
+    --warn-bg-soft: #26200f;
+    --warn-bg-note: #2e2a10;
+    --warn-line: #ddc456;      /* system --accent-yellow */
+    --warn-ink: #ddc456;       /* system --accent-yellow */
+    --warn-ink-deep: #e8d68a;
+    --warn-chip: #d98a4b;      /* system --accent-orange */
+
+    --canvas-lane-today: #313131;
+    --canvas-gutter-today: #313e26; /* system --mint-press */
+
+    /* The badge does change in the dark - but only its ground, and only to the
+       colour of the wordmark standing beside it. Written as the token rather
+       than the hex so the plate and the type cannot drift apart. The k, the
+       line and the slab stay black: that is what keeps it a badge. */
+    --klndr-plate-fill: var(--ink-strong);
+
+    --on-color-ink: #14140f;    /* system --on-accent */
+    --on-color-border: #14140f; /* system --on-accent */
+
+    /* How a category's colour is carried down here, and it is the same rule
+       for all twenty - there is no table of exceptions any more.
+
+       The mix used to run 70% into --accent-gray, which is a desaturation:
+       every colour in the palette got pulled 30% toward one grey, and twenty
+       hues arriving at the same axis is the definition of monotone. Mixing
+       into the page ground instead changes only lightness, so a block stays
+       the colour its category picked. 88% is where the glare comes off and
+       --on-color-ink still clears AA on the darkest of the twenty (blue, at
+       about 5.8:1). */
+    --task-mix: 88%;
+    --task-mix-into: #14140f;  /* system --surface-page */
+
+    /* ---- Charts ----
+       The same eight hues re-stepped for the dark ground, not an automatic flip:
+       every one clears 3:1 against --surface-1 here, which the light steps do
+       not. Validated as a set for this mode. */
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --chart-6: #008300;
+    --chart-7: #9085e9;
+    --chart-8: #e66767;
+
+    --chart-seq-0: #26261d;
+    --chart-seq-1: #1d3348;
+    --chart-seq-2: #234a6e;
+    --chart-seq-3: #2a6396;
+    --chart-seq-4: #327dbf;
+    --chart-seq-5: #4f9be0;
+  }
+}
+
+/* The same values again for an explicit choice: a media query and an attribute
+   cannot be folded into one selector. Keep the two blocks in step. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface-page: #14140f;
+  --bg-gradient: linear-gradient(135deg, #1e1e17 0%, #14140f 100%);
+
+  --surface-1: #2a2a2a;
+  --surface-2: #323232;
+  --surface-3: #3d3d3d;
+  --surface-inset: #202020;
+  --surface-inset-2: #1c1c1c;
+
+  --ink-strong: #eef7e4;
+  --ink: #dfe7d6;
+  --ink-muted: #c2c7b7;
+  --ink-soft: #b4b8a8;
+  --ink-dim: #a5a999;
+  --ink-faint: #8c8f88;
+  --ink-inverse: #14140f;
+
+  --color-border: #eef7e4;
+  --line-soft: #3f3f3f;
+  --line-mid: #6a6a6a;
+  --line-faint: #4d4d4d;
+  --line-scroll: #484848;
+  --line-scroll-hover: #6a6a6a;
+
+  --accent-mint: #334026;
+  --accent-mint-hover: #3f5030;
+
+  --accent-active: #9ae659;
+  --accent-active-hover: #aaf06d;
+  --accent-active-ink: #14140f;
+  --accent-active-ink-soft: #31501a;
+  --accent-active-ink-dim: #3f5c22;
+
+  --shadow-slab: #eef7e4;
+  --container-line: #9ae659;
+  --shadow-container: #9ae659;
+
+  --scrim: rgba(0, 0, 0, 0.65);
+  --focus-ring: rgba(238, 247, 228, 0.22);
+  --focus-ring-line: #9ae659;
+  --ghost-outline: rgba(238, 247, 228, 0.7);
+  --nudge-bg: rgba(42, 42, 42, 0.92);
+  --sync-dot: #8cc961;
+
+  --danger-bg: #43201f;
+  --danger-line: #e06666;
+  --danger-ink: #f3aeae;
+  --danger-ink-strong: #f3aeae;
+  --danger-ink-deep: #f3aeae;
+  --danger-line-soft: #e06666;
+
+  --success-bg: #1c3626;
+  --success-line: #93d8a6;
+  --success-ink: #93d8a6;
+  --success-guide: #8cc961;
+
+  --warn-bg: #3a2c0d;
+  --warn-bg-soft: #26200f;
+  --warn-bg-note: #2e2a10;
+  --warn-line: #ddc456;
+  --warn-ink: #ddc456;
+  --warn-ink-deep: #e8d68a;
+  --warn-chip: #d98a4b;
+
+  --canvas-lane-today: #313131;
+  --canvas-gutter-today: #313e26;
+
+  --klndr-plate-fill: var(--ink-strong);
+
+  --on-color-ink: #14140f;
+  --on-color-border: #14140f;
+
+  --task-mix: 88%;
+  --task-mix-into: #14140f;
+
+  /* ---- Charts ----
+     The same eight hues re-stepped for the dark ground, not an automatic flip:
+     every one clears 3:1 against --surface-1 here, which the light steps do
+     not. Validated as a set for this mode. */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+
+  --chart-seq-0: #26261d;
+  --chart-seq-1: #1d3348;
+  --chart-seq-2: #234a6e;
+  --chart-seq-3: #2a6396;
+  --chart-seq-4: #327dbf;
+  --chart-seq-5: #4f9be0;
+}

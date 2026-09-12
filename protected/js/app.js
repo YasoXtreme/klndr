@@ -1119,7 +1119,7 @@ class KlndrApp {
       });
     }
 
-    document.querySelectorAll('.modal-close-btn, .modal-backdrop').forEach(el => {
+    document.querySelectorAll('.modal-close-btn, .js-modal-close, .modal-backdrop').forEach(el => {
       el.addEventListener('click', () => {
         // Same reason as Escape: closeAllModals() also nulls selectedTask,
         // which would leave the block editor on screen editing nothing.
@@ -1270,7 +1270,7 @@ class KlndrApp {
     const msgEl = document.getElementById('integrationsStatusMsg');
     if (!listEl) return;
 
-    listEl.innerHTML = '<div style="padding:12px 0;font-size:13px;color:#6b7280;">Loading…</div>';
+    listEl.innerHTML = '<div style="padding:12px 0;font-size:13px;color:var(--ink-dim);">Loading…</div>';
     if (msgEl) { msgEl.textContent = ''; msgEl.className = 'status-msg'; }
 
     let providers;
@@ -1287,7 +1287,7 @@ class KlndrApp {
 
     listEl.innerHTML = '';
     if (!providers.length) {
-      listEl.innerHTML = '<div style="padding:12px 0;font-size:13px;color:#6b7280;">No integrations available.</div>';
+      listEl.innerHTML = '<div style="padding:12px 0;font-size:13px;color:var(--ink-dim);">No integrations available.</div>';
       return;
     }
 
@@ -1299,8 +1299,8 @@ class KlndrApp {
   buildIntegrationRow(provider, msgEl) {
     const row = document.createElement('div');
     row.style.cssText =
-      'display:flex;align-items:flex-start;gap:12px;padding:12px;border:1.5px solid #000;' +
-      'border-radius:10px;margin-bottom:10px;background:#fff;';
+      'display:flex;align-items:flex-start;gap:12px;padding:12px;border:1.5px solid var(--color-border);' +
+      'border-radius:10px;margin-bottom:10px;background:var(--surface-1);';
 
     const icon = document.createElement('span');
     icon.className = 'material-symbols-outlined';
@@ -1317,7 +1317,7 @@ class KlndrApp {
     body.appendChild(title);
 
     const status = document.createElement('div');
-    status.style.cssText = 'font-size:12.5px;color:#4b5563;margin-top:2px;line-height:1.45;';
+    status.style.cssText = 'font-size:12.5px;color:var(--ink-soft);margin-top:2px;line-height:1.45;';
     status.textContent = this.integrationStatusText(provider);
     body.appendChild(status);
     row.appendChild(body);
@@ -1329,7 +1329,7 @@ class KlndrApp {
       // Say so rather than offering a button that fails: the only symptom of a
       // missing environment variable is otherwise a dead click.
       const note = document.createElement('span');
-      note.style.cssText = 'font-size:12px;color:#9ca3af;';
+      note.style.cssText = 'font-size:12px;color:var(--ink-faint);';
       note.textContent = 'Not configured';
       actions.appendChild(note);
     } else if (!provider.connected) {
@@ -1632,7 +1632,7 @@ class KlndrApp {
                   <span class="material-symbols-outlined" style="font-size: 16px;">delete</span>
                 </button>
               </div>
-            ` : '<span style="color:#9ca3af;font-size:12px;">(You)</span>'}
+            ` : '<span style="color:var(--ink-faint);font-size:12px;">(You)</span>'}
           </td>
         `;
         listContainer.appendChild(tr);
@@ -1723,11 +1723,11 @@ class KlndrApp {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'picker-item-color';
-        item.style.backgroundColor = colorHex;
+        KlndrTheme.paint(item, colorHex);
         item.addEventListener('click', (e) => {
           e.stopPropagation();
           this.previewTaskState.color = colorHex;
-          previewCard.style.backgroundColor = colorHex;
+          KlndrTheme.paint(previewCard, colorHex);
           closePopups();
         });
         colorPopup.appendChild(item);
@@ -1889,7 +1889,7 @@ class KlndrApp {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'picker-item-color';
-        item.style.backgroundColor = colorHex;
+        KlndrTheme.paint(item, colorHex);
         item.title = colorHex;
         item.classList.toggle('is-selected', colorHex === this.categoryDraft.color);
         item.addEventListener('click', () => {
@@ -2071,7 +2071,7 @@ class KlndrApp {
 
       const swatch = document.createElement('span');
       swatch.className = 'category-row-swatch';
-      swatch.style.backgroundColor = category.color;
+      KlndrTheme.paint(swatch, category.color);
       swatch.innerHTML = `<span class="material-symbols-outlined">${category.icon}</span>`;
       row.appendChild(swatch);
 
@@ -2731,7 +2731,7 @@ class KlndrApp {
       if (category.color) this.previewTaskState.color = category.color;
       if (category.icon) this.previewTaskState.icon = category.icon;
 
-      if (previewCard) previewCard.style.backgroundColor = this.previewTaskState.color;
+      if (previewCard) KlndrTheme.paint(previewCard, this.previewTaskState.color);
       if (badgeIcon) badgeIcon.textContent = this.previewTaskState.icon;
       if (iconBtn) {
         iconBtn.querySelector('.material-symbols-outlined').textContent =
@@ -2767,7 +2767,7 @@ class KlndrApp {
 
     if (modal && previewCard && titleInput) {
       titleInput.value = task.title;
-      previewCard.style.backgroundColor = this.previewTaskState.color;
+      KlndrTheme.paint(previewCard, this.previewTaskState.color);
       badgeIcon.textContent = this.previewTaskState.icon;
       iconBtn.querySelector('.material-symbols-outlined').textContent = this.previewTaskState.icon;
       categoryBtn.title = KlndrApp.categoryButtonTitle(this.previewTaskState.category);
@@ -3320,7 +3320,7 @@ class KlndrApp {
         listEl.appendChild(item);
       });
     } catch (err) {
-      listEl.innerHTML = `<div style="padding: 16px; color: #ef4444; font-size: 13px; font-weight: 600;">${err.message}</div>`;
+      listEl.innerHTML = `<div style="padding: 16px; color: var(--danger-line); font-size: 13px; font-weight: 600;">${err.message}</div>`;
     }
   }
 

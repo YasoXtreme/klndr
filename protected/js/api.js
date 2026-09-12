@@ -218,5 +218,19 @@ const API = {
       method: 'POST',
       body: JSON.stringify({ taskId })
     }).catch(() => null);
+  },
+
+  // Admin analytics. One section per tab, fetched on first entry rather than on
+  // page load - five reports up front would be five sets of aggregations for
+  // four tabs nobody has looked at yet.
+  //
+  // Goes through request() like everything else so the 401 -> /login redirect
+  // is shared; a non-admin gets a 403 instead, which the page reports rather
+  // than redirecting, because being signed in as the wrong person is a
+  // different situation from not being signed in.
+  async getAnalytics(section, days) {
+    return this.request(
+      `/api/admin/analytics/${section}?days=${encodeURIComponent(days)}`
+    );
   }
 };
