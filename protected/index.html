@@ -118,6 +118,9 @@
     <link rel="stylesheet" href="/public/css/common.css" />
     <link rel="stylesheet" href="/protected/css/app.css" />
     <link rel="stylesheet" href="/protected/css/responsive.css" />
+    <!-- After responsive.css on purpose: its phone rules restate what the
+         bottom-sheet rules above would otherwise override. -->
+    <link rel="stylesheet" href="/protected/css/announcements.css" />
 
     <!-- Third party and render-blocking, which on a cold start is the single
          longest thing between the request and a first paint. Loaded async so
@@ -347,6 +350,20 @@
       </div>
 
       <div class="topbar-right">
+        <!-- What's new: the announcements inbox and its unread badge.
+             KlndrAnnouncements keeps the count and the label up to date. -->
+        <button
+          type="button"
+          class="btn-whats-new"
+          id="btnWhatsNew"
+          aria-haspopup="dialog"
+          aria-label="What's new"
+        >
+          <span class="material-symbols-outlined btn-whats-new-icon" aria-hidden="true">campaign</span>
+          <span class="btn-whats-new-label">What's new</span>
+          <span class="whats-new-badge" id="whatsNewBadge" hidden>0</span>
+        </button>
+
         <!-- User Profile Pill (Opens Tabbed Account Modal) -->
         <div
           class="user-profile-pill"
@@ -941,6 +958,17 @@
                 >
               </a>
 
+              <a class="admin-analytics-link" href="/announcements">
+                <span class="material-symbols-outlined">campaign</span>
+                <span>
+                  <strong>Open the announcement studio</strong>
+                  <em>Write, schedule and follow what everyone sees</em>
+                </span>
+                <span class="material-symbols-outlined admin-analytics-chevron"
+                  >chevron_right</span
+                >
+              </a>
+
               <form
                 id="adminAddUserForm"
                 class="modal-form"
@@ -999,22 +1027,6 @@
                   <tbody id="adminUsersTableBody"></tbody>
                 </table>
               </div>
-            </div>
-
-            <!-- Tab 3: Announcements -->
-            <div class="modal-tab-panel" id="tabPanelAnnouncements" style="display: none">
-              <div class="announcements-tab-header">
-                <button
-                  type="button"
-                  class="btn-modal-primary btn-create-announcement"
-                  id="btnCreateAnnouncement"
-                  style="display: none"
-                >
-                  <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">add</span>
-                  New Announcement
-                </button>
-              </div>
-              <div id="announcementsList" class="announcements-list"></div>
             </div>
 
             <!-- Tab: Categories. Rows are rendered by app.js from
@@ -1082,16 +1094,6 @@
             >
               <span class="material-symbols-outlined">hub</span>
               <span>Integrations</span>
-            </button>
-            <button
-              type="button"
-              class="modal-tab-btn"
-              id="tabBtnAnnouncements"
-              data-panel="tabPanelAnnouncements"
-              data-title="Announcements"
-            >
-              <span class="material-symbols-outlined">campaign</span>
-              <span>Announcements</span>
             </button>
             <button
               type="button"
@@ -1296,6 +1298,17 @@
             </select>
           </div>
 
+          <!-- Saved with the rest of this form. "Inbox only" silences
+               stories and corner cards; a banner blocks nothing, so it still
+               shows. -->
+          <div class="form-row">
+            <label for="settingsAnnouncementPopups">Announcements</label>
+            <select id="settingsAnnouncementPopups">
+              <option value="all">Show new posts as they arrive</option>
+              <option value="inbox">Only in the What's new inbox</option>
+            </select>
+          </div>
+
           <div class="modal-actions">
             <button type="button" class="btn-modal-secondary js-modal-close">
               Cancel
@@ -1308,98 +1321,105 @@
       </div>
     </div>
 
-    <!-- Modal: Announcement View -->
-    <div class="modal-container" id="announcementViewModal">
+    <!-- ====================================================
+       ANNOUNCEMENTS
+       ====================================================
+       The containers KlndrAnnouncements fills in
+       (protected/js/announcements/inbox.js). They are ordinary
+       .modal-containers, so Escape, a backdrop click and closeAllModals()
+       treat them exactly like every other modal on this page. -->
+    <div class="modal-container ann-inbox-modal" id="annInboxModal">
       <div class="modal-backdrop"></div>
-      <div class="modal-card announcement-view-card">
-        <div class="modal-header">
-          <div class="announcement-view-header-text">
-            <h2 id="announcementViewTitle"></h2>
-            <span id="announcementViewMeta" class="announcement-meta"></span>
+      <div
+        class="modal-card ann-inbox-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="annInboxTitle"
+      >
+        <header class="ann-inbox-head">
+          <h2 id="annInboxTitle">What's new</h2>
+          <div class="ann-inbox-head-actions">
+            <a class="ann-link-btn" id="annOpenStudio" href="/announcements" hidden>
+              <span class="material-symbols-outlined" aria-hidden="true">edit_square</span>
+              Studio
+            </a>
+            <button type="button" class="ann-link-btn" id="annMarkAllRead">
+              <span class="material-symbols-outlined" aria-hidden="true">done_all</span>
+              Mark all read
+            </button>
+            <button type="button" class="modal-close-btn" aria-label="Close">
+              <span class="material-symbols-outlined" style="font-size: 22px" aria-hidden="true">close</span>
+            </button>
           </div>
-          <button type="button" class="modal-close-btn" id="btnCloseAnnouncementView">
-            <span class="material-symbols-outlined" style="font-size: 24px">close</span>
-          </button>
-        </div>
-        <div id="announcementViewHeaderImg" class="announcement-header-img" style="display: none">
-          <img id="announcementHeaderImgEl" src="" alt="Announcement header" />
-        </div>
-        <div id="announcementViewContent" class="announcement-content"></div>
+        </header>
+        <div
+          class="ann-inbox-filters"
+          id="annInboxFilters"
+          role="group"
+          aria-label="Filter announcements"
+        ></div>
+        <div class="ann-inbox-list" id="annInboxList"></div>
       </div>
     </div>
 
-    <!-- Modal: Create Announcement (Admin only) -->
-    <div class="modal-container" id="announcementCreateModal">
+    <div class="modal-container ann-reader-modal" id="annReaderModal">
       <div class="modal-backdrop"></div>
-      <div class="modal-card">
-        <div class="modal-header">
-          <h2>New Announcement</h2>
-          <button type="button" class="modal-close-btn" id="btnCloseAnnouncementCreate">
-            <span class="material-symbols-outlined" style="font-size: 24px">close</span>
+      <div
+        class="modal-card ann-reader-card"
+        id="annReaderCard"
+        role="dialog"
+        aria-modal="true"
+        tabindex="-1"
+      >
+        <button type="button" class="modal-close-btn ann-floating-close" aria-label="Close">
+          <span class="material-symbols-outlined" style="font-size: 22px" aria-hidden="true">close</span>
+        </button>
+        <div class="ann-scroll" id="annReaderHost"></div>
+        <nav class="ann-reader-nav" aria-label="More announcements">
+          <button type="button" class="ann-nav-btn" id="annReaderPrev" aria-label="Newer announcement">
+            <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
           </button>
-        </div>
-        <form id="announcementCreateForm" class="modal-form">
-          <div id="announcementCreateStatusMsg" class="status-msg"></div>
-          <div class="form-row">
-            <input
-              type="text"
-              id="announcementTitleInput"
-              placeholder="Announcement title"
-              required
-            />
-          </div>
-          <div class="form-row">
-            <textarea
-              id="announcementContentInput"
-              class="announcement-create-textarea"
-              placeholder="Write your announcement here... (*bold*, _italic_, * list item)"
-              rows="7"
-              required
-            ></textarea>
-          </div>
-          <div class="modal-actions">
-            <button type="button" class="btn-modal-secondary" id="btnCancelAnnouncementCreate">
-              Cancel
-            </button>
-            <button type="submit" class="btn-modal-primary">
-              <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">send</span>
-              Post Announcement
-            </button>
-          </div>
-        </form>
+          <span class="ann-reader-position" id="annReaderPosition"></span>
+          <button type="button" class="ann-nav-btn" id="annReaderNext" aria-label="Older announcement">
+            <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+          </button>
+        </nav>
       </div>
     </div>
 
-    <!-- Modal: Missed Announcements Carousel -->
-    <div class="modal-container" id="missedAnnouncementsModal">
+    <div class="modal-container ann-story-modal" id="annStoryModal">
       <div class="modal-backdrop"></div>
-      <div class="modal-card announcement-carousel-card">
-        <div class="announcement-carousel-topbar">
-          <div class="carousel-left-group">
-            <span class="material-symbols-outlined carousel-campaign-icon">campaign</span>
-            <span id="carouselCounter" class="carousel-counter">1 / 1</span>
-          </div>
-          <div class="carousel-nav-btns">
-            <button type="button" class="btn-carousel-nav" id="carouselPrevBtn" title="Previous">
-              <span class="material-symbols-outlined" style="font-size: 20px">chevron_left</span>
-            </button>
-            <button type="button" class="btn-carousel-nav" id="carouselNextBtn" title="Next">
-              <span class="material-symbols-outlined" style="font-size: 20px">chevron_right</span>
-            </button>
-            <button type="button" class="btn-carousel-dismiss" id="carouselDismissBtn">
-              <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">close</span>
-              Dismiss
-            </button>
-          </div>
+      <div class="modal-card ann-story-card" id="annStoryCard" role="dialog" aria-modal="true">
+        <div class="ann-story-top">
+          <div class="ann-story-progress" id="annStoryProgress" aria-hidden="true"></div>
+          <button type="button" class="modal-close-btn" aria-label="Close">
+            <span class="material-symbols-outlined" style="font-size: 22px" aria-hidden="true">close</span>
+          </button>
         </div>
-        <div id="carouselHeaderImg" class="announcement-header-img" style="display: none">
-          <img id="carouselHeaderImgEl" src="" alt="Announcement header" />
-        </div>
-        <h2 id="carouselTitle" class="carousel-title"></h2>
-        <span id="carouselMeta" class="announcement-meta"></span>
-        <div id="carouselContent" class="announcement-content carousel-content"></div>
+        <div class="ann-scroll" id="annStoryHost"></div>
+        <footer class="ann-story-foot">
+          <button type="button" class="ann-btn ann-btn-ghost ann-btn-small" id="annStorySkip">
+            Skip all
+          </button>
+          <span class="ann-story-count" id="annStoryCount"></span>
+          <div class="ann-story-steps">
+            <button type="button" class="ann-nav-btn" id="annStoryBack" aria-label="Previous">
+              <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+            </button>
+            <button type="button" class="ann-btn ann-btn-primary" id="annStoryNext">
+              <span class="ann-btn-label">Next</span>
+              <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
+
+    <!-- Banners and corner cards float over the workspace instead of taking
+         room in it: see the note in announcements.css. -->
+    <div class="ann-notice-host" id="annNoticeHost"></div>
+    <div class="ann-toast-host" id="annCardHost"></div>
+    <div class="ann-sr-only" id="annLive" aria-live="polite"></div>
 
     <!-- Modal: Create / Edit Category.
          Carries .modal-layer-top because it opens OVER whatever is already
@@ -1527,6 +1547,14 @@
     <script src="/protected/js/timeline-dom.js"></script>
     <script src="/protected/js/drag-controller.js"></script>
     <script src="/protected/js/sidebar.js"></script>
+    <script src="/protected/js/announcements/rules.js"></script>
+    <script src="/protected/js/announcements/markdown.js"></script>
+    <script src="/protected/js/motion/motion-core.js"></script>
+    <script src="/protected/js/motion/scenes.js"></script>
+    <script src="/protected/js/motion/motion-player.js"></script>
+    <script src="/protected/js/announcements/media-view.js"></script>
+    <script src="/protected/js/announcements/reader.js"></script>
+    <script src="/protected/js/announcements/inbox.js"></script>
     <script src="/protected/js/app.js"></script>
     <!-- Forced password change. Raised when an admin reset leaves the account
          holding a temporary password: the server refuses every other API call

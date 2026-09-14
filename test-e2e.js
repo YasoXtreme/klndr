@@ -5,6 +5,13 @@ const http = require('http');
 require('dotenv').config({ quiet: true });
 const PORT = Number(process.env.PORT) || 3000;
 
+// The admin the suite signs in as. The defaults are the account seeded on first
+// run; once that password has been changed - as it should be - set E2E_USERNAME
+// and E2E_PASSWORD. Step 12 changes this password and then restores it, so
+// point the suite at a disposable admin rather than a real one.
+const ADMIN_USERNAME = process.env.E2E_USERNAME || 'yassen';
+const ADMIN_PASSWORD = process.env.E2E_PASSWORD || 'password123';
+
 function makeRequest(options, postData = null) {
   return new Promise((resolve, reject) => {
     const req = http.request(options, (res) => {
@@ -70,7 +77,7 @@ async function runTests() {
       path: '/api/auth/login',
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
-    }, { username: 'yassen', password: 'wrongPassword' });
+    }, { username: ADMIN_USERNAME, password: `${ADMIN_PASSWORD}-wrong` });
     assert('Invalid password returns 401', badLogin.statusCode === 401);
 
     // 4. Valid Login
@@ -80,7 +87,7 @@ async function runTests() {
       path: '/api/auth/login',
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
-    }, { username: 'yassen', password: 'password123' });
+    }, { username: ADMIN_USERNAME, password: ADMIN_PASSWORD });
     assert('Valid login returns 200 with token and user', validLogin.statusCode === 200 && validLogin.json && validLogin.json.token);
 
     const token = validLogin.json.token;
@@ -94,7 +101,7 @@ async function runTests() {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    assert('Get current user session returns yassen', meRes.statusCode === 200 && meRes.json.user.username === 'yassen');
+    assert('Get current user session returns the admin', meRes.statusCode === 200 && meRes.json.user.username === ADMIN_USERNAME);
 
     // 6. Create Task
     const createdTaskRes = await makeRequest({
@@ -207,9 +214,9 @@ async function runTests() {
         'Authorization': `Bearer ${token}`
       }
     }, {
-      currentPassword: 'password123',
-      newPassword: 'password1234',
-      confirmPassword: 'password1234'
+      currentPassword: ADMIN_PASSWORD,
+      newPassword: `${ADMIN_PASSWORD}-e2e`,
+      confirmPassword: `${ADMIN_PASSWORD}-e2e`
     });
     assert('Change password succeeds', changePassRes.statusCode === 200);
 
@@ -224,9 +231,9 @@ async function runTests() {
         'Authorization': `Bearer ${token}`
       }
     }, {
-      currentPassword: 'password1234',
-      newPassword: 'password123',
-      confirmPassword: 'password123'
+      currentPassword: `${ADMIN_PASSWORD}-e2e`,
+      newPassword: ADMIN_PASSWORD,
+      confirmPassword: ADMIN_PASSWORD
     });
 
     // 13. Settings Update (0-24h bucket options)
@@ -255,6 +262,131 @@ async function runTests() {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     assert('Delete task succeeds', delRes.statusCode === 200);
+
+    // 14b. Announcements: drafts, publishing, who gets what, receipts, reactions
+    const api = (method, path, bearer, body) => makeRequest({
+      hostname: 'localhost',
+      port: PORT,
+      path,
+      method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bearer}` }
+    }, body);
+    const signIn = async (username, password) => {
+      const res = await makeRequest({
+        hostname: 'localhost',
+        port: PORT,
+        path: '/api/auth/login',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }, { username, password });
+      return res.json && res.json.token;
+    };
+    const feedOf = (res) => (res.json && res.json.announcements) || [];
+    const editable = (doc) => ({
+      title: doc.title, summary: doc.summary, body: doc.body, body_format: doc.body_format,
+      kind: doc.kind, media: doc.media, cta: doc.cta, delivery: doc.delivery, audience: doc.audience,
+      evergreen: doc.evergreen, pinned: doc.pinned, reactions_enabled: doc.reactions_enabled,
+      publish_at: doc.publish_at, expires_at: doc.expires_at
+    });
+    const createdAnnouncements = [];
+    const draft = async (fields) => {
+      const res = await api('POST', '/api/admin/announcements', token, fields);
+      const doc = res.json && res.json.announcement;
+      if (doc) createdAnnouncements.push(doc.id);
+      return { res, doc };
+    };
+
+    const betaToken = await signIn(testBetaUser, 'password2026');
+    assert('Beta user can sign in', Boolean(betaToken));
+
+    const { res: draftRes, doc: story } = await draft({ title: 'E2E story', body: 'Hello **there**', kind: 'feature', delivery: 'story' });
+    assert('Admin creates a draft announcement', draftRes.statusCode === 200 && story && story.studio_status === 'draft');
+
+    const betaDraftFeed = await api('GET', '/api/announcements/feed', betaToken);
+    assert('A draft is invisible to people', betaDraftFeed.statusCode === 200 && !feedOf(betaDraftFeed).some((a) => a.id === story.id));
+
+    const { doc: untitled } = await draft({ title: '' });
+    const refused = await api('POST', `/api/admin/announcements/${untitled.id}/publish`, token, { revision: untitled.revision });
+    assert('Publishing an untitled post lists what is missing', refused.statusCode === 422 && refused.json.problems.some((p) => p.field === 'title'));
+
+    const publishRes = await api('POST', `/api/admin/announcements/${story.id}/publish`, token, { revision: story.revision });
+    const live = publishRes.json && publishRes.json.announcement;
+    assert('Publishing makes it live', publishRes.statusCode === 200 && live.studio_status === 'live');
+
+    const betaStory = feedOf(await api('GET', '/api/announcements/feed', betaToken)).find((a) => a.id === story.id);
+    assert('Someone who was already here gets it as unread news', Boolean(betaStory) && betaStory.unread === true && betaStory.delivered === false);
+
+    // The bug that started this: a brand-new account was walked through every
+    // announcement ever posted. Created a second later, so it joined strictly after.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const newcomer = 'newcomer_' + Math.floor(Math.random() * 10000);
+    await api('POST', '/api/admin/create-user', token, { username: newcomer, password: 'password2026', role: 'user' });
+    const newcomerToken = await signIn(newcomer, 'password2026');
+    const newcomerFeed = feedOf(await api('GET', '/api/announcements/feed', newcomerToken));
+    const newcomerStory = newcomerFeed.find((a) => a.id === story.id);
+    assert('A new account sees earlier posts as history, not news', Boolean(newcomerStory) && newcomerStory.unread === false && newcomerStory.read === true);
+
+    const evergreenRes = await api('PUT', `/api/admin/announcements/${story.id}`, token, { ...editable(live), evergreen: true, revision: live.revision });
+    const evergreen = evergreenRes.json && evergreenRes.json.announcement;
+    const newcomerEvergreen = feedOf(await api('GET', '/api/announcements/feed', newcomerToken)).find((a) => a.id === story.id);
+    assert('An evergreen post does reach people who join later', evergreenRes.statusCode === 200 && Boolean(newcomerEvergreen) && newcomerEvergreen.unread === true);
+
+    const stale = await api('PUT', `/api/admin/announcements/${story.id}`, token, { ...editable(live), title: 'Stale edit', revision: live.revision });
+    assert('Saving over a newer revision is refused, with the stored post', stale.statusCode === 409 && stale.json.announcement && stale.json.announcement.revision === evergreen.revision);
+
+    const opened = await api('POST', `/api/announcements/${story.id}/receipts`, betaToken, { event: 'opened' });
+    const reacted = await api('PUT', `/api/announcements/${story.id}/reaction`, betaToken, { reaction: 'tada' });
+    const betaAfter = feedOf(await api('GET', '/api/announcements/feed', betaToken)).find((a) => a.id === story.id);
+    assert('Opening a post records it as read', opened.statusCode === 200 && betaAfter.read === true && betaAfter.unread === false);
+    assert('Reactions are counted', reacted.statusCode === 200 && reacted.json.reactions.tada === 1 && betaAfter.reaction === 'tada');
+    const unreacted = await api('PUT', `/api/announcements/${story.id}/reaction`, betaToken, { reaction: null });
+    assert('A reaction can be taken back', unreacted.statusCode === 200 && !unreacted.json.reactions.tada);
+    const badEvent = await api('POST', `/api/announcements/${story.id}/receipts`, betaToken, { event: 'deleted' });
+    assert('Unknown receipt events are refused', badEvent.statusCode === 400);
+
+    const { doc: adminsOnly } = await draft({ title: 'Admins only', audience: { type: 'admins' } });
+    await api('POST', `/api/admin/announcements/${adminsOnly.id}/publish`, token, { revision: adminsOnly.revision });
+    const betaSeesAdminsOnly = feedOf(await api('GET', '/api/announcements/feed', betaToken)).some((a) => a.id === adminsOnly.id);
+    const adminSeesAdminsOnly = feedOf(await api('GET', '/api/announcements/feed', token)).some((a) => a.id === adminsOnly.id);
+    assert('An admins-only post skips everyone else', !betaSeesAdminsOnly && adminSeesAdminsOnly);
+
+    const { doc: laterDraft } = await draft({ title: 'Later', publish_at: Math.floor(Date.now() / 1000) + 3600 });
+    const scheduled = await api('POST', `/api/admin/announcements/${laterDraft.id}/publish`, token, { revision: laterDraft.revision });
+    const betaSeesScheduled = feedOf(await api('GET', '/api/announcements/feed', betaToken)).some((a) => a.id === laterDraft.id);
+    assert('A scheduled post waits for its time', scheduled.statusCode === 200 && scheduled.json.announcement.studio_status === 'scheduled' && !betaSeesScheduled);
+
+    const pulse = await api('GET', '/api/announcements/pulse', newcomerToken);
+    assert('The pulse answers with counts', pulse.statusCode === 200 && typeof pulse.json.unread === 'number');
+
+    const oldMissed = await api('GET', '/api/announcements/missed', betaToken);
+    assert('The old missed-announcements endpoint is gone', oldMissed.statusCode === 404);
+
+    const studioForBeta = await api('GET', '/api/admin/announcements', betaToken);
+    assert('The Studio API is admin-only', studioForBeta.statusCode === 403);
+
+    const mediaStatus = await api('GET', '/api/admin/media/status', token);
+    assert('Media storage reports whether it is set up', mediaStatus.statusCode === 200 && typeof mediaStatus.json.configured === 'boolean');
+    if (mediaStatus.json && mediaStatus.json.configured) {
+      const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+      const signed = await api('POST', '/api/admin/media/uploads', token, {
+        kind: 'image', content_type: 'image/png', bytes: pixel.length, filename: 'e2e-pixel.png', width: 1, height: 1
+      });
+      const put = await fetch(signed.json.upload.url, { method: 'PUT', headers: signed.json.upload.headers, body: pixel });
+      const done = await api('POST', `/api/admin/media/${signed.json.media.id}/complete`, token);
+      assert('An upload goes straight to storage and is confirmed', signed.statusCode === 200 && put.ok && done.statusCode === 200 && done.json.media.status === 'ready');
+      const removedMedia = await api('DELETE', `/api/admin/media/${signed.json.media.id}`, token);
+      assert('An unused upload can be deleted', removedMedia.statusCode === 200);
+    } else {
+      console.log('- [SKIP] Upload round trip: R2 is not configured');
+    }
+
+    for (const id of createdAnnouncements) {
+      const res = await api('DELETE', `/api/admin/announcements/${id}`, token);
+      if (res.statusCode !== 200) assert(`Clean up announcement ${id}`, false, `status ${res.statusCode}`);
+    }
+    const gone = await api('GET', `/api/admin/announcements/${story.id}`, token);
+    assert('A deleted announcement is gone', gone.statusCode === 404);
+    await api('DELETE', `/api/admin/users/${newcomer}`, token);
 
     // 15. Admin delete user
     const delUserRes = await makeRequest({

@@ -903,22 +903,32 @@
 
     const announcements = card(
       "Announcements",
-      "Cumulative: dismissing one marks every earlier announcement seen, so this is 'read at least this far', not an open rate.",
+      "Opened, out of the people each post was for: those already here when it went out, or everyone for an evergreen post. Posts read before receipts existed count the old read marker.",
       { wide: true },
     );
     announcements.body.appendChild(
       d.announcements.length
         ? C.hbar({
-            rows: d.announcements.map((a) => ({
-              label: `#${a.id} ${a.title}`,
-              value: a.read_through,
-              hint: `${Math.round(a.rate * 100)}% of ${a.eligible}`,
-            })),
-            suffix: " accounts",
+            rows: d.announcements.map((a) => {
+              const extras = [
+                a.clicked ? `${a.clicked} clicked` : null,
+                a.reactions ? `${a.reactions} reacted` : null,
+                a.tracked_by === "watermark" ? "read marker" : null,
+              ].filter(Boolean);
+              return {
+                label: `#${a.id} ${a.title || "Untitled"}`,
+                value: a.opened,
+                hint: `${Math.round(a.rate * 100)}% of ${a.eligible}${extras.length ? ` - ${extras.join(", ")}` : ""}`,
+              };
+            }),
+            suffix: " opened",
             series: 3,
           })
         : C.emptyNote("No announcements yet."),
     );
+    const studio = h("a", "an-card-link", "Open the announcement studio");
+    studio.href = "/announcements";
+    announcements.body.appendChild(studio);
     wrap.appendChild(announcements.box);
 
     const settings = card(

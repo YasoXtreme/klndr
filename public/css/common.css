@@ -248,15 +248,20 @@ html, body {
 
 /* Group A - neutral controls: a line, a surface, and something to press. */
 .btn-nav-arrow, .btn-calendar-collapse, .btn-sidebar-icon, .btn-icon-square,
-.btn-carousel-nav, .btn-carousel-dismiss, .category-row-action, .btn-task-nudge,
+.btn-whats-new, .ann-filter, .category-row-action, .btn-task-nudge,
 .btn-today, .btn-zoom, .btn-modal-secondary, .btn-modal-danger,
 .inline-picker-btn, .picker-item-icon, .picker-item-color, .picker-item-category,
 .picker-item-newcat, .picker-cat-edit, .modal-close-btn, .btn-delete-user,
 .btn-reset-user, .category-filter-pill, .user-profile-pill, .modal-tab-btn,
 .theme-option, .day-count-btn, .mobile-tab, .an-back, .an-refresh, .an-tab,
+.an-admin-link, .ann-btn-danger, .st-segment-btn, .st-choice, .st-tool,
+.st-swatch, .st-tile,
 .chart-table-toggle,
+.ann-icon-btn, .ann-btn-secondary, .ann-btn-ghost, .ann-reaction, .ann-nav-btn,
+.ann-media-play, .ann-media-sound, .ann-motion-play,
 /* Group B - controls that are already wearing the accent. */
-.btn-continue, .btn-boot-retry, .btn-modal-primary, .admin-analytics-link {
+.btn-continue, .btn-boot-retry, .btn-modal-primary, .admin-analytics-link,
+.ann-btn-primary {
   cursor: pointer;
   transition:
     background-color var(--dur-fast) ease,
@@ -267,7 +272,7 @@ html, body {
 
 .btn-nav-arrow:hover:not(:disabled), .btn-calendar-collapse:hover:not(:disabled),
 .btn-sidebar-icon:hover:not(:disabled), .btn-icon-square:hover:not(:disabled),
-.btn-carousel-nav:hover:not(:disabled), .btn-carousel-dismiss:hover:not(:disabled),
+.btn-whats-new:hover:not(:disabled), .ann-filter:hover:not(:disabled),
 .category-row-action:hover:not(:disabled), .btn-task-nudge:hover:not(:disabled),
 .btn-today:hover:not(:disabled), .btn-zoom:hover:not(:disabled),
 .btn-modal-secondary:hover:not(:disabled), .btn-modal-danger:hover:not(:disabled),
@@ -279,7 +284,15 @@ html, body {
 .user-profile-pill:hover:not(:disabled), .modal-tab-btn:hover:not(:disabled),
 .theme-option:hover:not(:disabled), .day-count-btn:hover:not(:disabled),
 .mobile-tab:hover:not(:disabled), .an-back:hover, .an-refresh:hover:not(:disabled),
-.an-tab:hover:not(:disabled), .chart-table-toggle:hover:not(:disabled) {
+.an-admin-link:hover:not(:disabled), .ann-btn-danger:hover:not(:disabled),
+.st-segment-btn:hover:not(:disabled), .st-choice:hover:not(:disabled),
+.st-tool:hover:not(:disabled), .st-swatch:hover:not(:disabled),
+.st-tile:hover:not(:disabled),
+.an-tab:hover:not(:disabled), .chart-table-toggle:hover:not(:disabled),
+.ann-icon-btn:hover:not(:disabled), .ann-btn-secondary:hover:not(:disabled),
+.ann-btn-ghost:hover:not(:disabled), .ann-reaction:hover:not(:disabled),
+.ann-nav-btn:hover:not(:disabled), .ann-media-play:hover:not(:disabled),
+.ann-media-sound:hover:not(:disabled), .ann-motion-play:hover:not(:disabled) {
   background: var(--accent-mint);
   transform: translateY(-1px);
 }
@@ -287,14 +300,15 @@ html, body {
 /* Already accent-filled, so hovering them to mint would be a step DOWN in
    emphasis. They go to the pressed step of the same accent instead. */
 .btn-continue:hover:not(:disabled), .btn-boot-retry:hover:not(:disabled),
-.btn-modal-primary:hover:not(:disabled), .admin-analytics-link:hover {
+.btn-modal-primary:hover:not(:disabled), .admin-analytics-link:hover,
+.ann-btn-primary:hover:not(:disabled) {
   background: var(--accent-active-hover);
   transform: translateY(-1px);
 }
 
 .btn-nav-arrow:active:not(:disabled), .btn-calendar-collapse:active:not(:disabled),
 .btn-sidebar-icon:active:not(:disabled), .btn-icon-square:active:not(:disabled),
-.btn-carousel-nav:active:not(:disabled), .btn-carousel-dismiss:active:not(:disabled),
+.btn-whats-new:active:not(:disabled), .ann-filter:active:not(:disabled),
 .category-row-action:active:not(:disabled), .btn-task-nudge:active:not(:disabled),
 .btn-today:active:not(:disabled), .btn-zoom:active:not(:disabled),
 .btn-modal-secondary:active:not(:disabled), .btn-modal-danger:active:not(:disabled),
@@ -306,15 +320,24 @@ html, body {
 .user-profile-pill:active:not(:disabled), .modal-tab-btn:active:not(:disabled),
 .theme-option:active:not(:disabled), .day-count-btn:active:not(:disabled),
 .mobile-tab:active:not(:disabled), .an-back:active, .an-refresh:active:not(:disabled),
+.an-admin-link:active:not(:disabled), .ann-btn-danger:active:not(:disabled),
+.st-segment-btn:active:not(:disabled), .st-choice:active:not(:disabled),
+.st-tool:active:not(:disabled), .st-swatch:active:not(:disabled),
+.st-tile:active:not(:disabled),
 .an-tab:active:not(:disabled), .chart-table-toggle:active:not(:disabled),
 .btn-continue:active:not(:disabled), .btn-boot-retry:active:not(:disabled),
-.btn-modal-primary:active:not(:disabled), .admin-analytics-link:active {
+.btn-modal-primary:active:not(:disabled), .admin-analytics-link:active,
+.ann-icon-btn:active:not(:disabled), .ann-btn-secondary:active:not(:disabled),
+.ann-btn-ghost:active:not(:disabled), .ann-reaction:active:not(:disabled),
+.ann-nav-btn:active:not(:disabled), .ann-media-play:active:not(:disabled),
+.ann-media-sound:active:not(:disabled), .ann-motion-play:active:not(:disabled),
+.ann-btn-primary:active:not(:disabled) {
   transform: translateY(1px);
 }
 
 /* Group C - rows. A row has no border of its own to change and nowhere to lift
    to, so it takes the wash and nothing else. */
-.context-menu-item:hover, .announcement-list-item:hover,
+.context-menu-item:hover, .ann-inbox-item:hover, .st-menu-item:hover, .st-person:hover,
 .an-table tbody tr:hover, .an-health li:hover, .an-plain-list li:hover {
   background: var(--accent-mint);
 }
@@ -329,13 +352,19 @@ html, body {
 .category-filter-pill.active, .modal-tab-btn.active, .theme-option.is-active,
 .day-count-btn.is-active, .mobile-tab.is-active, .mobile-tab.is-drop-target,
 .an-tab.active, .picker-item-category.is-selected,
+.an-admin-link.is-current, .st-segment-btn.is-active, .st-choice.is-selected,
+.st-tile.is-selected, .st-swatch.is-selected, .st-person.is-selected,
 .category-swatch-grid .picker-item-icon.is-selected,
 .category-swatch-grid .picker-item-color.is-selected,
-.an-table tbody tr.is-selected,
+.an-table tbody tr.is-selected, .ann-filter.is-active, .ann-reaction.is-mine,
 .category-filter-pill.active:hover, .modal-tab-btn.active:hover,
 .theme-option.is-active:hover, .day-count-btn.is-active:hover,
 .mobile-tab.is-active:hover, .an-tab.active:hover,
-.picker-item-category.is-selected:hover {
+.an-admin-link.is-current:hover, .st-segment-btn.is-active:hover,
+.st-choice.is-selected:hover, .st-tile.is-selected:hover,
+.st-swatch.is-selected:hover, .st-person.is-selected:hover,
+.picker-item-category.is-selected:hover, .ann-filter.is-active:hover,
+.ann-reaction.is-mine:hover {
   background: var(--accent-active);
   color: var(--accent-active-ink);
   border-color: var(--color-border);
@@ -369,7 +398,7 @@ button:disabled, select:disabled, input:disabled,
    something else. Applies to the whole list, not the four it used to. */
 @media (hover: none) {
   .btn-nav-arrow:hover, .btn-calendar-collapse:hover, .btn-sidebar-icon:hover,
-  .btn-icon-square:hover, .btn-carousel-nav:hover, .btn-carousel-dismiss:hover,
+  .btn-icon-square:hover, .btn-whats-new:hover, .ann-filter:hover,
   .category-row-action:hover, .btn-task-nudge:hover, .btn-today:hover,
   .btn-zoom:hover, .btn-modal-secondary:hover, .btn-modal-danger:hover,
   .inline-picker-btn:hover, .picker-item-icon:hover, .picker-item-color:hover,
@@ -378,8 +407,13 @@ button:disabled, select:disabled, input:disabled,
   .category-filter-pill:hover, .user-profile-pill:hover, .modal-tab-btn:hover,
   .theme-option:hover, .day-count-btn:hover, .mobile-tab:hover, .an-back:hover,
   .an-refresh:hover, .an-tab:hover, .chart-table-toggle:hover,
+  .an-admin-link:hover, .ann-btn-danger:hover, .st-segment-btn:hover,
+  .st-choice:hover, .st-tool:hover, .st-swatch:hover, .st-tile:hover,
   .btn-continue:hover, .btn-boot-retry:hover, .btn-modal-primary:hover,
-  .admin-analytics-link:hover, .sidebar-task-card:hover {
+  .admin-analytics-link:hover, .sidebar-task-card:hover,
+  .ann-icon-btn:hover, .ann-btn-secondary:hover, .ann-btn-ghost:hover,
+  .ann-reaction:hover, .ann-nav-btn:hover, .ann-media-play:hover,
+  .ann-media-sound:hover, .ann-motion-play:hover, .ann-btn-primary:hover {
     transform: none;
   }
 }
@@ -395,9 +429,9 @@ button:disabled, select:disabled, input:disabled,
   }
 
   .btn-nav-arrow, .btn-calendar-collapse, .btn-sidebar-icon, .btn-icon-square,
-  .btn-carousel-nav, .category-row-action, .btn-task-nudge, .inline-picker-btn,
+  .ann-icon-btn, .category-row-action, .btn-task-nudge, .inline-picker-btn,
   .picker-item-icon, .picker-item-color, .modal-close-btn, .an-back,
-  .an-refresh {
+  .an-refresh, .ann-nav-btn, .ann-media-sound {
     min-width: 44px;
   }
 }

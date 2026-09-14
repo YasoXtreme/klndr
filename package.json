@@ -5,8 +5,12 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test test/announcements.test.js test/media.test.js test/motion.test.js",
     "check:tokens": "node scripts/check-design-tokens.js",
     "dev": "node --watch server.js",
+    "r2:check": "node scripts/r2.js check",
+    "r2:cors": "node scripts/r2.js cors",
+    "vendor": "node scripts/vendor-browser-libs.js",
     "add-user": "node scripts/manage-users.js add",
     "list-users": "node scripts/manage-users.js list",
     "delete-user": "node scripts/manage-users.js delete",
@@ -22,10 +26,15 @@
   "author": "Yassen",
   "license": "ISC",
   "dependencies": {
+    "aws4fetch": "^1.0.20",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "mongodb": "^7.5.0"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3",
+    "lottie-web": "^5.13.0"
   }
 }

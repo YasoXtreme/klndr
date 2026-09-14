@@ -245,6 +245,12 @@ app.get("/analytics", requirePageAuth, requirePageAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, "admin", "analytics.html"));
 });
 
+// The announcement Studio, on the same terms as analytics: the page is guarded
+// here, and every endpoint it calls is guarded again on its own mount.
+app.get("/announcements", requirePageAuth, requirePageAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, "admin", "announcements.html"));
+});
+
 // ==========================================
 // 3. PROTECTED REST API ENDPOINTS
 // ==========================================
@@ -351,61 +357,35 @@ app.delete("/api/categories/:id", requireApiAuth, async (req, res) => {
   }
 });
 
-// Announcements API
-app.get("/api/announcements", requireApiAuth, async (req, res) => {
-  try {
-    const [announcements, userLastSeenId] = await Promise.all([
-      db.getAllAnnouncements(),
-      db.getUserLastSeenAnnouncementId(req.user.id),
-    ]);
-    res.json({ announcements, user_last_seen_id: userLastSeenId });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Announcements. The people-facing half is scoped to req.user throughout; the
+// Studio's half is admin-only JSON with its guards on the mount, like analytics.
+app.use(
+  "/api/announcements",
+  requireApiAuth,
+  require("./server/routes/announcements"),
+);
 
-app.get("/api/announcements/missed", requireApiAuth, async (req, res) => {
-  try {
-    const [all, lastSeenId] = await Promise.all([
-      db.getAllAnnouncements(),
-      db.getUserLastSeenAnnouncementId(req.user.id),
-    ]);
-    const missed = all.filter((a) => a.id > lastSeenId);
-    res.json({ announcements: missed });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.use(
+  "/api/admin/announcements",
+  requireApiAuth,
+  requireAdmin,
+  require("./server/routes/admin-announcements"),
+);
 
-app.post("/api/announcements", requireApiAuth, requireAdmin, async (req, res) => {
-  const { title, content, header_image_url } = req.body;
-  if (!title || !content) {
-    return res.status(400).json({ error: "Title and content are required" });
-  }
-  try {
-    const announcement = await db.createAnnouncement(req.user.id, {
-      title,
-      content,
-      header_image_url,
-    });
-    res.status(201).json({ announcement });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+// The media library behind the Studio. Uploads are signed here and sent by the
+// browser straight to R2, so no route under this ever receives file bytes.
+app.use(
+  "/api/admin/media",
+  requireApiAuth,
+  requireAdmin,
+  require("./server/routes/admin-media"),
+);
 
-app.put("/api/announcements/seen", requireApiAuth, async (req, res) => {
-  const { last_seen_id } = req.body;
-  if (last_seen_id === undefined || last_seen_id === null) {
-    return res.status(400).json({ error: "last_seen_id is required" });
-  }
-  try {
-    await db.updateUserLastSeenAnnouncementId(req.user.id, last_seen_id);
-    res.json({ message: "Last seen announcement updated" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Announcement media in a private bucket, signed per read. A page guard rather
+// than an API one: these are <img> and <video> requests, for which a JSON 401
+// means nothing. With a public bucket the app links to the bucket directly and
+// this route only redirects there.
+app.get("/media/*", requirePageAuth, require("./server/media").serveObject);
 
 // Integrations (Sylla and anything added to the connector registry later).
 // Must be registered before the catch-all below, which would otherwise turn an

@@ -42,6 +42,18 @@ async function getDatabase() {
       database
         .collection("announcements")
         .createIndex({ id: 1 }, { unique: true }),
+      // Receipts are read one person at a time (their feed) and one post at a
+      // time (its Studio stats), and neither is a prefix of the other.
+      database
+        .collection("announcement_receipts")
+        .createIndex({ user_id: 1 }),
+      database
+        .collection("announcement_receipts")
+        .createIndex({ announcement_id: 1 }),
+      database.collection("media").createIndex({ id: 1 }, { unique: true }),
+      database
+        .collection("media")
+        .createIndex({ status: 1, created_at: -1 }),
       // One connection per person per provider.
       database
         .collection("integrations")
@@ -91,6 +103,9 @@ async function collections() {
     tasks: db.collection("tasks"),
     settings: db.collection("settings"),
     announcements: db.collection("announcements"),
+    receipts: db.collection("announcement_receipts"),
+    counters: db.collection("counters"),
+    media: db.collection("media"),
     integrations: db.collection("integrations"),
     activity: db.collection("activity_daily"),
   };
@@ -183,7 +198,7 @@ async function changePassword(userId, currentPassword, newPassword, keepToken) {
 }
 
 async function deleteUser(username) {
-  const { users, sessions, tasks, settings, activity } = await collections();
+  const { users, sessions, tasks, settings, activity, receipts } = await collections();
   const user = await getUserByUsername(username);
   if (!user) return false;
   await Promise.all([
@@ -196,6 +211,9 @@ async function deleteUser(username) {
     // in the analytics: an id with no user still counts toward active-account
     // numbers and never ages out, because this collection has no TTL.
     activity.deleteMany({ user_id: user.id }),
+    // The same goes for what they read and reacted to: a reaction from a
+    // deleted account would otherwise go on counting on a post forever.
+    receipts.deleteMany({ user_id: user.id }),
   ]);
   return true;
 }
@@ -818,59 +836,319 @@ async function countTasksByCategory(userId) {
 // ==========================================
 // ANNOUNCEMENTS
 // ==========================================
+//
+// Storage only. What an announcement means - who it is for, when it counts as
+// read, how a post from before the rewrite is interpreted - lives in
+// server/announcements and protected/js/announcements/rules.js.
 
-async function getLastAnnouncementId() {
-  const { announcements } = await collections();
-  const last = await announcements
-    .find({})
-    .sort({ id: -1 })
-    .limit(1)
-    .toArray();
-  return last.length > 0 ? last[0].id : 0;
-}
-
-async function createAnnouncement(adminUserId, { title, content, header_image_url }) {
-  const { announcements } = await collections();
-  const nextId = (await getLastAnnouncementId()) + 1;
-  const announcement = {
-    id: nextId,
-    title: title || "Untitled Announcement",
-    content: content || "",
-    header_image_url: header_image_url || null,
-    created_by: adminUserId,
-    created_at: Math.floor(Date.now() / 1000),
-  };
-  await announcements.insertOne(announcement);
-  const { _id, ...safe } = announcement;
-  return safe;
-}
-
-async function getAllAnnouncements() {
-  const { announcements } = await collections();
-  const list = await announcements.find({}).sort({ id: 1 }).toArray();
-  return list.map(({ _id, ...a }) => a);
-}
-
-async function getAnnouncementById(id) {
-  const { announcements } = await collections();
-  const a = await announcements.findOne({ id: Number(id) });
-  if (!a) return null;
-  const { _id, ...safe } = a;
-  return safe;
-}
-
-async function getUserLastSeenAnnouncementId(userId) {
-  const { users } = await collections();
-  const user = await users.findOne({ id: userId });
-  return user ? (user.last_seen_announcement_id || 0) : 0;
-}
-
-async function updateUserLastSeenAnnouncementId(userId, announcementId) {
-  const { users } = await collections();
-  await users.updateOne(
-    { id: userId },
-    { $set: { last_seen_announcement_id: Number(announcementId) } }
+/**
+ * The next announcement id.
+ *
+ * Ids stay numbers, because the legacy watermark compares them (see
+ * Rules.isRead). They come from a counter rather than max + 1: two admins
+ * creating at once would otherwise read the same max, and one insert would fail
+ * on the unique index. The counter is seeded from the highest existing id the
+ * first time it is needed, so it carries on from the posts already there.
+ */
+async function nextAnnouncementId() {
+  const { announcements, counters } = await collections();
+  if (!(await counters.findOne({ _id: "announcements" }))) {
+    const last = await announcements
+      .find({}, { projection: { _id: 0, id: 1 } })
+      .sort({ id: -1 })
+      .limit(1)
+      .next();
+    try {
+      await counters.insertOne({ _id: "announcements", seq: last ? last.id : 0 });
+    } catch (err) {
+      // Somebody else seeded it first, which is the same outcome.
+      if (err.code !== 11000) throw err;
+    }
+  }
+  const counter = await counters.findOneAndUpdate(
+    { _id: "announcements" },
+    { $inc: { seq: 1 } },
+    { returnDocument: "after" },
   );
+  return counter.seq;
+}
+
+async function insertAnnouncement(doc) {
+  const { announcements } = await collections();
+  // A copy, because insertOne writes _id back onto the object it is handed.
+  await announcements.insertOne({ ...doc });
+}
+
+async function getAnnouncement(id) {
+  const { announcements } = await collections();
+  return announcements.findOne({ id }, { projection: { _id: 0 } });
+}
+
+// Posts from before the rewrite carry no status and are published by definition
+// (see model.normalize), so "published" has to include them.
+async function listAnnouncements({ publishedOnly = false } = {}) {
+  const { announcements } = await collections();
+  const filter = publishedOnly
+    ? { $or: [{ status: "published" }, { status: { $exists: false } }] }
+    : {};
+  return announcements
+    .find(filter, { projection: { _id: 0 } })
+    .sort({ id: -1 })
+    .toArray();
+}
+
+/**
+ * Apply a change only if nobody has changed the post since `revision`, and
+ * return the result - or null when somebody has. A post from before revisions
+ * existed counts as revision 1.
+ */
+async function updateAnnouncementIfRevision(id, revision, { set = {}, unset = {} }) {
+  const { announcements } = await collections();
+  const matches = [{ revision }];
+  if (revision === 1) matches.push({ revision: { $exists: false } });
+  const update = { $set: set, $inc: { revision: 1 } };
+  if (Object.keys(unset).length) update.$unset = unset;
+  return announcements.findOneAndUpdate({ id, $or: matches }, update, {
+    returnDocument: "after",
+    projection: { _id: 0 },
+  });
+}
+
+async function deleteAnnouncement(id) {
+  const { announcements, receipts } = await collections();
+  const result = await announcements.deleteOne({ id });
+  // A receipt only means anything next to the post it is about.
+  await receipts.deleteMany({ announcement_id: id });
+  return result.deletedCount === 1;
+}
+
+// ==========================================
+// ANNOUNCEMENT RECEIPTS
+// ==========================================
+//
+// One document per person per post, keyed "<announcement_id>:<user_id>", so a
+// retry or two racing tabs converge on one row instead of needing an index to
+// catch them - the same shape recordActivityDay uses.
+//
+// Timestamps belong to a delivery version. "Notify again" bumps a post's
+// version, and the next event starts that person's receipt over, keeping only
+// their reaction: nobody should have to react twice to one post.
+
+const RECEIPT_STAMPS = {
+  delivered: ["delivered_at"],
+  opened: ["delivered_at", "opened_at"],
+  dismissed: ["delivered_at", "dismissed_at"],
+  cta: ["delivered_at", "opened_at", "cta_at"],
+};
+const VERSIONED_STAMPS = ["delivered_at", "opened_at", "dismissed_at", "cta_at"];
+
+function receiptId(announcementId, userId) {
+  return `${announcementId}:${userId}`;
+}
+
+async function recordReceiptEvent(announcementId, userId, version, event, at, retried = false) {
+  const { receipts } = await collections();
+  const _id = receiptId(announcementId, userId);
+  const fields = RECEIPT_STAMPS[event];
+  const stamps = Object.fromEntries(fields.map((field) => [field, at]));
+
+  // The usual case: this delivery already has a receipt, and $min keeps the
+  // first moment each thing happened.
+  const kept = await receipts.updateOne({ _id, version: { $gte: version } }, { $min: stamps });
+  if (kept.matchedCount) return;
+
+  // No receipt yet, or only one from an earlier delivery: start this one over.
+  const stale = VERSIONED_STAMPS.filter((field) => !fields.includes(field));
+  try {
+    await receipts.updateOne(
+      { _id, $or: [{ version: { $lt: version } }, { version: { $exists: false } }] },
+      {
+        $set: { announcement_id: announcementId, user_id: userId, version, ...stamps },
+        $unset: Object.fromEntries(stale.map((field) => [field, ""])),
+      },
+      { upsert: true },
+    );
+  } catch (err) {
+    // Another request wrote this delivery's receipt between the two updates.
+    // One more pass lands in the $min branch above.
+    if (err.code === 11000 && !retried) {
+      return recordReceiptEvent(announcementId, userId, version, event, at, true);
+    }
+    throw err;
+  }
+}
+
+async function setReaction(announcementId, userId, reaction, at) {
+  const { receipts } = await collections();
+  const _id = receiptId(announcementId, userId);
+  if (!reaction) {
+    await receipts.updateOne({ _id }, { $unset: { reaction: "", reacted_at: "" } });
+    return;
+  }
+  try {
+    await receipts.updateOne(
+      { _id },
+      { $set: { announcement_id: announcementId, user_id: userId, reaction, reacted_at: at } },
+      { upsert: true },
+    );
+  } catch (err) {
+    if (err.code !== 11000) throw err;
+    await receipts.updateOne({ _id }, { $set: { reaction, reacted_at: at } });
+  }
+}
+
+async function getReceipt(announcementId, userId) {
+  const { receipts } = await collections();
+  return receipts.findOne(
+    { _id: receiptId(announcementId, userId) },
+    { projection: { _id: 0 } },
+  );
+}
+
+async function getReceiptsForUser(userId) {
+  const { receipts } = await collections();
+  return receipts.find({ user_id: userId }, { projection: { _id: 0 } }).toArray();
+}
+
+async function getReceiptsForAnnouncement(announcementId) {
+  const { receipts } = await collections();
+  return receipts
+    .find({ announcement_id: announcementId }, { projection: { _id: 0 } })
+    .toArray();
+}
+
+// Every receipt, cut down to what the Studio's list view summarises.
+async function listReceiptSummaries() {
+  const { receipts } = await collections();
+  return receipts
+    .find(
+      {},
+      {
+        projection: {
+          _id: 0,
+          announcement_id: 1,
+          user_id: 1,
+          version: 1,
+          delivered_at: 1,
+          opened_at: 1,
+          cta_at: 1,
+          reaction: 1,
+        },
+      },
+    )
+    .toArray();
+}
+
+/** Map of announcement id -> { reactionId: count }. */
+async function reactionCounts(announcementIds) {
+  if (!announcementIds.length) return new Map();
+  const { receipts } = await collections();
+  const rows = await receipts
+    .aggregate([
+      {
+        $match: {
+          announcement_id: { $in: announcementIds },
+          reaction: { $type: "string" },
+        },
+      },
+      {
+        $group: {
+          _id: { announcement: "$announcement_id", reaction: "$reaction" },
+          count: { $sum: 1 },
+        },
+      },
+    ])
+    .toArray();
+
+  const counts = new Map();
+  for (const row of rows) {
+    const id = row._id.announcement;
+    if (!counts.has(id)) counts.set(id, {});
+    counts.get(id)[row._id.reaction] = row.count;
+  }
+  return counts;
+}
+
+/**
+ * When receipts started being written, probed from the data rather than
+ * hardcoded - the analytics convention. Reach for posts older than this leans
+ * on the legacy watermark, and the Studio says so.
+ */
+async function earliestReceiptAt() {
+  const { receipts } = await collections();
+  const first = await receipts
+    .find({ delivered_at: { $exists: true } }, { projection: { _id: 0, delivered_at: 1 } })
+    .sort({ delivered_at: 1 })
+    .limit(1)
+    .next();
+  return first ? first.delivered_at : null;
+}
+
+// ==========================================
+// MEDIA
+// ==========================================
+//
+// The media library's rows. What may be uploaded, and the bucket itself, are
+// server/media.js and server/storage/r2.js.
+
+async function insertMedia(doc) {
+  const { media } = await collections();
+  await media.insertOne({ ...doc });
+}
+
+async function getMedia(id) {
+  const { media } = await collections();
+  return media.findOne({ id }, { projection: { _id: 0 } });
+}
+
+async function getMediaByIds(ids) {
+  const { media } = await collections();
+  return media.find({ id: { $in: ids } }, { projection: { _id: 0 } }).toArray();
+}
+
+async function listMedia({ status, createdBefore } = {}) {
+  const { media } = await collections();
+  const filter = {};
+  if (status) filter.status = status;
+  if (createdBefore) filter.created_at = { $lt: createdBefore };
+  return media
+    .find(filter, { projection: { _id: 0 } })
+    .sort({ created_at: -1 })
+    .toArray();
+}
+
+async function updateMedia(id, set) {
+  const { media } = await collections();
+  return media.findOneAndUpdate(
+    { id },
+    { $set: set },
+    { returnDocument: "after", projection: { _id: 0 } },
+  );
+}
+
+async function deleteMedia(id) {
+  const { media } = await collections();
+  const result = await media.deleteOne({ id });
+  return result.deletedCount === 1;
+}
+
+/** Map of media id -> [{ id, title }] of every announcement using that file. */
+async function mediaUsage() {
+  const { announcements } = await collections();
+  const rows = await announcements
+    .find(
+      { "media_refs.0": { $exists: true } },
+      { projection: { _id: 0, id: 1, title: 1, media_refs: 1 } },
+    )
+    .toArray();
+  const usage = new Map();
+  for (const row of rows) {
+    for (const mediaId of row.media_refs) {
+      if (!usage.has(mediaId)) usage.set(mediaId, []);
+      usage.get(mediaId).push({ id: row.id, title: row.title });
+    }
+  }
+  return usage;
 }
 
 
@@ -921,10 +1199,25 @@ module.exports = {
   retagTasksByCategory,
   recolourTasksByCategory,
   countTasksByCategory,
-  createAnnouncement,
-  getAllAnnouncements,
-  getAnnouncementById,
-  getLastAnnouncementId,
-  getUserLastSeenAnnouncementId,
-  updateUserLastSeenAnnouncementId,
+  nextAnnouncementId,
+  insertAnnouncement,
+  getAnnouncement,
+  listAnnouncements,
+  updateAnnouncementIfRevision,
+  deleteAnnouncement,
+  recordReceiptEvent,
+  setReaction,
+  getReceipt,
+  getReceiptsForUser,
+  getReceiptsForAnnouncement,
+  listReceiptSummaries,
+  reactionCounts,
+  earliestReceiptAt,
+  insertMedia,
+  getMedia,
+  getMediaByIds,
+  listMedia,
+  updateMedia,
+  deleteMedia,
+  mediaUsage,
 };

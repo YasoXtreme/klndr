@@ -888,3 +888,72 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
   box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
   padding: 16px;
 }
+
+/* ----------------------------------------------------
+   ADMIN NAV
+   ----------------------------------------------------
+   Shared by every admin page - analytics and the announcement studio - which
+   is why it lives here: both pages load this file. Hover, press and the
+   current page come from common.css like every other control. */
+
+.an-admin-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+}
+
+.an-admin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: var(--line-control) solid transparent;
+  border-radius: var(--radius-pill);
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.an-admin-link .material-symbols-outlined {
+  font-size: 17px;
+}
+
+.an-card-link {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-strong);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.an-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .an-admin-link {
+    padding: 0 9px;
+  }
+
+  .an-admin-link .material-symbols-outlined {
+    display: none;
+  }
+}

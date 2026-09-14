@@ -8,7 +8,7 @@ Write down what you have to do, then drag it onto the week. The calendar pushes,
 compresses and splits blocks around each other in real time, so a plan that no
 longer fits rearranges itself instead of quietly overlapping.
 
-[Quick start](#quick-start) · [Configuration](#configuration) · [Architecture](#architecture) · [API](#http-api) · [Integrations](#integrations) · [Deployment](#deployment)
+[Quick start](#quick-start) · [Configuration](#configuration) · [Architecture](#architecture) · [API](#http-api) · [Announcements](#announcements) · [Integrations](#integrations) · [Deployment](#deployment)
 
 </div>
 
@@ -41,7 +41,8 @@ lie about the outcome.
 - **Tasks panel** with search, filters, inline creation, and a multi-column category board when the calendar is collapsed.
 - **Mobile and touch** — pointer events throughout, long-press to drag, sticky mode chips replacing the modifier keys a finger cannot hold, and a phone tab bar.
 - **Integrations** — pull outstanding work from other apps into the tasks panel; ticking it off writes back to the source.
-- **Admin tooling** — beta account management, one-shot password resets, and in-app announcements.
+- **Announcements** — posts written in a dedicated studio with a live preview. The header can be an image, a GIF, an SVG, a video, a Lottie file or a built-in motion scene. Each post chooses how it arrives (a story, a banner, a corner card, or inbox only), who it is for, when it goes live and expires, and whether it has reactions and a button. People who join later are not handed the backlog.
+- **Admin tooling** — beta account management, one-shot password resets, an analytics dashboard, and the announcement studio.
 
 ### Keyboard and pointer
 
@@ -87,6 +88,11 @@ local work never touches production data.
 | `npm run list-users` | List accounts |
 | `npm run delete-user -- <username>` | Delete an account |
 | `npm run reset-password -- <username>` | Issue a one-shot temporary password |
+| `npm test` | Unit tests: announcement rules and markdown, media policy, motion scenes |
+| `npm run check:tokens` | Design-token lint across the stylesheets, including the motion scenes' theme copy |
+| `npm run r2:check` | Check the R2 credentials, bucket and CORS, with a write/read/delete round trip |
+| `npm run r2:cors [-- <origin> ...]` | Write the bucket CORS policy that browser uploads need |
+| `npm run vendor` | Refresh the vendored browser libraries (lottie-web light, fflate) from `node_modules` |
 
 `reset-password` prints the temporary password once, signs out every session for
 that account, and forces a password change at next login. No klndr account
@@ -111,6 +117,8 @@ work.
 | `KLNDR_BASE_URL` | for integrations | This deployment's absolute public origin. Used to build OAuth redirect URIs, which must byte-match what the provider has registered — behind a proxy the `Host` header is not reliably the public name, so it cannot be derived from the request. |
 | `INTEGRATION_ENC_KEY` | for integrations | 32 random bytes, base64. Encrypts integration tokens at rest with AES-256-GCM. Rotating it makes existing connections unreadable and forces everyone to reconnect. |
 | `SYLLA_BASE_URL`, `SYLLA_CLIENT_ID`, `SYLLA_CLIENT_SECRET` | for Sylla | See [Integrations](#integrations). Omit them and Sylla simply lists as "Not configured"; nothing else is affected. |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | for media uploads | A Cloudflare R2 bucket plus an API token with **Object Read & Write** on it. See [Setting up Cloudflare R2](#setting-up-cloudflare-r2). Without these, header uploads are switched off; motion scenes still work. |
+| `R2_PUBLIC_BASE_URL` | | The bucket's public origin: a custom domain or its `r2.dev` URL. Without it the bucket stays private and klndr signs every read, so media only loads for signed-in people. |
 
 Generate an encryption key with:
 
@@ -131,12 +139,28 @@ No build step, no bundler, no framework: the protected app is served as static
 files behind a session guard.
 
 ```
-server.js                    Express app — auth, tasks, settings, categories, announcements
+server.js                    Express app — auth, tasks, settings, categories, route mounts
 server/
   auth-middleware.js         Session resolution, API vs. page guards, admin guard, reset gate
   db.js / db-mongodb.js      Data layer, indexes, first-run admin seed
   categories.js              Per-user categories, rename cascade, legacy migration
-  routes/integrations.js     OAuth navigation routes and integration XHR endpoints
+  http-error.js              HttpError, and the JSON route wrapper that answers with it
+  activity.js                Daily activity rows for analytics
+  analytics.js               Admin analytics: report metadata and coverage
+  analytics-reports.js       The analytics reports themselves
+  announcements/
+    model.js                 Legacy posts read as current ones; the people and studio views of a post
+    validate.js              Field cleaning, and what a post needs before it can go live
+    service.js               Feed, receipts and reactions; the studio's lifecycle actions
+  media.js                   Media registry: upload handshake, library, /media/* reads
+  media-policy.js            Kinds, limits, object keys, SVG and Lottie inspection
+  storage/r2.js              Cloudflare R2 over the S3 API: presigned PUT/GET, HEAD, CORS
+  routes/
+    announcements.js         /api/announcements
+    admin-announcements.js   /api/admin/announcements
+    admin-media.js           /api/admin/media
+    analytics.js             /api/admin/analytics
+    integrations.js          OAuth navigation routes and integration XHR endpoints
   integrations/
     connector.js             The contract every provider implements (documentation, not code)
     registry.js              Provider id -> connector
@@ -160,10 +184,29 @@ protected/                   Served only to an authenticated session
     sidebar.js               Tasks panel, filters, multi-column board
     category-picker.js       One picker shared by the inline bar and the block editor
     history.js               Undo/redo stack of gestures
+    announcements/
+      rules.js               Who a post is for, when it is delivered and read — the server requires it too
+      markdown.js            Escape-first Markdown for post bodies, and the legacy three-rule markup
+      media-view.js          A post's header: image, SVG, video, Lottie or motion scene
+      reader.js              One post, drawn the same for the reader, stories and the studio preview
+      inbox.js               What's new button, inbox, reader, stories, banner and corner card
+    motion/
+      motion-core.js         Springs, easing, seeded randomness, theme tokens, canvas text
+      scenes.js              The built-in motion scenes, each a pure function of a frame
+      motion-player.js       Canvas player: pauses offscreen and hidden, respects reduced motion
+  css/announcements.css      Everything announcement-shaped a person sees
+  vendor/                    lottie-web (light build) and fflate, copied by npm run vendor
+
+admin/                       Admin pages
+  analytics.*, charts.js     /analytics
+  announcements.*            /announcements — the announcement studio
+  studio/                    Studio views: list, editor and its sections, uploads, preview, stats
 
 public/                      Login page, brand assets, fonts — unauthenticated
 brand/                       Logo kit, source SVGs, PNG renders (see brand/README.md)
-scripts/                     Account CLI, brand asset build
+motion/                      Remotion workspace for header clips; never deployed (see motion/README.md)
+scripts/                     Account CLI, brand asset build, design-token lint, R2 setup, vendoring
+test/                        Unit tests (node --test)
 docs/                        Manual regression checklists
 ```
 
@@ -177,12 +220,17 @@ docs/                        Manual regression checklists
 - **The palette is shared, not duplicated.** `protected/js/palette.js` is loaded as a browser global *and* `require`d by the server, because "pick a colour no other category has taken" is only meaningful if both sides draw from the same twenty.
 - **Undo stores changes, not snapshots.** Each entry carries the before and after of the fields one gesture touched, so undo and redo are the same replay in opposite directions.
 - **Analytics reports its own blind spots instead of backfilling them.** klndr recorded nothing temporal before the analytics feature — no last login, no `tasks.created_at`, no activity log — and `updated_at` is an *upper bound* on creation, so deriving a creation date from it would drag every task forward in time and make the earliest weeks look empty, undetectably and permanently. Nothing is backfilled. Every report instead returns `meta.instrumented_since` and `meta.coverage`, probed from the data rather than hardcoded, and the page renders the gap ("1,290 tasks predate instrumentation") so totals stay reconcilable. The one exception is *derived at read time*, never stored: a missing `last_login_at` falls back to the newest surviving session row and is tagged `last_login_source`, so it self-heals as real logins arrive.
+- **New members do not inherit the announcement backlog.** A post reaches someone's badge or pops up for them only if they already had an account when it went live (or when it was last sent again), unless the post says "also show to people who join later". Older posts still sit in their inbox, already marked read. Before this, a new account's read watermark started at `0`, so every announcement ever posted played at their first sign-in.
+- **Read state is per post, not a watermark.** A receipt per person per post records delivery, opening, dismissal, button click and reaction, stamped with the delivery version it belongs to. "Notify again" makes a post unread for everyone without erasing anyone's history. Posts from before receipts still honour the old `last_seen_announcement_id` watermark, read at request time; nothing was backfilled.
+- **Media bytes never pass through Express.** Vercel caps a function body at 4.5 MB. So the studio asks the server for presigned R2 URLs, with type, size and cache headers bound into the signature, and uploads straight to the bucket with a progress bar. The server then confirms the object with a HEAD request, and reads SVG and Lottie files to reject anything scriptable.
+- **One motion scene, two renderers.** A scene is a pure function from a frame number to canvas drawing. The app's player and the Remotion workspace in `motion/` call the same function, so a rendered clip matches the in-app scene frame for frame, and a still frame costs nothing to show under reduced motion.
 
 ### Data model
 
 MongoDB collections: `users`, `sessions`, `tasks`, `settings`, `announcements`,
-`integrations`, `activity_daily`. Indexes are created on first connect; sessions
-expire through a TTL index on `expires_at`.
+`announcement_receipts`, `media`, `counters`, `integrations`, `activity_daily`.
+Indexes are created on first connect; sessions expire through a TTL index on
+`expires_at`.
 
 **`activity_daily`** is one document per person per UTC day, keyed
 `"<YYYY-MM-DD>:<user_id>"` — day first, so a date range across everyone is a
@@ -201,6 +249,31 @@ carries `segments`, each `{ id, start_time, duration, completed }`. Imported
 tasks additionally carry generic `source_app` / `source_id` / `source_url` /
 `source_revision` / `source_completed` fields; no provider is ever named in the
 schema.
+
+An **announcement** has four groups of fields:
+- **Words:** `title`, `summary`, a Markdown `body` and a `kind`.
+- **Header:** `media`. This is an uploaded file referenced by `media_id` or a motion scene with its props, plus alt text and framing.
+- **Extras:** an optional `cta` button and `reactions_enabled`.
+- **Sending:** `delivery`, `audience`, `evergreen`, `pinned`, `publish_at` and `expires_at`.
+
+The stored `status` is only ever `draft`, `published` or `archived`. Scheduled,
+live and expired are derived from the dates. `revision` guards the studio's
+autosave, and `delivery_version` goes up each time a post is sent again. Ids come
+from an atomic counter in `counters`. Posts written before the studio have no
+`status`; they are read as published stories in the old three-rule markup and
+are never rewritten.
+
+**`announcement_receipts`** holds one document per person per post, keyed
+`"<announcement_id>:<user_id>"`. It records the first `delivered_at`,
+`opened_at`, `dismissed_at` and `cta_at`, the `reaction`, and the delivery
+`version` those belong to. Deleting a post or an account deletes its receipts.
+
+**`media`** is the upload registry. Each entry has the R2 object key, kind, type,
+size, dimensions, duration and poster, plus a `status` that stays `pending` until
+the server has verified the upload. Objects live under
+`announcements/<yyyy>/<mm>/<media id>/`. A file that any post still uses cannot
+be deleted. Pending uploads older than 24 hours are swept whenever the library
+is opened.
 
 ### Categories
 
@@ -272,10 +345,16 @@ nor reach all of them.
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/announcements` | All announcements plus the caller's last-seen id |
-| `GET` | `/api/announcements/missed` | Only those newer than the caller's last-seen id |
-| `POST` | `/api/announcements` | Create *(admin)* |
-| `PUT` | `/api/announcements/seen` | Advance the caller's last-seen id |
+| `GET` | `/api/announcements/feed` | Every post the caller can see, each with `read`, `deliverable`, their `reaction` and the reaction counts, plus the `unread` count |
+| `GET` | `/api/announcements/pulse` | Only the unread count and the newest deliverable post; the app polls this |
+| `GET` | `/api/announcements/:id` | One post, for a deep link. `404` if it is not live or not for the caller |
+| `POST` | `/api/announcements/:id/receipts` | `{ event }`: `delivered`, `opened`, `dismissed` or `cta` |
+| `PUT` | `/api/announcements/:id/reaction` | `{ reaction }`: `tada`, `heart`, `fire`, `clap`, `eyes`, or `null` to remove it |
+| `POST` | `/api/announcements/read-all` | Mark everything read |
+
+`GET /media/*` serves uploaded files to a signed-in session. It redirects to the
+public URL when `R2_PUBLIC_BASE_URL` is set, and otherwise to a short-lived
+signed read URL.
 
 </details>
 
@@ -308,6 +387,34 @@ dashboard does not register as engagement.
 </details>
 
 <details>
+<summary><strong>Announcement studio and media</strong> <em>(admin)</em></summary>
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/admin/announcements` | Every post with its studio status and reach: audience, delivered, opened, clicked, reactions |
+| `POST` | `/api/admin/announcements` | Create a draft |
+| `GET` | `/api/admin/announcements/:id` | One post with its header file, per-person receipts and stats |
+| `PUT` | `/api/admin/announcements/:id` | Save. Takes the `revision` last seen, and answers `409` with the stored post if someone saved in between |
+| `GET` | `/api/admin/announcements/:id/preview` | The post as a person would receive it, whatever its status or audience ("Preview in app") |
+| `POST` | `/api/admin/announcements/:id/publish` | Publish now, or schedule with `{ publish_at }` in Unix seconds. `422` lists what is missing |
+| `POST` | `/api/admin/announcements/:id/unpublish` | Back to drafts |
+| `POST` | `/api/admin/announcements/:id/archive` | Take it down but keep it |
+| `POST` | `/api/admin/announcements/:id/redeliver` | "Notify again": unread and delivered afresh for the whole audience |
+| `POST` | `/api/admin/announcements/:id/duplicate` | Copy into a new draft |
+| `DELETE` | `/api/admin/announcements/:id` | Delete it and its receipts. Uploaded files stay in the library |
+| `GET` | `/api/admin/media/status` | Whether R2 is configured, public or private mode, and the upload limits |
+| `GET` | `/api/admin/media` | The media library, with the posts using each file |
+| `POST` | `/api/admin/media/uploads` | Validate a file and return presigned `PUT` URLs for it and its poster |
+| `POST` | `/api/admin/media/:id/complete` | Verify the uploaded object and mark it ready |
+| `DELETE` | `/api/admin/media/:id` | Delete a file. `409` while a post still uses it |
+
+Every status change (`publish`, `unpublish`, `archive` and `redeliver`) also
+takes `{ revision }`, so nobody publishes a version of a post they have not
+seen. Studio requests are excluded from activity tracking, like analytics.
+
+</details>
+
+<details>
 <summary><strong>Integrations</strong></summary>
 
 | Method | Path | Description |
@@ -324,6 +431,75 @@ The two navigation routes use a redirect-to-login guard rather than a JSON 401,
 because the browser is following a redirect and would otherwise render raw JSON.
 
 </details>
+
+---
+
+## Announcements
+
+Admins write posts in the announcement studio at **/announcements**, linked from
+the Admin tab in Account & Settings. Everyone finds posts under the **What's
+new** button in the top bar, and each post also arrives the way it was sent.
+
+### Writing a post
+
+- **Header.** Upload an image, an animated GIF, PNG or WebP, an SVG, an MP4 or WebM video, or a Lottie file: drop it, paste it, pick it, or reuse one from the library. Or choose a **motion scene** and edit its words and colours. Scenes are drawn live, follow the reader's theme and need no download. Framing covers aspect ratio, fit, focal point, background and alt text.
+- **Body.** Markdown with a toolbar: headings, lists, checklists, callouts (`> [!TIP]`), code, keycaps (`[[Ctrl+Z]]`), links, and images pasted or dropped straight in.
+- **Button and reactions.** An optional button that opens a link or a klndr screen (categories, integrations, settings, account, analytics), and 🎉 ❤️ 🔥 👏 👀 reactions.
+- **Delivery.**
+  - *Story* opens a short stepper the next time someone arrives.
+  - *Banner* floats a notice under the top bar.
+  - *Corner card* slides in at the bottom right.
+  - *Inbox only* just lights the badge.
+
+  A post that goes live while someone is already in the app reaches them as a corner card, never as a story. Anyone can switch pop-ups to "Inbox only" in Settings.
+- **Audience and timing.** Everyone, admins only, or specific people. Publish now or schedule it, set an optional expiry, pin it, and choose whether it also shows to people who join later.
+
+The studio autosaves:
+- **Preview.** Shows the post as a story, inbox row, banner or card, in light or dark.
+- **Preview in app.** Plays the real arrival flow without recording anything.
+- **Notify again.** Sends a live post out again.
+- **Stats.** Every post has a view with reach, opens by day, reactions, and who has opened it.
+
+`/?announcement=<id>` links straight to a post.
+
+### Setting up Cloudflare R2
+
+Uploads go straight from the studio to an R2 bucket; klndr only signs the
+requests. Motion scenes need none of this.
+
+1. In the Cloudflare dashboard, open **R2** and create a bucket.
+2. Choose how files are read:
+   - **Public:** connect a custom domain to the bucket (or enable its `r2.dev` URL for testing), and set `R2_PUBLIC_BASE_URL` to that origin.
+   - **Private:** leave `R2_PUBLIC_BASE_URL` empty. klndr redirects `/media/*` to short-lived signed URLs, so files only load for signed-in people.
+3. Under **R2 → Manage API tokens**, create a token with **Object Read & Write** on the bucket. Set the following in `.env`, and in Vercel for production:
+   - `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` from that token;
+   - `R2_ACCOUNT_ID` from the R2 overview page;
+   - `R2_BUCKET`.
+4. Allow browser uploads. `npm run r2:cors` writes a CORS policy for `KLNDR_BASE_URL` and `http://localhost:3001`; name any other origins after `--`. Writing it needs an **Admin Read & Write** token. With the object token, the command prints the JSON to paste into the bucket's **Settings → CORS policy** instead.
+5. Run `npm run r2:check`. It checks the credentials, the bucket, and the CORS policy for each origin, then round-trips a small test object.
+
+Files can be up to 10 MB for images, 20 MB for animated images, 2 MB for SVG,
+50 MB for video and 5 MB for Lottie. An SVG is refused if it contains scripts,
+event handlers, `javascript:` links, embedded HTML or documents, XML entities,
+or references to other hosts. SVG is only ever displayed through `<img>`.
+
+### Motion clips
+
+`motion/` is a separate [Remotion](https://www.remotion.dev) workspace for
+designing header videos. It renders the app's built-in scenes with the same code
+the app plays, and includes two free-form React clips to start from,
+`FeatureSpotlight` and `WeekRecap`:
+
+```bash
+cd motion
+npm install
+npm run studio
+npm run render -- FeatureSpotlight
+```
+
+Then upload `motion/out/FeatureSpotlight.mp4` as a post's header. The workspace
+is never deployed. [`motion/README.md`](motion/README.md) covers making clips,
+render options, and Remotion's licence.
 
 ---
 
@@ -377,7 +553,7 @@ function (`vercel.json` routes everything to `server.js`).
 
 1. Import the repository into Vercel.
 2. Leave the framework preset as **Other** and keep the build and output settings empty.
-3. Add the production environment variables from [Configuration](#configuration) — at minimum `MONGODB_URI`, `MONGODB_DB` (for example `klndr`, *not* `klndr_dev`) and `SESSION_SECRET`, plus `KLNDR_BASE_URL` and `INTEGRATION_ENC_KEY` if you use integrations.
+3. Add the production environment variables from [Configuration](#configuration) — at minimum `MONGODB_URI`, `MONGODB_DB` (for example `klndr`, *not* `klndr_dev`) and `SESSION_SECRET`, plus `KLNDR_BASE_URL` and `INTEGRATION_ENC_KEY` if you use integrations, and the `R2_*` variables for announcement media.
 4. Deploy.
 
 Configure MongoDB Atlas network access for your own machine (local) and for
@@ -387,12 +563,29 @@ Vercel. Any other Node host works too — `npm start` is the whole run command.
 
 ## Testing
 
+The unit tests need no server and no database:
+
+```bash
+npm test
+npm run check:tokens
+```
+
+They cover:
+- the announcement rules, including someone who joins after thirty posts;
+- Markdown escaping and the legacy renderer;
+- media validation and signed upload URLs;
+- the motion helpers, and the scenes' determinism and seamless loops.
+
 `test-e2e.js` is a raw-`http` smoke test of the API: auth redirects, session
-handling and task CRUD. Start the server, then:
+handling, task CRUD and the announcement lifecycle. Start the server, then:
 
 ```bash
 node test-e2e.js
 ```
+
+It signs in as the seeded `yassen` admin. Once that password has been changed,
+name the account with `E2E_USERNAME` and `E2E_PASSWORD`. The run changes that
+password and then restores it.
 
 There is no DOM test framework in this repository, so geometry, input and layout
 are covered by a manual checklist:
