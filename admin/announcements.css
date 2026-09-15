@@ -1339,6 +1339,16 @@
   flex: 1;
 }
 
+/* In the Studio the bar is also the scrubber, so it takes a taller target than
+   its 6px without taking up more room. */
+.st-mock-top .ann-story-progress.is-scrubbable {
+  align-items: center;
+  margin: -10px 0;
+  padding: 10px 0;
+  cursor: pointer;
+  touch-action: none;
+}
+
 .st-mock-foot {
   display: flex;
   align-items: center;

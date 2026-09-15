@@ -111,12 +111,19 @@ const KlndrAnnouncementMedia = (() => {
 
     const cleanups = [];
     let player = null;
+    let progress = () => null;
 
     const result = {
       element: frame,
       get player() {
         return player;
       },
+      /**
+       * How far through its loop the header is, 0 to 1 - or null when it is not
+       * playing or has no length to it (a picture, a still). A story's progress
+       * bar follows this.
+       */
+      progress: () => progress(),
       destroy() {
         cleanups.splice(0).forEach((fn) => {
           try {
@@ -212,6 +219,7 @@ const KlndrAnnouncementMedia = (() => {
           if (wanted && visible) video.play().catch(() => {});
           else video.pause();
         };
+        progress = () => (wanted && video.duration ? video.currentTime / video.duration : null);
         cleanups.push(whenVisible(frame, (isVisible) => {
           visible = isVisible;
           sync();
@@ -275,6 +283,9 @@ const KlndrAnnouncementMedia = (() => {
           if (wanted && visible) animation.play();
           else animation.pause();
         };
+        progress = () => (wanted && animation && animation.totalFrames
+          ? animation.currentFrame / animation.totalFrames
+          : null);
 
         Promise.all([
           loadLottie(),
@@ -351,6 +362,7 @@ const KlndrAnnouncementMedia = (() => {
           label
         });
         cleanups.push(() => player.destroy());
+        progress = () => (player.paused ? null : player.frame / Math.max(1, player.duration - 1));
         break;
       }
 

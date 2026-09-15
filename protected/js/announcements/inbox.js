@@ -648,7 +648,7 @@ class KlndrAnnouncements {
 
     this.rememberFocus();
     this.app.closeAllModals();
-    this.story = { queue, overflow: overflow.length, index: 0, mounted: null, dwell: 0 };
+    this.story = { queue, overflow: overflow.length, index: 0, mounted: null, dwell: 0, raf: 0 };
     this.dom.storyModal.classList.add('active');
     this.renderStory();
     this.dom.storyNext.focus({ preventScroll: true });
@@ -662,6 +662,7 @@ class KlndrAnnouncements {
     const d = this.dom;
     const s = this.story;
     clearTimeout(s.dwell);
+    cancelAnimationFrame(s.raf);
     if (s.mounted) s.mounted.destroy();
     s.mounted = null;
 
@@ -685,6 +686,17 @@ class KlndrAnnouncements {
       d.storyHost.replaceChildren(mounted.element);
       d.storyCard.setAttribute('aria-labelledby', mounted.titleId);
       s.dwell = setTimeout(() => this.markOpened(a), KlndrAnnouncements.STORY_DWELL_MS);
+
+      // The story's segment is its header's playhead.
+      const segment = d.storyProgress.children[s.index];
+      let shown = null;
+      const follow = () => {
+        const progress = mounted.media ? mounted.media.progress() : null;
+        const value = progress == null ? '1' : progress.toFixed(3);
+        if (value !== shown) segment.style.setProperty('--ann-progress', (shown = value));
+        s.raf = requestAnimationFrame(follow);
+      };
+      follow();
     } else {
       d.storyHost.replaceChildren(this.storyMore(s.overflow));
       d.storyCard.removeAttribute('aria-labelledby');
@@ -731,6 +743,7 @@ class KlndrAnnouncements {
     if (!s) return;
     this.story = null;
     clearTimeout(s.dwell);
+    cancelAnimationFrame(s.raf);
     // Everything after the story they were on was skipped: it will not pop up
     // again, and stays unread in the inbox.
     s.queue.slice(s.index + 1).forEach((a) => this.record(a, 'dismissed'));

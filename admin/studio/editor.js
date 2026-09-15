@@ -72,6 +72,7 @@
       previewMode: doc.delivery,
       previewDevice: 'desktop',
       previewReaction: null,
+      previewPaused: false,
       preview: null,
       pane: 'write',
       mediaTab: !media ? 'none' : media.type === 'scene' ? 'scene' : 'upload',
@@ -525,6 +526,7 @@
     fresh.themeRestore = ed.themeRestore;
     fresh.previewMode = ed.previewMode;
     fresh.previewDevice = ed.previewDevice;
+    fresh.previewPaused = ed.previewPaused;
     state.editor = fresh;
     state.view = { name: 'edit', cleanup: () => closeEditor(fresh) };
     renderEditor(fresh);

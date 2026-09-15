@@ -259,6 +259,13 @@ const KlndrMotion = (() => {
       get playing() {
         return playing;
       },
+      /** Paused on purpose - not merely scrolled away or in a background tab. */
+      get paused() {
+        return !wantsPlay;
+      },
+      get duration() {
+        return duration;
+      },
       /** New props without remounting, so an edit in the Studio keeps playing. */
       update(nextProps) {
         clean = KlndrScenes.sanitizeProps(sceneId, nextProps);

@@ -981,17 +981,11 @@ h5.ann-md-heading {
   background: var(--ink-strong);
 }
 
-/* Fills over the same 1.2 seconds a story has to be on screen to count as
-   read (KlndrAnnouncements.STORY_DWELL_MS). */
+/* The current story's playhead: it fills as the header's animation or clip
+   plays, and starts over when that loops (--ann-progress, set by inbox.js). A
+   header with no length to it - a picture, a still - leaves it full. */
 .ann-story-segment.is-current {
-  background: linear-gradient(90deg, var(--ink-strong) 50%, var(--line-soft) 50%);
-  background-position: 100% 0;
-  background-size: 200% 100%;
-  animation: ann-story-fill 1200ms linear forwards;
-}
-
-@keyframes ann-story-fill {
-  to { background-position: 0 0; }
+  background: linear-gradient(90deg, var(--ink-strong) calc(var(--ann-progress, 1) * 100%), var(--line-soft) 0);
 }
 
 .ann-story-foot {
@@ -1302,14 +1296,6 @@ h5.ann-md-heading {
 
 @media (prefers-reduced-motion: reduce) {
   .ann-reaction.is-mine .ann-reaction-emoji,
-  .ann-story-segment.is-current {
-    animation: none;
-  }
-
-  .ann-story-segment.is-current {
-    background: var(--ink-strong);
-  }
-
   .ann-notice,
   .ann-toast-card {
     transition: none;

@@ -86,16 +86,90 @@
     return a.summary || KlndrMarkdown.toPlainText(a.body, { max });
   }
 
+  // The story's bar is the header's playhead, as in the app. Here it can also be
+  // dragged, and a button beside it pauses - so nothing sits over the animation.
+  function playhead(ed, top, bar, segment, media, cleanups) {
+    const player = media && media.player;
+    let raf = 0;
+    let shown = null;
+    let shownFrame = -1;
+    let toggle = null;
+
+    if (player) {
+      toggle = iconButton('pause', 'Pause', () => {
+        ed.previewPaused = !player.paused;
+        if (ed.previewPaused) player.pause();
+        else player.play();
+      });
+      top.prepend(toggle);
+
+      bar.classList.add('is-scrubbable');
+      bar.tabIndex = 0;
+      bar.setAttribute('role', 'slider');
+      bar.setAttribute('aria-label', 'Scrub through the animation');
+      bar.setAttribute('aria-valuemin', '0');
+      bar.setAttribute('aria-valuemax', String(player.duration - 1));
+
+      const hold = () => {
+        ed.previewPaused = true;
+        player.pause();
+      };
+      const seekTo = (event) => {
+        const rect = bar.getBoundingClientRect();
+        const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+        player.seek(fraction * (player.duration - 1));
+      };
+      bar.addEventListener('pointerdown', (event) => {
+        hold();
+        bar.setPointerCapture(event.pointerId);
+        seekTo(event);
+      });
+      bar.addEventListener('pointermove', (event) => {
+        if (bar.hasPointerCapture(event.pointerId)) seekTo(event);
+      });
+      bar.addEventListener('keydown', (event) => {
+        const step = { ArrowLeft: -1, ArrowRight: 1, Home: -Infinity, End: Infinity }[event.key];
+        if (step === undefined) return;
+        event.preventDefault();
+        hold();
+        player.seek(player.frame + step * (event.shiftKey ? 10 : 1));
+      });
+    }
+
+    const follow = () => {
+      const progress = player ? player.frame / Math.max(1, player.duration - 1) : media ? media.progress() : null;
+      const value = progress == null ? '1' : progress.toFixed(3);
+      if (value !== shown) segment.style.setProperty('--ann-progress', (shown = value));
+
+      if (toggle) {
+        const label = player.paused ? 'Play' : 'Pause';
+        if (toggle.getAttribute('aria-label') !== label) {
+          toggle.firstChild.textContent = player.paused ? 'play_arrow' : 'pause';
+          toggle.setAttribute('aria-label', label);
+          toggle.title = label;
+        }
+        if (player.frame !== shownFrame) {
+          shownFrame = player.frame;
+          bar.setAttribute('aria-valuenow', String(shownFrame));
+          bar.setAttribute('aria-valuetext', `${(shownFrame / KlndrScenes.FPS).toFixed(1)} seconds`);
+        }
+      }
+      raf = requestAnimationFrame(follow);
+    };
+    follow();
+    cleanups.push(() => cancelAnimationFrame(raf));
+  }
+
   function storyMock(ed, a, cleanups) {
     const card = h('div', 'st-mock-card');
     const top = h('div', 'st-mock-top');
-    const progress = h('div', 'ann-story-progress');
-    progress.appendChild(h('span', 'ann-story-segment is-done'));
-    top.append(progress, iconButton('close', 'Close'));
+    const bar = h('div', 'ann-story-progress');
+    const segment = h('span', 'ann-story-segment is-current');
+    bar.appendChild(segment);
+    top.append(bar, iconButton('close', 'Close'));
 
     const reader = KlndrAnnouncementReader.render(a, {
       mode: 'preview',
-      mediaOptions: { controls: true },
       onReact: (reaction) => {
         ed.previewReaction = ed.previewReaction === reaction ? null : reaction;
         reader.setReactions(ed.previewReaction, reactionCounts(ed));
@@ -103,6 +177,7 @@
       onCta: (announcement, event) => event.preventDefault()
     });
     cleanups.push(() => reader.destroy());
+    playhead(ed, top, bar, segment, reader.media, cleanups);
 
     const scroll = h('div', 'ann-scroll');
     scroll.appendChild(reader.element);
@@ -217,6 +292,8 @@
 
     stage.replaceChildren(mock);
     if (player && resumeAt != null) player.seek(resumeAt);
+    // A pause survives the redraw an edit causes.
+    if (player && ed.previewPaused) player.pause();
 
     ed.preview = {
       player,
