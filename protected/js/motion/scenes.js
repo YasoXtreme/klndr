@@ -1,6 +1,6 @@
 // Klndr Motion Scenes
 //
-// The built-in animated headers: six short loops in klndr's own drawing style -
+// The built-in animated headers: ten short loops in klndr's own drawing style -
 // flat fills, hard lines, offset slabs, ElmsSans Black - that an admin picks
 // from a gallery and fills in with their own words, emoji and colours.
 //
@@ -1025,10 +1025,743 @@ const KlndrScenes = (() => {
   };
 
   // ==========================================
+  // SCENE: FLIP BOARD
+  // ==========================================
+
+  const FLAP_GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789&?!';
+  const FLAP_FRAMES = 2;
+  const flipPlans = new Map();
+
+  // Words into tiles, a row at a time. A word longer than a row is cut across
+  // rows, as a real board would have to.
+  function wrapTiles(words, cols) {
+    const rows = [];
+    let row = [];
+    for (const word of words) {
+      if (row.length && row.length + 1 + word.length > cols) {
+        rows.push(row);
+        row = [];
+      }
+      if (row.length) row.push(' ');
+      for (const char of word) {
+        if (row.length >= cols) {
+          rows.push(row);
+          row = [];
+        }
+        row.push(char);
+      }
+    }
+    if (row.length) rows.push(row);
+    return rows;
+  }
+
+  // The fewest columns that fit the headline in two rows, so a short headline
+  // gets big tiles and a long one still fits.
+  function boardLayout(text) {
+    const words = text.toUpperCase().split(' ').filter(Boolean).map((word) => Array.from(word));
+    if (!words.length) return { rows: [[]], cols: 8 };
+    const total = words.reduce((sum, word) => sum + word.length, 0) + words.length - 1;
+    const longest = Math.max(...words.map((word) => word.length));
+    for (let cols = M.clamp(Math.max(longest, Math.ceil(total / 2)), 6, 20); cols <= 20; cols++) {
+      const rows = wrapTiles(words, cols);
+      if (rows.length <= 2) return { rows, cols };
+    }
+    return { rows: wrapTiles(words, 20).slice(0, 2), cols: 20 };
+  }
+
+  // Every tile's letter, and the seeded run of letters it flips through first.
+  function flipPlan(text) {
+    if (flipPlans.has(text)) return flipPlans.get(text);
+    if (flipPlans.size > 64) flipPlans.clear();
+    const { rows, cols } = boardLayout(text);
+    const rand = M.random(`flip-board:${text}`);
+    const tiles = [];
+    let count = 0;
+    rows.forEach((row, r) => {
+      const lead = Math.floor((cols - row.length) / 2);
+      for (let c = 0; c < cols; c++) {
+        const char = row[c - lead] && row[c - lead] !== ' ' ? row[c - lead] : '';
+        const spins = Array.from({ length: 8 }, () => FLAP_GLYPHS[Math.floor(rand() * FLAP_GLYPHS.length)]);
+        tiles.push({ r, c, char, order: char ? count++ : -1, flips: 3 + Math.floor(rand() * 6), spins });
+      }
+    });
+    const plan = { rows: rows.length, cols, tiles, count };
+    flipPlans.set(text, plan);
+    return plan;
+  }
+
+  // What a tile shows on a frame: nothing, a letter mid-flip - squashed while
+  // its flap falls - or its own letter, landing with a little bounce. On the way
+  // out the letters flip away, last one first.
+  function flapFace(tile, frame, count) {
+    const blank = { glyph: '', squash: 1 };
+    if (!tile.char) return blank;
+    const squash = (elapsed) => 1 - 0.5 * Math.sin((Math.PI * (elapsed % FLAP_FRAMES)) / FLAP_FRAMES);
+
+    const out = 126 + (count - 1 - tile.order) * Math.min(1.5, 24 / count);
+    if (frame >= out) {
+      const step = Math.floor((frame - out) / FLAP_FRAMES);
+      return step < 2 ? { glyph: tile.spins[step], squash: squash(frame - out) } : blank;
+    }
+
+    const start = 18 + tile.order * 2.5;
+    if (frame < start) return blank;
+    const step = Math.floor((frame - start) / FLAP_FRAMES);
+    if (step < tile.flips) return { glyph: tile.spins[step], squash: squash(frame - start) };
+    const landed = frame - start - tile.flips * FLAP_FRAMES;
+    return { glyph: tile.char, squash: landed < 6 ? 1 + 0.12 * Math.sin((Math.PI * landed) / 6) : 1 };
+  }
+
+  const flipBoard = {
+    id: 'flip-board',
+    name: 'Flip board',
+    description: 'Your headline clatters in letter by letter on a split-flap board, like a departures sign.',
+    durationInFrames: 180,
+    stillFrame: 120,
+    schema: [
+      { key: 'eyebrow', type: 'text', label: 'Tag', max: 18, default: 'NOW ARRIVING' },
+      { key: 'headline', type: 'text', label: 'Headline', max: 28, default: 'Fresh features' },
+      { key: 'accent', type: 'color', label: 'Board colour', default: '#fde047' },
+      { key: 'background', type: 'color', label: 'Background', optional: true, default: '' }
+    ],
+    describe: (p) => [p.eyebrow, p.headline].filter(Boolean).join(': '),
+    render(ctx, frame, p, env) {
+      const t = env.theme;
+      paintGround(ctx, env, p.background || t.ground);
+
+      onStage(ctx, env, () => {
+        const plan = flipPlan(p.headline);
+        const gap = 8;
+        const rowGap = 14;
+        const pad = 34;
+        const tileW = Math.min(92, (940 - (plan.cols - 1) * gap) / plan.cols);
+        const tileH = tileW * 1.32;
+        const boardW = plan.cols * tileW + (plan.cols - 1) * gap + pad * 2;
+        const boardH = plan.rows * tileH + (plan.rows - 1) * rowGap + pad * 2;
+        const boardFill = M.taskFill(p.accent, t);
+
+        const drop = M.progress(frame, 150, 174, Easing.in(Easing.cubic));
+        const boardIn = M.spring({ frame, fps: FPS, delay: 2, config: { damping: 12, stiffness: 120 } });
+        const tagIn = M.spring({ frame, fps: FPS, delay: 12, config: { damping: 9, stiffness: 150 } });
+
+        place(ctx, {
+          x: 600,
+          y: 330 + M.loopWave(frame, 180, 2) * 5 + drop * 80,
+          rotate: deg(M.lerp(5, -1.5, boardIn) + drop * 6),
+          scaleX: 0.7 + 0.3 * boardIn,
+          alpha: M.clamp(boardIn * 1.5, 0, 1) * (1 - drop)
+        }, () => {
+          const left = -boardW / 2;
+          const top = -boardH / 2;
+          M.slabBox(ctx, {
+            x: left, y: top, w: boardW, h: boardH,
+            r: 26, fill: boardFill, line: t.line, lineWidth: 5, slab: 12
+          });
+          ctx.fillStyle = t.line;
+          for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+            ctx.beginPath();
+            ctx.arc(sx * (boardW / 2 - 16), sy * (boardH / 2 - 16), 5, 0, TAU);
+            ctx.fill();
+          }
+
+          ctx.font = M.font(tileH * 0.6);
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          for (const tile of plan.tiles) {
+            const x = left + pad + tile.c * (tileW + gap) + tileW / 2;
+            const y = top + pad + tile.r * (tileH + rowGap) + tileH / 2;
+            M.roundRectPath(ctx, x - tileW / 2, y - tileH / 2, tileW, tileH, 8);
+            ctx.fillStyle = t.ink;
+            ctx.fill();
+            const face = flapFace(tile, frame, plan.count);
+            if (face.glyph) {
+              place(ctx, { x, y, scaleY: face.squash }, () => {
+                ctx.fillStyle = t.surface;
+                ctx.fillText(face.glyph, 0, tileH * 0.04);
+              });
+            }
+            // The seam between a tile's two flaps.
+            ctx.strokeStyle = boardFill;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x - tileW / 2, y);
+            ctx.lineTo(x + tileW / 2, y);
+            ctx.stroke();
+          }
+
+          if (p.eyebrow) {
+            place(ctx, {
+              x: left + 30,
+              y: top,
+              rotate: deg(-4),
+              scaleX: tagIn,
+              alpha: M.clamp(tagIn * 2, 0, 1)
+            }, () => {
+              ctx.font = M.font(26);
+              const w = ctx.measureText(p.eyebrow).width + 78;
+              M.slabBox(ctx, {
+                x: 0, y: -28, w, h: 56,
+                r: 28, fill: t.surface, line: t.line, lineWidth: 4, slab: 6
+              });
+              place(ctx, { x: 30, y: 0, alpha: 0.3 + 0.7 * Math.max(0, M.loopWave(frame, 180, 6)) }, () => {
+                ctx.beginPath();
+                ctx.arc(0, 0, 9, 0, TAU);
+                ctx.fillStyle = boardFill;
+                ctx.fill();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = t.line;
+                ctx.stroke();
+              });
+              ctx.font = M.font(26);
+              ctx.fillStyle = t.ink;
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(p.eyebrow, 50, 2);
+            });
+          }
+        });
+      });
+    }
+  };
+
+  // ==========================================
+  // SCENE: SHORTCUT KEYS
+  // ==========================================
+
+  const KEY_H = 150;
+  const KEY_SLAB = 14;
+  const KEY_PLUS = 84;
+  const KEY_SPARKS = [
+    [140, 110, 28, 0],
+    [1065, 120, 34, 0.3],
+    [1095, 370, 24, 0.55],
+    [110, 350, 30, 0.8]
+  ];
+
+  const keycaps = {
+    id: 'keycaps',
+    name: 'Shortcut keys',
+    description: 'Chunky keys drop in and press down together, then your caption pops up. Made for shortcut news.',
+    durationInFrames: 180,
+    stillFrame: 104,
+    schema: [
+      { key: 'keys', type: 'list', label: 'Keys', max: 8, maxItems: 4, default: ['Ctrl', 'K'] },
+      { key: 'headline', type: 'text', label: 'Caption', max: 36, default: 'Jump to anything' },
+      { key: 'accent', type: 'color', label: 'Pressed colour', default: '#9ae659' },
+      { key: 'background', type: 'color', label: 'Background', optional: true, default: '' }
+    ],
+    describe: (p) => [p.keys.join(' + '), p.headline].filter(Boolean).join(': '),
+    render(ctx, frame, p, env) {
+      const t = env.theme;
+      paintGround(ctx, env, p.background || t.mint);
+
+      onStage(ctx, env, () => {
+        const keys = p.keys;
+        const n = keys.length;
+        const accent = M.taskFill(p.accent, t);
+        ctx.font = M.font(60);
+        const widths = keys.map((label) => Math.max(150, ctx.measureText(label).width + 84));
+        const total = widths.reduce((sum, w) => sum + w, 0) + KEY_PLUS * (n - 1);
+        const fit = Math.min(1, 1040 / total);
+
+        // One key after another goes down and stays down; the combo lands when
+        // the last one does, and they come back up in reverse.
+        const pressAt = (i) => 44 + i * 10;
+        const releaseAt = (i) => 128 + (n - 1 - i) * 4;
+        const combo = pressAt(n - 1) + 6;
+        const fade = M.progress(frame, 136, 152, Easing.in(Easing.cubic));
+
+        const ring = M.progress(frame, combo, combo + 20, Easing.out(Easing.quad));
+        if (ring > EPS && ring < 1 - EPS) {
+          ctx.save();
+          ctx.globalAlpha = ctx.globalAlpha * (1 - ring);
+          ctx.strokeStyle = t.line;
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.ellipse(600, 250, (total * fit) / 2 + M.lerp(30, 140, ring), M.lerp(96, 180, ring), 0, 0, TAU);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        place(ctx, { x: 600, y: 240, scaleX: fit }, () => {
+          let x = -total / 2;
+          keys.forEach((label, i) => {
+            const w = widths[i];
+            const drop = M.spring({ frame, fps: FPS, delay: 4 + i * 6, config: { damping: 10, stiffness: 140 } });
+            const press = M.progress(frame, pressAt(i), pressAt(i) + 5, Easing.out(Easing.cubic)) *
+              (1 - M.progress(frame, releaseAt(i), releaseAt(i) + 6, Easing.out(Easing.cubic)));
+            const out = M.progress(frame, 146 + i * 4, 160 + i * 4, Easing.back(1.4));
+
+            place(ctx, {
+              x: x + w / 2,
+              y: M.lerp(-420, 0, drop),
+              rotate: deg((1 - M.clamp(drop, 0, 1)) * (i % 2 ? 12 : -12)),
+              scaleX: 1 - out,
+              alpha: M.clamp(drop * 3, 0, 1) * (1 - out)
+            }, () => {
+              // Pressing slides the key down onto its own slab.
+              const shift = KEY_SLAB * press;
+              M.slabBox(ctx, {
+                x: -w / 2 + shift, y: -KEY_H / 2 + shift, w, h: KEY_H,
+                r: 24, fill: M.mix(accent, t.surface, press), line: t.line, lineWidth: 5, slab: KEY_SLAB - shift
+              });
+              // The dish a fingertip rests in.
+              M.roundRectPath(ctx, -w / 2 + shift + 14, -KEY_H / 2 + shift + 12, w - 28, KEY_H - 36, 16);
+              ctx.strokeStyle = M.alpha(t.ink, 0.14);
+              ctx.lineWidth = 3;
+              ctx.stroke();
+              ctx.font = M.font(60);
+              ctx.fillStyle = press > 0.5 ? inkOn(accent, t) : t.ink;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(label, shift, shift - 2);
+            });
+
+            if (i < n - 1) {
+              const plusIn = M.spring({ frame, fps: FPS, delay: 10 + i * 6, config: { damping: 9, stiffness: 160 } });
+              const plusOut = M.progress(frame, 146 + i * 4, 156 + i * 4);
+              place(ctx, {
+                x: x + w + KEY_PLUS / 2,
+                y: 0,
+                scaleX: plusIn * (1 - plusOut),
+                alpha: M.clamp(plusIn * 2, 0, 1) * (1 - plusOut)
+              }, () => {
+                ctx.font = M.font(64);
+                ctx.fillStyle = t.inkSoft;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('+', 0, 4);
+              });
+            }
+            x += w + KEY_PLUS;
+          });
+        });
+
+        const sparkle = M.spring({ frame, fps: FPS, delay: combo, config: { damping: 8, stiffness: 150 } }) * (1 - fade);
+        KEY_SPARKS.forEach(([x, y, r, phase]) => {
+          place(ctx, {
+            x,
+            y,
+            rotate: frame * 0.03,
+            scaleX: sparkle * (0.8 + 0.2 * M.loopWave(frame, 180, 3, phase)),
+            alpha: M.clamp(sparkle * 2, 0, 1)
+          }, () => {
+            sparklePath(ctx, r);
+            ctx.fillStyle = accent;
+            ctx.fill();
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = t.line;
+            ctx.stroke();
+          });
+        });
+
+        if (p.headline) {
+          const rise = M.spring({ frame, fps: FPS, delay: combo + 4, config: { damping: 11, stiffness: 140 } });
+          const sink = M.progress(frame, 140, 158, Easing.in(Easing.cubic));
+          place(ctx, {
+            x: 600,
+            y: 480 + (1 - rise) * 60 + sink * 90,
+            rotate: deg(M.lerp(-6, -2, M.clamp(rise, 0, 1))),
+            scaleX: 0.8 + 0.2 * rise,
+            alpha: M.clamp(rise * 1.6, 0, 1) * (1 - sink)
+          }, () => {
+            const caption = M.fitText(ctx, p.headline, { maxWidth: 860, maxLines: 1, max: 52, min: 28 });
+            const text = caption.lines[0] || '';
+            ctx.font = M.font(caption.size);
+            const w = ctx.measureText(text).width + 84;
+            M.slabBox(ctx, {
+              x: -w / 2, y: -44, w, h: 88,
+              r: 44, fill: t.surface, line: t.line, lineWidth: 5, slab: 8
+            });
+            ctx.font = M.font(caption.size);
+            ctx.fillStyle = t.ink;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 0, 3);
+          });
+        }
+      });
+    }
+  };
+
+  // ==========================================
+  // SCENE: CHAT
+  // ==========================================
+
+  const CHAT_GAP = 18;
+  const TYPING_W = 124;
+  const TYPING_H = 64;
+
+  // A speech bubble: round, but for the bottom corner its tail leaves from.
+  function bubblePath(ctx, x, y, w, h, tailRight) {
+    const r = Math.min(26, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, tailRight ? 4 : r);
+    ctx.arcTo(x, y + h, x, y, tailRight ? r : 4);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function bubble(ctx, { x, y, w, h, tailRight, fill, line }) {
+    bubblePath(ctx, x + 6, y + 6, w, h, tailRight);
+    ctx.fillStyle = line;
+    ctx.fill();
+    bubblePath(ctx, x, y, w, h, tailRight);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = line;
+    ctx.stroke();
+  }
+
+  const chat = {
+    id: 'chat',
+    name: 'Chat',
+    description: 'Messages pop up one after another, typing dots and all, like a chat about your news.',
+    durationInFrames: 180,
+    stillFrame: 124,
+    schema: [
+      {
+        key: 'messages', type: 'list', label: 'Messages', max: 44, maxItems: 4,
+        default: ['Did you see the update?', 'Dark mode is finally here 🌙', 'Trying it right now 🎉']
+      },
+      { key: 'accent', type: 'color', label: 'Reply colour', default: '#3ba4f6' },
+      { key: 'background', type: 'color', label: 'Background', optional: true, default: '' }
+    ],
+    describe: (p) => p.messages.join(' / '),
+    render(ctx, frame, p, env) {
+      const t = env.theme;
+      paintGround(ctx, env, p.background || t.ground);
+
+      onStage(ctx, env, () => {
+        // Every other message is the reply: on the right, in the accent.
+        const bubbles = p.messages.map((text, i) => {
+          const fit = M.fitText(ctx, text, { maxWidth: 560, maxLines: 2, max: 36, min: 24, step: 2, weight: 800 });
+          ctx.font = M.font(fit.size, 800);
+          const lineH = fit.size * 1.2;
+          const textW = Math.max(40, ...fit.lines.map((line) => ctx.measureText(line).width));
+          const mine = i % 2 === 1;
+          const at = 18 + i * 26;
+          return {
+            lines: fit.lines,
+            size: fit.size,
+            lineH,
+            w: textW + 56,
+            h: fit.lines.length * lineH + 36,
+            mine,
+            at,
+            speaks: at - (mine ? 4 : 14)
+          };
+        });
+        // The stack grows up from a baseline that leaves the finished chat centred.
+        const finalH = bubbles.reduce((sum, b) => sum + b.h, 0) + CHAT_GAP * (bubbles.length - 1);
+        const base = Math.min(566, 300 + finalH / 2);
+        const soft = { damping: 14, stiffness: 170 };
+
+        // The room each message has taken so far: none, a typing bubble's, its own.
+        const room = bubbles.map((b) => {
+          const push = M.clamp(M.spring({ frame, fps: FPS, delay: b.speaks, config: soft }), 0, 1);
+          const grow = M.clamp(M.spring({ frame, fps: FPS, delay: b.at, config: soft }), 0, 1);
+          return ((b.mine ? b.h : M.lerp(TYPING_H, b.h, grow)) + CHAT_GAP) * push;
+        });
+
+        bubbles.forEach((b, i) => {
+          const bottom = base - room.slice(i + 1).reduce((sum, h) => sum + h, 0);
+          const gone = M.progress(frame, 140 + i * 5, 152 + i * 5, Easing.back(1.5));
+
+          if (!b.mine) {
+            const typing = M.spring({ frame, fps: FPS, delay: b.speaks, config: { damping: 12, stiffness: 180 } });
+            const done = M.progress(frame, b.at - 2, b.at + 3);
+            place(ctx, {
+              x: 150,
+              y: bottom,
+              scaleX: M.clamp(typing, 0, 1.2) * (1 - done),
+              alpha: M.clamp(typing * 2.5, 0, 1) * (1 - done)
+            }, () => {
+              bubble(ctx, { x: 0, y: -TYPING_H, w: TYPING_W, h: TYPING_H, tailRight: false, fill: t.surface, line: t.line });
+              ctx.fillStyle = t.inkSoft;
+              for (let k = 0; k < 3; k++) {
+                const hop = Math.max(0, Math.sin((frame - b.speaks) * 0.5 - k * 0.9));
+                ctx.beginPath();
+                ctx.arc(34 + k * 28, -TYPING_H / 2 - hop * 8, 8, 0, TAU);
+                ctx.fill();
+              }
+            });
+          }
+
+          // Pops from its tail's corner, the way a message arrives.
+          const pop = M.spring({ frame, fps: FPS, delay: b.at, config: { damping: 11, stiffness: 170 } });
+          place(ctx, {
+            x: b.mine ? 1050 : 150,
+            y: bottom,
+            scaleX: M.clamp(pop, 0, 1.2) * (1 - gone),
+            alpha: M.clamp(pop * 2.5, 0, 1) * (1 - gone)
+          }, () => {
+            const x = b.mine ? -b.w : 0;
+            bubble(ctx, {
+              x, y: -b.h, w: b.w, h: b.h,
+              tailRight: b.mine,
+              fill: b.mine ? M.taskFill(p.accent, t) : t.surface,
+              line: b.mine ? t.onColorLine : t.line
+            });
+            ctx.font = M.font(b.size, 800);
+            ctx.fillStyle = b.mine ? t.onColorInk : t.ink;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            b.lines.forEach((text, k) => ctx.fillText(text, x + 28, -b.h + 18 + b.lineH * (k + 0.5) + 2));
+          });
+        });
+      });
+    }
+  };
+
+  // ==========================================
+  // SCENE: POINT AND CLICK
+  // ==========================================
+
+  // The pointer from motion/src/klndr/brand.tsx, on its 32x45 grid, with the tip
+  // at the origin.
+  const CURSOR = [[2, 2], [2, 36], [11, 28], [17.5, 42], [24, 39], [17.5, 25.5], [29, 25.5]];
+  const CLICK_SPARKS = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+
+  function cursorPath(ctx, scale) {
+    ctx.beginPath();
+    CURSOR.forEach(([x, y], i) => {
+      if (i === 0) ctx.moveTo((x - 2) * scale, (y - 2) * scale);
+      else ctx.lineTo((x - 2) * scale, (y - 2) * scale);
+    });
+    ctx.closePath();
+  }
+
+  // A callout's box and the tail pointing down out of it as one outline, with
+  // the tip of the tail at the origin.
+  function calloutPath(ctx, w, h, tail) {
+    const x = -w / 2;
+    const y = -tail - h;
+    const r = Math.min(24, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.lineTo(tail, y + h);
+    ctx.lineTo(0, 0);
+    ctx.lineTo(-tail, y + h);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  const pointClick = {
+    id: 'point-click',
+    name: 'Point and click',
+    description: 'A cursor glides over and clicks your button, then a callout with your headline pops out.',
+    durationInFrames: 150,
+    stillFrame: 92,
+    schema: [
+      { key: 'button', type: 'text', label: 'Button', max: 16, default: 'Try it' },
+      { key: 'headline', type: 'text', label: 'Callout', max: 40, default: 'One click away' },
+      { key: 'accent', type: 'color', label: 'Button colour', default: '#9ae659' },
+      { key: 'background', type: 'color', label: 'Background', optional: true, default: '' }
+    ],
+    describe: (p) => [p.headline, p.button].filter(Boolean).join(': '),
+    render(ctx, frame, p, env) {
+      const t = env.theme;
+      paintGround(ctx, env, p.background || t.ground);
+
+      onStage(ctx, env, () => {
+        const W = 800;
+        const H = 380;
+        const CX = 600;
+        const CY = 330;
+        const BUTTON_Y = 84;
+        const CLICK = 60;
+        const accent = M.taskFill(p.accent, t);
+
+        const exit = M.progress(frame, 124, 146, Easing.in(Easing.cubic));
+        const paneIn = M.spring({ frame, fps: FPS, delay: 2, config: { damping: 13, stiffness: 130 } });
+        const buttonIn = M.spring({ frame, fps: FPS, delay: 10, config: { damping: 9, stiffness: 150 } });
+        const glide = M.progress(frame, 16, 52, Easing.inOut(Easing.cubic));
+        const leave = M.progress(frame, 104, 122, Easing.in(Easing.cubic));
+        const hover = M.progress(frame, 46, 54) * (1 - M.progress(frame, 100, 108));
+        const press = M.progress(frame, CLICK, CLICK + 4, Easing.out(Easing.quad)) *
+          (1 - M.progress(frame, CLICK + 5, CLICK + 11, Easing.out(Easing.quad)));
+        const pop = M.spring({ frame, fps: FPS, delay: CLICK + 6, config: { damping: 10, stiffness: 160 } });
+        const unpop = M.progress(frame, 112, 126, Easing.back(1.6));
+        const spark = M.spring({ frame, fps: FPS, delay: CLICK, config: { damping: 8, stiffness: 150 } }) *
+          (1 - M.progress(frame, 100, 112));
+
+        ctx.font = M.font(44);
+        const label = p.button || ' ';
+        const bw = Math.max(200, ctx.measureText(label).width + 90);
+        const bh = 92;
+
+        place(ctx, {
+          x: CX,
+          y: CY + exit * 60,
+          scaleX: 0.85 + 0.15 * paneIn,
+          alpha: M.clamp(paneIn * 1.5, 0, 1) * (1 - exit)
+        }, () => {
+          const left = -W / 2;
+          const top = -H / 2;
+          M.slabBox(ctx, {
+            x: left, y: top, w: W, h: H,
+            r: 26, fill: t.surface, line: t.line, lineWidth: 5, slab: 12
+          });
+
+          // A little klndr window: the strip with its plate, the calendar's
+          // faint grid below.
+          ctx.save();
+          M.roundRectPath(ctx, left, top, W, H, 26);
+          ctx.clip();
+          ctx.fillStyle = t.tray;
+          ctx.fillRect(left, top, W, 64);
+          ctx.strokeStyle = M.alpha(t.ink, 0.08);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let gx = left + 100; gx < -left; gx += 100) {
+            ctx.moveTo(gx, top + 64);
+            ctx.lineTo(gx, -top);
+          }
+          ctx.stroke();
+          ctx.restore();
+          ctx.strokeStyle = t.line;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(left, top + 64);
+          ctx.lineTo(-left, top + 64);
+          ctx.stroke();
+
+          M.slabBox(ctx, {
+            x: left + 20, y: top + 13, w: 38, h: 38,
+            r: 9, fill: t.mint, line: t.line, lineWidth: 4, slab: 0
+          });
+          ctx.font = M.font(26);
+          ctx.fillStyle = t.ink;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('k', left + 39, top + 33);
+          [[76, 120], [212, 80]].forEach(([dx, w]) => {
+            M.slabBox(ctx, {
+              x: left + dx, y: top + 20, w, h: 24,
+              r: 12, fill: t.surface, line: M.alpha(t.ink, 0.3), lineWidth: 3, slab: 0
+            });
+          });
+
+          const ring = M.progress(frame, CLICK, CLICK + 18, Easing.out(Easing.quad));
+          if (ring > EPS && ring < 1 - EPS) {
+            ctx.save();
+            ctx.globalAlpha = ctx.globalAlpha * (1 - ring);
+            ctx.strokeStyle = t.line;
+            ctx.lineWidth = 5;
+            M.roundRectPath(
+              ctx,
+              -bw / 2 - ring * 40, BUTTON_Y - bh / 2 - ring * 40,
+              bw + ring * 80, bh + ring * 80,
+              20 + ring * 40
+            );
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          place(ctx, {
+            x: 0,
+            y: BUTTON_Y - hover * 4 * (1 - press),
+            scaleX: buttonIn,
+            alpha: M.clamp(buttonIn * 2, 0, 1)
+          }, () => {
+            // Lifts a little under the pointer, and goes down onto its slab when clicked.
+            const shift = 8 * press;
+            M.slabBox(ctx, {
+              x: -bw / 2 + shift, y: -bh / 2 + shift, w: bw, h: bh,
+              r: 20, fill: accent, line: t.line, lineWidth: 5, slab: 8 - shift + hover * 3 * (1 - press)
+            });
+            ctx.font = M.font(44);
+            ctx.fillStyle = inkOn(accent, t);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, shift, shift + 2);
+          });
+
+          CLICK_SPARKS.forEach(([sx, sy], i) => {
+            place(ctx, {
+              x: sx * (bw / 2 + 46),
+              y: BUTTON_Y + sy * (bh / 2 + 30),
+              rotate: frame * 0.04 * sx,
+              scaleX: spark * (0.8 + 0.2 * M.loopWave(frame, 150, 2, i * 0.25)),
+              alpha: M.clamp(spark * 2, 0, 1)
+            }, () => {
+              sparklePath(ctx, 18);
+              ctx.fillStyle = accent;
+              ctx.fill();
+              ctx.lineWidth = 4;
+              ctx.strokeStyle = t.line;
+              ctx.stroke();
+            });
+          });
+
+          if (p.headline) {
+            place(ctx, {
+              x: 0,
+              y: BUTTON_Y - bh / 2 - 10,
+              scaleX: M.clamp(pop, 0, 1.3) * (1 - unpop),
+              alpha: M.clamp(pop * 2, 0, 1) * (1 - unpop)
+            }, () => {
+              const tail = 22;
+              const text = M.fitText(ctx, p.headline, { maxWidth: 600, maxLines: 2, max: 44, min: 28 });
+              ctx.font = M.font(text.size);
+              const w = Math.max(160, ...text.lines.map((line) => ctx.measureText(line).width)) + 70;
+              const h = text.lines.length * text.size * 1.08 + 40;
+              ctx.save();
+              ctx.translate(8, 8);
+              calloutPath(ctx, w, h, tail);
+              ctx.fillStyle = t.line;
+              ctx.fill();
+              ctx.restore();
+              calloutPath(ctx, w, h, tail);
+              ctx.fillStyle = t.ink;
+              ctx.fill();
+              ctx.lineWidth = 4;
+              ctx.strokeStyle = t.line;
+              ctx.stroke();
+              ctx.font = M.font(text.size);
+              centeredLines(ctx, text.lines, { x: 0, y: -tail - h / 2, size: text.size, color: t.surface });
+            });
+          }
+        });
+
+        // In along a curve to rest on the button, and away again.
+        const tipX = CX + bw * 0.18;
+        const tipY = CY + BUTTON_Y + 18;
+        const u = 1 - glide;
+        const inX = u * u * 1180 + 2 * u * glide * 1080 + glide * glide * tipX;
+        const inY = u * u * 700 + 2 * u * glide * 300 + glide * glide * tipY;
+        const idle = M.loopWave(frame, 150, 3) * 3 * hover;
+        place(ctx, {
+          x: M.lerp(inX, 1190, leave) + idle,
+          y: M.lerp(inY, 680, leave) + idle * 0.5,
+          rotate: deg(M.lerp(-14, 0, glide)),
+          scaleX: 1 - 0.16 * press,
+          alpha: M.progress(frame, 16, 21) * (1 - leave)
+        }, () => {
+          cursorPath(ctx, 2.6);
+          ctx.fillStyle = t.ink;
+          ctx.fill();
+          ctx.lineWidth = 6;
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = t.surface;
+          ctx.stroke();
+        });
+      });
+    }
+  };
+
+  // ==========================================
   // REGISTRY
   // ==========================================
 
-  const SCENES = [popReveal, blockShuffle, stickerBurst, checklist, stamp, ticker];
+  const SCENES = [popReveal, blockShuffle, stickerBurst, checklist, stamp, ticker, flipBoard, keycaps, chat, pointClick];
   const byId = new Map(SCENES.map((scene) => [scene.id, scene]));
 
   function get(id) {

@@ -497,8 +497,18 @@
       S.sections.schedule(ed)
     );
     editor.append(form, S.preview.panel(ed));
-    view.append(ed.dom.bar, ed.dom.notices, ed.dom.problems, ed.dom.paneSwitch, editor);
+    view.append(ed.dom.notices, ed.dom.problems, ed.dom.paneSwitch, editor);
     S.main().replaceChildren(view);
+
+    // The bar joins the page header rather than the view: a child of body, it
+    // spans the page and stays stuck under the topbar however far down you are.
+    const bar = ed.dom.bar;
+    document.querySelector('.an-topbar').after(bar);
+    document.body.classList.add('st-has-bar');
+    ed.cleanups.push(() => {
+      bar.remove();
+      document.body.classList.remove('st-has-bar');
+    });
 
     renderBar(ed);
     renderConflict(ed);

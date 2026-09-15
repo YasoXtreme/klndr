@@ -16,6 +16,9 @@ class KlndrAnnouncements {
   // to rule out tapping straight through, short enough for a one-line post.
   static STORY_DWELL_MS = 1200;
   static CARD_MS = 10000;
+  // The beat between a preview ending and heading back to the Studio - long
+  // enough to see it ended on purpose.
+  static PREVIEW_EXIT_MS = 700;
   static PULSE_MS = 5 * 60 * 1000;
   static PULSE_GAP_MS = 30 * 1000;
 
@@ -26,6 +29,10 @@ class KlndrAnnouncements {
     this.unread = 0;
     this.filter = 'all';
     this.preview = false;
+    this.previewId = null;
+    this.previewFrom = null;
+    this.previewNote = null;
+    this.previewEnding = false;
 
     this.reader = null;
     this.readerList = [];
@@ -148,6 +155,7 @@ class KlndrAnnouncements {
       this.clearThumbs();
       this.restoreFocus();
     }
+    this.checkPreviewOver();
   }
 
   isOpen(modal) {
@@ -200,9 +208,11 @@ class KlndrAnnouncements {
 
     const params = new URLSearchParams(window.location.search);
     const previewId = Number(params.get('announcementPreview'));
+    const previewFrom = params.get('previewFrom');
     const openId = Number(params.get('announcement'));
     if (params.has('announcementPreview') || params.has('announcement')) {
       params.delete('announcementPreview');
+      params.delete('previewFrom');
       params.delete('announcement');
       const query = params.toString();
       window.history.replaceState({}, '', query ? `/?${query}` : '/');
@@ -211,7 +221,7 @@ class KlndrAnnouncements {
     await this.refresh();
 
     if (previewId && this.app.user && this.app.user.role === 'admin') {
-      await this.playPreview(previewId);
+      await this.playPreview(previewId, previewFrom);
     } else if (openId) {
       await this.openById(openId);
     } else {
@@ -353,7 +363,11 @@ class KlndrAnnouncements {
       case 'open_settings':
         return app.openSettingsModal();
       case 'open_analytics':
-        if (app.user && app.user.role === 'admin') window.location.href = '/analytics';
+        if (app.user && app.user.role === 'admin') {
+          // Leaving for another page is not a preview ending: nothing to close.
+          if (this.preview) this.previewEnding = true;
+          window.location.href = '/analytics';
+        }
         return undefined;
       default:
         return undefined;
@@ -765,6 +779,7 @@ class KlndrAnnouncements {
     if (!this.banner) return;
     this.banner.element.remove();
     this.banner = null;
+    this.checkPreviewOver();
   }
 
   showCard(a, more = 0) {
@@ -847,13 +862,14 @@ class KlndrAnnouncements {
     this.card.thumbs.forEach((thumb) => thumb.destroy());
     this.card.element.remove();
     this.card = null;
+    this.checkPreviewOver();
   }
 
   // ==========================================
   // PREVIEW (admins, from the Studio)
   // ==========================================
 
-  async playPreview(id) {
+  async playPreview(id, from) {
     let a;
     try {
       a = await API.previewAnnouncement(id);
@@ -864,14 +880,21 @@ class KlndrAnnouncements {
     if (!a) return;
 
     this.preview = true;
+    this.previewId = a.id;
+    this.previewFrom = from;
     this.items = [a, ...this.items.filter((item) => item.id !== a.id)];
     this.byId.set(a.id, a);
 
     const ribbon = this.el('div', 'ann-preview-ribbon');
     ribbon.setAttribute('role', 'status');
-    ribbon.append(this.icon('visibility'), this.el('span', null, 'Preview - nothing you do here is recorded'));
+    this.previewNote = this.el('span', null, 'Preview - nothing you do here is recorded');
+    ribbon.append(this.icon('visibility'), this.previewNote);
     const end = this.el('a', 'ann-preview-end', 'End preview');
-    end.href = '/';
+    end.href = `/announcements#/edit/${a.id}`;
+    end.addEventListener('click', (event) => {
+      event.preventDefault();
+      this.endPreview();
+    });
     ribbon.appendChild(end);
     document.body.appendChild(ribbon);
 
@@ -879,5 +902,45 @@ class KlndrAnnouncements {
     else if (a.delivery === 'banner') this.showBanner(a);
     else if (a.delivery === 'card') this.showCard(a);
     else this.openReader(a.id, [a]);
+  }
+
+  /**
+   * A preview is over once nothing of it is left on screen: the story or the
+   * reader closed, the banner dismissed, the card gone - and nothing it led to,
+   * like the screen its button opened, still open. Checked a tick later, so a
+   * hand-off such as a card's Read opening the reader is not taken for an end.
+   */
+  checkPreviewOver() {
+    if (!this.preview || this.previewEnding) return;
+    setTimeout(() => {
+      if (this.previewEnding || this.story || this.banner || this.card) return;
+      if (document.querySelector('.modal-container.active')) return;
+      this.endPreview({ finished: true });
+    }, 0);
+  }
+
+  /**
+   * Back to the Studio, as it was left. The Studio opened this tab for the
+   * preview, so a script may close it and the browser shows the Studio's tab
+   * again; where it had to use its own tab, the Studio is one step back.
+   */
+  endPreview({ finished = false } = {}) {
+    if (this.previewEnding) return;
+    this.previewEnding = true;
+    if (finished && this.previewNote) this.previewNote.textContent = 'Preview over - back to the studio';
+
+    const leave = () => {
+      if (this.previewFrom === 'studio' && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      if (this.previewFrom === 'tab') window.close();
+      // A tab the browser would not let a script close, or a preview opened
+      // some other way, goes to the post's editor instead.
+      setTimeout(() => {
+        if (!window.closed) window.location.replace(`/announcements#/edit/${this.previewId}`);
+      }, this.previewFrom === 'tab' ? 150 : 0);
+    };
+    setTimeout(leave, finished ? KlndrAnnouncements.PREVIEW_EXIT_MS : 0);
   }
 }

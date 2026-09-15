@@ -82,6 +82,29 @@ for (const theme of ["light", "dark"]) {
       const marks = ctx.log.filter(([call]) => call === "fillText" || call === "fill").length;
       assert.ok(marks >= 6, `${scene.id} drew only ${marks} marks at frame ${scene.stillFrame}`);
     });
+
+    // The least a scene can be handed - empty words, one-item lists - is where
+    // a layout divides by nothing or runs out of things to lay out.
+    test(`${scene.id} (${theme}): copes with the least it can be given`, () => {
+      const least = Scenes.sanitizeProps(
+        scene.id,
+        Object.fromEntries(scene.schema.map((f) => [
+          f.key,
+          f.type === "list" ? f.default.slice(0, 1) : f.type === "text" ? "" : f.default,
+        ]))
+      );
+      for (const [width, height] of SIZES) {
+        const start = recordingContext();
+        const wrap = recordingContext();
+        Scenes.render(start, scene.id, 0, least, { width, height, theme: palette });
+        Scenes.render(wrap, scene.id, scene.durationInFrames, least, { width, height, theme: palette });
+        assert.deepEqual(wrap.log, start.log);
+
+        const still = recordingContext();
+        Scenes.render(still, scene.id, scene.stillFrame, least, { width, height, theme: palette });
+        assert.ok(!still.log.flat().some((value) => Number.isNaN(value)), `${scene.id} drew NaN at ${width}x${height}`);
+      }
+    });
   }
 }
 

@@ -10,8 +10,12 @@
    page used to restate every value and land one step off on most of them, but this page does not load app.css, so it takes common.css's
    value and writes the shorthand out, exactly as login.css does. */
 
+/* common.css pins body to 100% of the viewport. A sticky topbar is only sticky
+   inside its parent, so on a body one screen tall it scrolled away after one
+   screen - the page grows instead. */
 body {
   margin: 0;
+  height: auto;
   min-height: 100vh;
   font-family: var(--font-family);
   background: var(--bg-gradient);

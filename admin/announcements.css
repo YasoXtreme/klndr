@@ -484,6 +484,8 @@
    EDITOR
    ---------------------------------------------------- */
 
+/* The editor's bar is a second row of the page header: placed straight after
+   .an-topbar by editor.js, full width, sticking under it. */
 .st-bar {
   position: sticky;
   top: var(--st-topbar);
@@ -492,10 +494,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 14px;
-  margin: -18px -18px 18px;
   padding: 10px 18px;
-  border-bottom: var(--border-control);
-  background: var(--surface-2);
+  border-bottom: var(--border-container);
+  background: var(--surface-1);
+}
+
+/* With the bar under it, the two rows read as one header with one hard edge. */
+.st-has-bar .an-topbar {
+  border-bottom: var(--border-hair);
 }
 
 .st-bar-title {
@@ -734,10 +740,13 @@
   line-height: 1.4;
 }
 
+/* Sized to its buttons. Inside a field or a card body it would otherwise be
+   stretched across the whole row, as a grid or column item is. */
 .st-segment {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 3px;
+  width: fit-content;
   max-width: 100%;
   padding: 3px;
   border: var(--border-control);
@@ -764,6 +773,19 @@
 
 .st-segment-btn .material-symbols-outlined {
   font-size: 17px;
+}
+
+/* An icon alone needs no text-sized padding - and the preview's toolbar only
+   fits on one line without it. */
+.st-segment-btn.is-icon {
+  justify-content: center;
+  padding: 0 6px;
+}
+
+.st-field > .ann-btn,
+.st-fields > .ann-btn {
+  align-self: start;
+  justify-self: start;
 }
 
 .st-choices {
@@ -1497,7 +1519,6 @@
   }
 
   .st-bar {
-    margin: -12px -12px 12px;
     padding: 8px 12px;
   }
 

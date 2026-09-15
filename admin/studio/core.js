@@ -125,6 +125,7 @@ const KlndrStudio = (() => {
       node.setAttribute('role', 'radio');
       if (option.icon) node.appendChild(icon(option.icon));
       if (option.label) node.appendChild(document.createTextNode(option.label));
+      else node.classList.add('is-icon');
       if (option.ariaLabel) {
         node.setAttribute('aria-label', option.ariaLabel);
         node.title = option.ariaLabel;
@@ -445,10 +446,14 @@ const KlndrStudio = (() => {
   /**
    * Open the app with this post playing as it would arrive. Opened before any
    * await, so a popup blocker still sees it as the direct result of a click.
+   *
+   * previewFrom tells the app how to come back when the preview ends: by closing
+   * the tab opened here, or by stepping back to this page when it had to use
+   * this tab.
    */
   function previewInApp(id, beforeNavigate) {
-    const url = `/?announcementPreview=${encodeURIComponent(id)}`;
     const tab = window.open('', '_blank');
+    const url = `/?announcementPreview=${encodeURIComponent(id)}&previewFrom=${tab ? 'tab' : 'studio'}`;
     Promise.resolve(beforeNavigate ? beforeNavigate() : null).finally(() => {
       if (tab) {
         tab.opener = null;
