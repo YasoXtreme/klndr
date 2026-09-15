@@ -172,8 +172,12 @@
   background: var(--line-soft);
 }
 
+/* margin: auto is what centres a modal <dialog>. The browser gives it that,
+   but common.css's reset (* { margin: 0 }) takes it away again, which left the
+   dialog stuck in the top-left corner. */
 .st-dialog {
   width: min(460px, calc(100vw - 32px));
+  margin: auto;
   padding: 0;
   border: var(--border-container);
   border-radius: var(--radius-lg);
