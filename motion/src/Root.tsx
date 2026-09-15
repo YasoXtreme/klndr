@@ -1,3 +1,5 @@
+import { Test } from './Test';
+import { NewComposition } from './NewComposition';
 import React from 'react';
 import { Composition, Folder } from 'remotion';
 import './klndr/fonts';
@@ -30,6 +32,14 @@ export const RemotionRoot: React.FC = () => (
           height={HEIGHT}
         />
       ))}
+      <Composition
+        id="test"
+        component={Test}
+        durationInFrames={150}
+        fps={30}
+        width={1200}
+        height={600}
+      />
     </Folder>
 
     {/* Free-form React clips: start from one of these for anything a scene can't do. */}

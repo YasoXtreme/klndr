@@ -1,8 +1,9 @@
 // Klndr Announcements (in the app)
 //
-// Everything a person sees of announcements inside klndr: the What's new button
-// and its badge, the inbox, the reader, and the way a new post arrives - as a
-// story, a banner, a corner card, or just the badge, whichever it asked for.
+// Everything a person sees of announcements inside klndr: the unread dot on the
+// avatar and the What's new entry in the account menu, the inbox, the reader,
+// and the way a new post arrives - as a story, a banner, a corner card, or just
+// the dot, whichever it asked for.
 //
 // It owns its own DOM and needs little from KlndrApp: closing modals, a toast,
 // the person's settings, and the screens a post's button can open.
@@ -41,8 +42,14 @@ class KlndrAnnouncements {
 
     const $ = (id) => document.getElementById(id);
     this.dom = {
-      button: $('btnWhatsNew'),
-      badge: $('whatsNewBadge'),
+      // The way in is an entry in the account menu; all that shows up top is
+      // a dot on the avatar while something is unread.
+      trigger: $('userProfileTrigger'),
+      dot: $('userUnreadDot'),
+      sr: $('userUnreadSr'),
+      entry: $('userMenuWhatsNew'),
+      count: $('userMenuWhatsNewCount'),
+      menuStudio: $('userMenuStudio'),
       inbox: $('annInboxModal'),
       filters: $('annInboxFilters'),
       list: $('annInboxList'),
@@ -67,7 +74,7 @@ class KlndrAnnouncements {
       live: $('annLive')
     };
 
-    if (this.dom.button) this.bind();
+    if (this.dom.inbox) this.bind();
   }
 
   // ==========================================
@@ -76,10 +83,7 @@ class KlndrAnnouncements {
 
   bind() {
     const d = this.dom;
-    d.button.addEventListener('click', () => {
-      if (this.isOpen(d.inbox)) this.app.closeAllModals();
-      else this.openInbox();
-    });
+    if (d.entry) d.entry.addEventListener('click', () => this.openInbox());
     d.markAll.addEventListener('click', () => this.markAllRead());
     d.readerPrev.addEventListener('click', () => this.readerStep(-1));
     d.readerNext.addEventListener('click', () => this.readerStep(1));
@@ -189,10 +193,10 @@ class KlndrAnnouncements {
   // ==========================================
 
   async start() {
-    if (!this.dom.button) return;
-    if (this.dom.studio) {
-      this.dom.studio.hidden = !(this.app.user && this.app.user.role === 'admin');
-    }
+    if (!this.dom.inbox) return;
+    const admin = Boolean(this.app.user && this.app.user.role === 'admin');
+    if (this.dom.studio) this.dom.studio.hidden = !admin;
+    if (this.dom.menuStudio) this.dom.menuStudio.hidden = !admin;
 
     const params = new URLSearchParams(window.location.search);
     const previewId = Number(params.get('announcementPreview'));
@@ -227,11 +231,10 @@ class KlndrAnnouncements {
   }
 
   setItems(items) {
-    const before = this.unread;
     this.items = items;
     this.byId = new Map(items.map((a) => [a.id, a]));
     this.unread = items.filter((a) => a.unread).length;
-    this.renderBadge(this.unread > before);
+    this.renderUnread();
 
     if (this.banner && !this.byId.has(this.banner.item.id)) this.hideBanner();
     if (this.isOpen(this.dom.inbox)) this.renderInbox();
@@ -239,22 +242,24 @@ class KlndrAnnouncements {
 
   recount() {
     this.unread = this.items.filter((a) => a.unread).length;
-    this.renderBadge(false);
+    this.renderUnread();
     if (this.isOpen(this.dom.inbox)) this.renderInbox();
   }
 
-  renderBadge(bump) {
-    const { button, badge } = this.dom;
+  // Deliberately quiet: a dot on the avatar and a count inside the account
+  // menu. A new post has already announced itself by arriving; this is only
+  // the reminder that it is there.
+  renderUnread() {
+    const { dot, sr, count, entry } = this.dom;
     const n = this.unread;
-    badge.hidden = n === 0;
-    badge.textContent = n > 9 ? '9+' : String(n);
-    button.classList.toggle('has-unread', n > 0);
-    button.setAttribute('aria-label', n ? `What's new, ${n} unread` : "What's new");
-    if (bump) {
-      button.classList.remove('is-bumped');
-      void button.offsetWidth;
-      button.classList.add('is-bumped');
+    const label = `${n} unread ${n === 1 ? 'update' : 'updates'}`;
+    if (dot) dot.hidden = n === 0;
+    if (sr) sr.textContent = n ? `, ${label}` : '';
+    if (count) {
+      count.hidden = n === 0;
+      count.textContent = n > 9 ? '9+' : String(n);
     }
+    if (entry) entry.setAttribute('aria-label', n ? `What's new, ${label}` : "What's new");
   }
 
   // ==========================================
@@ -437,7 +442,11 @@ class KlndrAnnouncements {
   // ==========================================
 
   openInbox() {
+    // Opened from the account menu, focus sits on a row that is about to be
+    // hidden and could not take it back - so the pill the menu hangs from does.
+    const fromMenu = Boolean(document.activeElement && document.activeElement.closest('#userMenu'));
     this.app.closeAllModals();
+    if (fromMenu && this.dom.trigger) this.returnFocus = this.dom.trigger;
     this.rememberFocus();
     this.dom.inbox.classList.add('active');
     this.renderInbox();
@@ -504,7 +513,7 @@ class KlndrAnnouncements {
     }, { thumbnail: true }));
     const title = this.filter === 'unread' || this.items.length ? "You're all caught up" : 'Nothing here yet';
     const note = this.items.length
-      ? 'New posts show up here, and on the badge up top.'
+      ? 'New posts show up here, with a dot on your avatar.'
       : 'When there is news about klndr, it lands here.';
     empty.append(art, this.el('p', 'ann-inbox-empty-title', title), this.el('p', 'ann-inbox-empty-note', note));
     return empty;
@@ -685,7 +694,7 @@ class KlndrAnnouncements {
     more.append(
       art,
       this.el('h2', 'ann-story-more-title', `${count} more ${count === 1 ? 'update is' : 'updates are'} waiting`),
-      this.el('p', 'ann-story-more-note', "They're in your inbox, whenever you want them."),
+      this.el('p', 'ann-story-more-note', "They're under What's new in your account menu, whenever you want them."),
       open
     );
     return more;

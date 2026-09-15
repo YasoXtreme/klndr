@@ -189,7 +189,7 @@ protected/                   Served only to an authenticated session
       markdown.js            Escape-first Markdown for post bodies, and the legacy three-rule markup
       media-view.js          A post's header: image, SVG, video, Lottie or motion scene
       reader.js              One post, drawn the same for the reader, stories and the studio preview
-      inbox.js               What's new button, inbox, reader, stories, banner and corner card
+      inbox.js               Unread dot and menu entry, inbox, reader, stories, banner and corner card
     motion/
       motion-core.js         Springs, easing, seeded randomness, theme tokens, canvas text
       scenes.js              The built-in motion scenes, each a pure function of a frame

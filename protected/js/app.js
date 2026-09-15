@@ -1102,12 +1102,7 @@ class KlndrApp {
 
     this.updateZoomUI();
 
-    const profilePill = document.getElementById('userProfileTrigger');
-    if (profilePill) {
-      profilePill.addEventListener('click', () => {
-        this.openAccountModal();
-      });
-    }
+    this.initUserMenu();
 
     const calSlidersBtn = document.getElementById('btnCalendarSliders');
     if (calSlidersBtn) {
@@ -1164,6 +1159,104 @@ class KlndrApp {
     };
     const load = loaders[btn.id];
     if (load) void load();
+  }
+
+  // ==========================================
+  // ACCOUNT MENU
+  // ==========================================
+  /**
+   * The profile pill opens a small menu instead of going straight to the
+   * account modal. What's new lives in it too, so the topbar needs no button
+   * of its own for announcements - just a dot on the avatar while something
+   * is unread.
+   *
+   * It is a .context-menu, so closeAllModals() and Escape put it away like the
+   * task menu, and at phone width the stylesheet makes it the same bottom
+   * sheet. The What's new and Studio entries belong to KlndrAnnouncements,
+   * which wires them itself.
+   */
+  initUserMenu() {
+    const trigger = document.getElementById('userProfileTrigger');
+    const menu = document.getElementById('userMenu');
+    if (!trigger || !menu) return;
+
+    const isOpen = () => menu.classList.contains('active');
+    const items = () => Array.from(menu.querySelectorAll('[role="menuitem"]'))
+      .filter(item => !item.hidden);
+
+    // Every way the menu can close - closeAllModals() included, which knows
+    // nothing about this button - ends with the class gone, so that is what
+    // aria-expanded follows.
+    new MutationObserver(() => {
+      trigger.setAttribute('aria-expanded', String(isOpen()));
+    }).observe(menu, { attributes: true, attributeFilter: ['class'] });
+
+    const onOutsideClick = (event) => {
+      if (trigger.contains(event.target)) return;
+      if (menu.contains(event.target) && !event.target.closest('[role="menuitem"]')) return;
+      close();
+    };
+
+    const close = () => {
+      menu.classList.remove('active');
+      window.removeEventListener('click', onOutsideClick);
+    };
+
+    const open = ({ focusFirst }) => {
+      this.closeAllModals();
+      // Same rule as the task menu: at phone width the stylesheet pins it to
+      // the bottom, and an inline position would beat that.
+      const asSheet = document.body.dataset.layout === 'phone';
+      const rect = trigger.getBoundingClientRect();
+      menu.style.left = '';
+      menu.style.top = asSheet ? '' : `${rect.bottom + 8}px`;
+      menu.style.right = asSheet ? '' : `${Math.max(8, window.innerWidth - rect.right)}px`;
+      menu.classList.add('active');
+      if (focusFirst) {
+        const first = items()[0];
+        if (first) first.focus({ preventScroll: true });
+      }
+      // A listener left over from a close that skipped close() - Escape, or
+      // another modal opening - would shut the menu on this very click.
+      window.removeEventListener('click', onOutsideClick);
+      setTimeout(() => window.addEventListener('click', onOutsideClick), 10);
+    };
+
+    trigger.addEventListener('click', (event) => {
+      if (isOpen()) close();
+      // detail is 0 for Enter or Space, so only the keyboard moves focus in.
+      else open({ focusFirst: event.detail === 0 });
+    });
+
+    trigger.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowDown' || isOpen()) return;
+      event.preventDefault();
+      open({ focusFirst: true });
+    });
+
+    menu.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' || event.key === 'Tab') {
+        close();
+        if (event.key === 'Escape') trigger.focus({ preventScroll: true });
+        return;
+      }
+      const list = items();
+      const index = list.indexOf(document.activeElement);
+      const next = {
+        ArrowDown: list[index + 1] || list[0],
+        ArrowUp: index <= 0 ? list[list.length - 1] : list[index - 1],
+        Home: list[0],
+        End: list[list.length - 1]
+      }[event.key];
+      if (!next) return;
+      event.preventDefault();
+      next.focus({ preventScroll: true });
+    });
+
+    const account = document.getElementById('userMenuAccount');
+    if (account) account.addEventListener('click', () => this.openAccountModal());
+    const options = document.getElementById('userMenuOptions');
+    if (options) options.addEventListener('click', () => this.openSettingsModal());
   }
 
   initAccountModal() {

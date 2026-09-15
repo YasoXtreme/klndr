@@ -23,7 +23,7 @@ const KlndrAnnouncementRules = (() => {
     { id: 'story', label: 'Story', icon: 'auto_stories', hint: 'Opens as a pop-up the next time they load klndr.' },
     { id: 'banner', label: 'Banner', icon: 'view_day', hint: 'A notice under the top bar until it is dismissed.' },
     { id: 'card', label: 'Corner card', icon: 'picture_in_picture_alt', hint: 'A small card in the corner that tucks itself away.' },
-    { id: 'inbox', label: 'Inbox only', icon: 'inbox', hint: 'No interruption - just the unread badge.' }
+    { id: 'inbox', label: 'Inbox only', icon: 'inbox', hint: 'No interruption - just a quiet dot on their avatar.' }
   ];
 
   // Stored by id, drawn as emoji. The id is what survives a change of heart

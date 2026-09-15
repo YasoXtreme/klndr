@@ -1,9 +1,10 @@
 /* ====================================================
    ANNOUNCEMENTS
    ====================================================
-   Everything a person sees of announcements - the What's new button, the
-   inbox, the reader, stories, the banner and the corner card - and the header
-   media all of them share.
+   Everything a person sees of announcements - the inbox, the reader, stories,
+   the banner and the corner card - and the header media all of them share.
+   The way in - the account menu and the unread dot on the avatar - lives with
+   the topbar in app.css.
 
    Written against theme.css and common.css ONLY. The Studio builds its live
    preview out of these exact rules and does not load app.css, so nothing here
@@ -48,7 +49,7 @@
   font-variation-settings: 'FILL' 1;
 }
 
-:is(.ann-btn, .ann-link-btn, .ann-nav-btn, .ann-icon-btn, .whats-new-badge)[hidden] {
+:is(.ann-btn, .ann-link-btn, .ann-nav-btn, .ann-icon-btn)[hidden] {
   display: none;
 }
 
@@ -155,75 +156,6 @@
 
 .ann-link-btn .material-symbols-outlined {
   font-size: 17px;
-}
-
-/* ====================================================
-   THE WHAT'S NEW BUTTON
-   ==================================================== */
-
-.btn-whats-new {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 12px 0 10px;
-  border: var(--border-control);
-  border-radius: var(--radius-pill);
-  background: var(--surface-1);
-  color: var(--ink-strong);
-  font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 700;
-}
-
-.btn-whats-new-icon {
-  font-size: 20px;
-}
-
-.btn-whats-new.has-unread .btn-whats-new-icon {
-  font-variation-settings: 'FILL' 1;
-}
-
-.btn-whats-new-label {
-  white-space: nowrap;
-}
-
-.whats-new-badge {
-  display: inline-grid;
-  place-items: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: var(--danger-line);
-  color: var(--ink-inverse);
-  font-size: 11px;
-  font-weight: 900;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.btn-whats-new.is-bumped .btn-whats-new-icon {
-  animation: ann-wiggle 700ms ease-out 1;
-}
-
-@keyframes ann-wiggle {
-  0%, 100% { transform: rotate(0deg); }
-  20% { transform: rotate(-18deg); }
-  40% { transform: rotate(14deg); }
-  60% { transform: rotate(-8deg); }
-  80% { transform: rotate(4deg); }
-}
-
-@media (max-width: 1023px) {
-  .btn-whats-new {
-    padding: 0 8px;
-  }
-
-  .btn-whats-new-label {
-    display: none;
-  }
 }
 
 /* ====================================================
@@ -1005,8 +937,9 @@ h5.ann-md-heading {
 }
 
 @media (min-width: 768px) {
-  /* On a desktop the inbox is a panel hanging off its button, not a dialog in
-     the middle of the screen - and nothing behind it needs dimming. */
+  /* On a desktop the inbox is a panel hanging under the account menu it was
+     opened from, not a dialog in the middle of the screen - and nothing behind
+     it needs dimming. */
   .ann-inbox-modal {
     align-items: flex-start;
     justify-content: flex-end;
@@ -1368,7 +1301,6 @@ h5.ann-md-heading {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn-whats-new.is-bumped .btn-whats-new-icon,
   .ann-reaction.is-mine .ann-reaction-emoji,
   .ann-story-segment.is-current {
     animation: none;

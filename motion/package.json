@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@remotion/cli": "4.0.524",
+    "@remotion/effects": "4.0.524",
     "@remotion/fonts": "4.0.524",
     "@remotion/zod-types": "4.0.524",
     "react": "^19.1.0",

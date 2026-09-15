@@ -350,35 +350,31 @@
       </div>
 
       <div class="topbar-right">
-        <!-- What's new: the announcements inbox and its unread badge.
-             KlndrAnnouncements keeps the count and the label up to date. -->
+        <!-- Opens the account menu (#userMenu, near the end of the page),
+             which is also where What's new lives. KlndrAnnouncements puts a
+             dot on the avatar while something is unread, and nothing at all
+             otherwise. -->
         <button
           type="button"
-          class="btn-whats-new"
-          id="btnWhatsNew"
-          aria-haspopup="dialog"
-          aria-label="What's new"
-        >
-          <span class="material-symbols-outlined btn-whats-new-icon" aria-hidden="true">campaign</span>
-          <span class="btn-whats-new-label">What's new</span>
-          <span class="whats-new-badge" id="whatsNewBadge" hidden>0</span>
-        </button>
-
-        <!-- User Profile Pill (Opens Tabbed Account Modal) -->
-        <div
           class="user-profile-pill"
           id="userProfileTrigger"
-          title="Account & Settings"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-controls="userMenu"
         >
-          <div class="user-avatar-circle">
+          <span class="user-avatar-circle">
             <span
               class="material-symbols-outlined"
               style="font-size: 18px; color: var(--accent-active-ink)"
+              aria-hidden="true"
               >person</span
             >
-          </div>
+            <span class="user-unread-dot" id="userUnreadDot" hidden></span>
+          </span>
           <span id="topbarUsername">User</span>
-        </div>
+          <span class="ann-sr-only" id="userUnreadSr"></span>
+          <span class="material-symbols-outlined user-profile-chevron" aria-hidden="true">expand_more</span>
+        </button>
       </div>
     </header>
 
@@ -1533,6 +1529,30 @@
         >
         <span>Delete Task</span>
       </div>
+    </div>
+
+    <!-- The account menu, opened by the profile pill (app.js initUserMenu).
+         A .context-menu like the one above, so closeAllModals() and Escape put
+         it away, and at phone width it becomes the same bottom sheet.
+         KlndrAnnouncements wires What's new and Studio and keeps the count. -->
+    <div class="context-menu user-menu" id="userMenu" role="menu" aria-labelledby="userProfileTrigger">
+      <button type="button" class="context-menu-item" id="userMenuAccount" role="menuitem">
+        <span class="material-symbols-outlined" aria-hidden="true">person</span>
+        <span>Account &amp; settings</span>
+      </button>
+      <button type="button" class="context-menu-item" id="userMenuOptions" role="menuitem">
+        <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+        <span>Calendar options</span>
+      </button>
+      <button type="button" class="context-menu-item" id="userMenuWhatsNew" role="menuitem">
+        <span class="material-symbols-outlined" aria-hidden="true">campaign</span>
+        <span>What's new</span>
+        <span class="user-menu-count" id="userMenuWhatsNewCount" hidden></span>
+      </button>
+      <a class="context-menu-item" id="userMenuStudio" href="/announcements" role="menuitem" hidden>
+        <span class="material-symbols-outlined" aria-hidden="true">edit_square</span>
+        <span>Studio</span>
+      </a>
     </div>
 
     <!-- Protected Frontend Scripts -->

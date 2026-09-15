@@ -248,7 +248,7 @@ html, body {
 
 /* Group A - neutral controls: a line, a surface, and something to press. */
 .btn-nav-arrow, .btn-calendar-collapse, .btn-sidebar-icon, .btn-icon-square,
-.btn-whats-new, .ann-filter, .category-row-action, .btn-task-nudge,
+.ann-filter, .category-row-action, .btn-task-nudge,
 .btn-today, .btn-zoom, .btn-modal-secondary, .btn-modal-danger,
 .inline-picker-btn, .picker-item-icon, .picker-item-color, .picker-item-category,
 .picker-item-newcat, .picker-cat-edit, .modal-close-btn, .btn-delete-user,
@@ -272,7 +272,7 @@ html, body {
 
 .btn-nav-arrow:hover:not(:disabled), .btn-calendar-collapse:hover:not(:disabled),
 .btn-sidebar-icon:hover:not(:disabled), .btn-icon-square:hover:not(:disabled),
-.btn-whats-new:hover:not(:disabled), .ann-filter:hover:not(:disabled),
+.ann-filter:hover:not(:disabled),
 .category-row-action:hover:not(:disabled), .btn-task-nudge:hover:not(:disabled),
 .btn-today:hover:not(:disabled), .btn-zoom:hover:not(:disabled),
 .btn-modal-secondary:hover:not(:disabled), .btn-modal-danger:hover:not(:disabled),
@@ -308,7 +308,7 @@ html, body {
 
 .btn-nav-arrow:active:not(:disabled), .btn-calendar-collapse:active:not(:disabled),
 .btn-sidebar-icon:active:not(:disabled), .btn-icon-square:active:not(:disabled),
-.btn-whats-new:active:not(:disabled), .ann-filter:active:not(:disabled),
+.ann-filter:active:not(:disabled),
 .category-row-action:active:not(:disabled), .btn-task-nudge:active:not(:disabled),
 .btn-today:active:not(:disabled), .btn-zoom:active:not(:disabled),
 .btn-modal-secondary:active:not(:disabled), .btn-modal-danger:active:not(:disabled),
@@ -398,7 +398,7 @@ button:disabled, select:disabled, input:disabled,
    something else. Applies to the whole list, not the four it used to. */
 @media (hover: none) {
   .btn-nav-arrow:hover, .btn-calendar-collapse:hover, .btn-sidebar-icon:hover,
-  .btn-icon-square:hover, .btn-whats-new:hover, .ann-filter:hover,
+  .btn-icon-square:hover, .ann-filter:hover,
   .category-row-action:hover, .btn-task-nudge:hover, .btn-today:hover,
   .btn-zoom:hover, .btn-modal-secondary:hover, .btn-modal-danger:hover,
   .inline-picker-btn:hover, .picker-item-icon:hover, .picker-item-color:hover,

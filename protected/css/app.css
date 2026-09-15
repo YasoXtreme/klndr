@@ -188,6 +188,7 @@ body {
   gap: 10px;
 }
 
+/* A button: it opens the account menu (app.js initUserMenu). */
 .user-profile-pill {
   display: flex;
   align-items: center;
@@ -195,15 +196,82 @@ body {
   background: var(--surface-1);
   border: var(--border-control);
   border-radius: var(--radius-pill);
-  padding: 4px 14px 4px 8px;
+  padding: 4px 8px;
+  color: var(--ink-strong);
+  font-family: inherit;
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.12s ease;
 }
 
+.user-profile-pill .user-profile-chevron {
+  margin-left: -2px;
+  font-size: 18px;
+  color: var(--ink-soft);
+  transition: transform var(--dur-fast) ease;
+}
+
+.user-profile-pill[aria-expanded="true"] .user-profile-chevron {
+  transform: rotate(180deg);
+}
+
+/* The only sign of unread announcements up here. No number and no colour that
+   reads as an error: the count is inside the menu, and new posts have already
+   announced themselves by arriving. */
+.user-unread-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border: var(--border-hair);
+  border-radius: 50%;
+  background: var(--chart-7);
+}
+
+.user-unread-dot[hidden],
+.user-menu [hidden] {
+  display: none;
+}
+
+/* ---- Account menu ----
+   The task menu's look. Its rows are buttons and a link here, so they shed
+   what a browser gives those - at zero specificity, so the shared row hover in
+   common.css still wins. */
+.user-menu {
+  min-width: 220px;
+}
+
+.user-menu :where(.context-menu-item) {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--ink-strong);
+  font-family: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+.user-menu-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 6px;
+  border: var(--border-hair);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-strong);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
 
 .user-avatar-circle {
+  position: relative;
   width: 26px;
   height: 26px;
   border-radius: 50%;
