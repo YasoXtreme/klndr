@@ -1150,6 +1150,117 @@
   z-index: 2;
 }
 
+/* ---- Motion clips ----
+   A header's motion is a strip of clips, played left to right. The chips are
+   tiles, so they hover, press and select like every other tile. */
+.st-clips-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.st-clips-head .st-label {
+  margin-right: auto;
+}
+
+.st-clip-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin: 0 -4px;
+  padding: 4px 4px 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.st-clip {
+  position: relative;
+  flex: none;
+  width: 168px;
+  scroll-snap-align: start;
+}
+
+.st-clip-number {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--ink-strong);
+  font-size: 12px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.st-clip.is-dragging {
+  opacity: 0.4;
+}
+
+/* Where a dragged clip will land: a hard bar on that side of the chip. */
+.st-clip.is-drop-before {
+  box-shadow: calc(var(--slab) * -1.5) 0 0 var(--ink-strong);
+}
+
+.st-clip.is-drop-after {
+  box-shadow: calc(var(--slab) * 1.5) 0 0 var(--ink-strong);
+}
+
+.st-clip-add {
+  flex: none;
+  width: 118px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.st-clip-add .material-symbols-outlined {
+  font-size: 26px;
+}
+
+.st-clips-summary {
+  margin-top: -6px;
+}
+
+.st-clip-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  border: var(--border-control);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.st-clip-tools[hidden] {
+  display: none;
+}
+
+.st-clip-tools-title {
+  color: var(--ink-strong);
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+.st-clip-tools-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .st-swatches {
   display: flex;
   flex-wrap: wrap;
@@ -1439,11 +1550,30 @@
 /* In the Studio the bar is also the scrubber, so it takes a taller target than
    its 6px without taking up more room. */
 .st-mock-top .ann-story-progress.is-scrubbable {
+  position: relative;
   align-items: center;
   margin: -10px 0;
   padding: 10px 0;
   cursor: pointer;
   touch-action: none;
+}
+
+/* Where one clip hands over to the next: a notch cut through the bar. */
+.st-bar-joins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.st-bar-join {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 12px;
+  margin-left: -2px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  transform: translateY(-50%);
 }
 
 .st-mock-foot {

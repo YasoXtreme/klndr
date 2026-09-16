@@ -85,6 +85,8 @@
       pane: 'write',
       mediaTab: !media ? 'none' : media.type === 'scene' ? 'scene' : 'upload',
       lastScene: media && media.type === 'scene' ? S.clone(media.scene) : null,
+      // The motion clip being edited, when the header plays several.
+      clipIndex: 0,
       lastCta: S.clone(doc.cta),
       cleanups: [],
       themeRestore: null,
@@ -535,6 +537,7 @@
     fresh.previewMode = ed.previewMode;
     fresh.previewDevice = ed.previewDevice;
     fresh.previewPaused = ed.previewPaused;
+    fresh.clipIndex = ed.clipIndex;
     state.editor = fresh;
     state.view = { name: 'edit', cleanup: () => closeEditor(fresh) };
     renderEditor(fresh);

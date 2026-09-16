@@ -95,8 +95,12 @@
     let raf = 0;
     let shown = null;
     let shownAt = null;
+    let shownJoins = null;
     let toggle = null;
     let replay = null;
+    // Where one clip hands over to the next, marked on the bar.
+    const joins = h('span', 'st-bar-joins');
+    joins.setAttribute('aria-hidden', 'true');
 
     if (player) {
       toggle = iconButton('pause', 'Pause', () => {
@@ -112,6 +116,7 @@
       top.prepend(toggle, replay);
 
       bar.classList.add('is-scrubbable');
+      bar.appendChild(joins);
       bar.tabIndex = 0;
       bar.setAttribute('role', 'slider');
       bar.setAttribute('aria-label', 'Scrub through the animation');
@@ -155,17 +160,34 @@
           toggle.setAttribute('aria-label', label);
           toggle.title = label;
         }
-        // Loop can be switched while this plays, so the bar's span can change.
+        // Loop, idle and clips can all change while this plays, so the bar's
+        // span and its joins can too.
         replay.hidden = player.loop;
+        const plan = player.plan;
         const span = player.loop ? Math.max(0, player.length - 1) : player.length;
-        const at = `${player.position}/${span}/${player.settled}`;
+        const marks = plan.clips.slice(1)
+          .map((clip) => (span > 0 ? clip.start / span : 0))
+          .filter((fraction) => fraction > 0 && fraction < 1);
+        const joinsKey = marks.map((fraction) => fraction.toFixed(4)).join(',');
+        if (joinsKey !== shownJoins) {
+          shownJoins = joinsKey;
+          joins.replaceChildren(...marks.map((fraction) => {
+            const mark = h('span', 'st-bar-join');
+            mark.style.left = `${fraction * 100}%`;
+            return mark;
+          }));
+        }
+
+        const clipIndex = KlndrMotionTimeline.at(plan, player.time).layers[0].index;
+        const at = `${player.position}/${span}/${player.settled}/${clipIndex}/${plan.clips.length}`;
         if (at !== shownAt) {
           shownAt = at;
+          const clipSaid = plan.clips.length > 1 ? `, clip ${clipIndex + 1} of ${plan.clips.length}` : '';
           bar.setAttribute('aria-valuemax', String(span));
           bar.setAttribute('aria-valuenow', String(player.position));
           bar.setAttribute(
             'aria-valuetext',
-            `${(player.position / KlndrScenes.FPS).toFixed(1)} seconds${player.settled ? ', idling' : ''}`
+            `${(player.position / KlndrScenes.FPS).toFixed(1)} seconds${clipSaid}${player.settled ? ', idling' : ''}`
           );
         }
       }
@@ -317,6 +339,20 @@
     };
   }
 
+  /**
+   * Put the preview on one clip - at its start, to watch it come in, or once it
+   * has arrived, to see what is being edited - without playing or pausing it.
+   */
+  function showClip(ed, index, where = 'arrived') {
+    const player = ed.preview && ed.preview.player;
+    if (!player) return;
+    const { plan } = player;
+    const clip = plan.clips[index];
+    if (!clip) return;
+    const pass = plan.loop && plan.cycle > 0 && player.time >= plan.cycle ? plan.cycle : 0;
+    player.setTime(clip.start + (where === 'start' ? 0 : clip.intro) + pass);
+  }
+
   function schedule(ed, { sceneOnly = false } = {}) {
     const media = ed.draft.media;
     const current = ed.preview;
@@ -391,5 +427,5 @@
     return aside;
   }
 
-  S.preview = { panel, render, schedule };
+  S.preview = { panel, render, schedule, showClip };
 })();

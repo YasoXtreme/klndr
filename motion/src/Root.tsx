@@ -5,6 +5,7 @@ import { Composition, Folder } from 'remotion';
 import './klndr/fonts';
 import { KlndrMotionTimeline, KlndrScenes } from './klndr/shared';
 import { sceneComponent, sceneLength } from './klndr/SceneComposition';
+import { Reel, reelDefaults, reelLength, reelSchema } from './klndr/Reel';
 import { compositionId, schemaFor } from './klndr/schema';
 import { FeatureSpotlight, featureSpotlightDefaults, featureSpotlightSchema } from './clips/FeatureSpotlight';
 import { WeekRecap, weekRecapDefaults, weekRecapSchema } from './clips/WeekRecap';
@@ -44,6 +45,18 @@ export const RemotionRoot: React.FC = () => (
           />
         );
       })}
+      {/* Several scenes as one video: a header's whole run of clips. */}
+      <Composition
+        id="Reel"
+        component={Reel}
+        schema={reelSchema}
+        defaultProps={reelDefaults}
+        calculateMetadata={({ props }) => ({ durationInFrames: reelLength(props) })}
+        durationInFrames={reelLength(reelDefaults)}
+        fps={KlndrScenes.FPS}
+        width={WIDTH}
+        height={HEIGHT}
+      />
       <Composition
         id="test"
         component={Test}

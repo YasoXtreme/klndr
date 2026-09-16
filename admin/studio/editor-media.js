@@ -33,16 +33,29 @@
     };
   }
 
-  // The clip being edited. Read fresh every time: picking another scene swaps
-  // the whole header object out from under anything that held on to the old one.
+  // The header's motion, and the clip in it being edited. Both are read fresh
+  // every time: an edit can swap the whole header object out from under
+  // anything that held on to the old one.
+  function motionOf(ed) {
+    return ed.draft.media.scene;
+  }
+
+  function clipIndexOf(ed) {
+    const last = motionOf(ed).clips.length - 1;
+    ed.clipIndex = Math.min(Math.max(0, ed.clipIndex || 0), last);
+    return ed.clipIndex;
+  }
+
   function clipOf(ed) {
-    return ed.draft.media.scene.clips[0];
+    return motionOf(ed).clips[clipIndexOf(ed)];
   }
 
   function sceneChanged(ed) {
-    ed.lastScene = S.clone(ed.draft.media.scene);
+    ed.lastScene = S.clone(motionOf(ed));
     E().changed(ed, { sceneOnly: true });
   }
+
+  const secondsOf = (frames) => `${(frames / KlndrScenes.FPS).toFixed(1)} s`;
 
   // The shape closest to the file's own, so a new upload starts uncropped.
   function aspectFor(file, previous) {
@@ -170,6 +183,7 @@
       const clip = clipOf(ed);
       clip.props = KlndrScenes.sanitizeProps(clip.id, { ...clip.props, [f.key]: value });
       sceneChanged(ed);
+      if (ed.refreshClips) ed.refreshClips();
     };
     const value = clipOf(ed).props[f.key];
 
@@ -197,107 +211,378 @@
   // PANES
   // ==========================================
 
-  // Play once or loop, and - when it loops - how long it idles before it goes
-  // out and comes round again.
-  function playbackFields(ed) {
-    const box = h('div', 'st-fields');
-    const detail = h('div', 'st-fields');
-    const Timeline = KlndrMotionTimeline;
+  // ==========================================
+  // MOTION: CLIPS
+  // ==========================================
 
-    const renderDetail = () => {
-      if (!ed.draft.media.scene.loop) {
-        detail.replaceChildren(h('p', 'st-hint', 'It animates in once, then stays in its idle state: still moving, never starting over.'));
-        return;
-      }
-      detail.replaceChildren(S.slider({
-        label: 'Idle before it animates out',
-        id: 'stSceneHold',
-        min: 0,
-        max: Timeline.HOLD_MAX,
-        step: Timeline.HOLD_STEP,
-        value: clipOf(ed).hold,
-        format: (seconds) => `${seconds.toFixed(1)} s`,
-        onInput: (seconds) => {
-          clipOf(ed).hold = Timeline.cleanHold(seconds);
-          sceneChanged(ed);
-        },
-        hint: 'Then it animates out and plays again from the start.'
-      }));
-    };
-
-    const mode = segment([
-      { id: 'once', label: 'Play once', icon: 'trending_flat' },
-      { id: 'loop', label: 'Loop', icon: 'repeat' }
-    ], ed.draft.media.scene.loop ? 'loop' : 'once', (value) => {
-      ed.draft.media.scene.loop = value === 'loop';
-      sceneChanged(ed);
-      renderDetail();
-    }, 'Playback');
-
-    renderDetail();
-    box.append(field({ label: 'Playback', control: mode }), detail);
-    return box;
+  // One clip, arrived and at rest.
+  function clipStill(host, clip) {
+    return KlndrAnnouncementMedia.mount(host, {
+      type: 'scene',
+      aspect: '2:1',
+      decorative: true,
+      scene: { clips: [clip] }
+    }, { thumbnail: true });
   }
 
+  // How long a clip idles, labelled by what comes after it - or, for the last
+  // clip of a header that plays once, a note that it simply stays.
+  function holdControl(ed) {
+    const motion = motionOf(ed);
+    const index = clipIndexOf(ed);
+    const count = motion.clips.length;
+    const last = index === count - 1;
+
+    if (last && !motion.loop) {
+      return h('p', 'st-hint', count > 1
+        ? 'The last clip stays on screen once it has played in: still moving, never starting over.'
+        : 'It animates in once, then stays in its idle state: still moving, never starting over.');
+    }
+
+    let label = 'Idle before the next clip';
+    let after = 'the next clip comes in';
+    if (last) {
+      label = count > 1 ? 'Idle before looping back' : 'Idle before it animates out';
+      after = count > 1 ? 'the animation starts again from the first clip' : 'it plays again from the start';
+    }
+    return S.slider({
+      label,
+      id: 'stSceneHold',
+      min: 0,
+      max: KlndrMotionTimeline.HOLD_MAX,
+      step: KlndrMotionTimeline.HOLD_STEP,
+      value: clipOf(ed).hold,
+      format: (seconds) => `${seconds.toFixed(1)} s`,
+      onInput: (seconds) => {
+        clipOf(ed).hold = KlndrMotionTimeline.cleanHold(seconds);
+        sceneChanged(ed);
+        if (ed.refreshClips) ed.refreshClips();
+      },
+      hint: `Then it animates out and ${after}.`
+    });
+  }
+
+  // A header's motion is a run of clips. Each is its own scene with its own
+  // words and colours; they play one after another, then loop back to the first
+  // or leave the last one idling. The strip picks the clip, and everything under
+  // it edits that one.
   function scenePane(ed, pane) {
     if (!ed.draft.media || ed.draft.media.type !== 'scene') {
       const last = ed.lastScene ? KlndrMotionTimeline.normalize(ed.lastScene) : null;
       E().setMedia(ed, sceneMedia(ed, last && last.clips.length ? last : freshScene('pop-reveal')));
     }
 
+    const MAX = KlndrMotionTimeline.MAX_CLIPS;
+    const stripStills = [];
+    const galleryStills = [];
+    const destroyAll = (mounted) => mounted.splice(0).forEach((still) => still.destroy());
+    let refreshTimer = 0;
+    let dragFrom = null;
+
+    const head = h('div', 'st-clips-head');
+    const strip = h('div', 'st-clip-strip');
+    strip.setAttribute('role', 'radiogroup');
+    strip.setAttribute('aria-label', 'Clips');
+    const summary = h('p', 'st-hint st-clips-summary');
+    const tools = h('div', 'st-clip-tools');
     const tiles = h('div', 'st-tiles');
     tiles.setAttribute('role', 'radiogroup');
     tiles.setAttribute('aria-label', 'Motion scenes');
     const props = h('div', 'st-fields');
+    const hold = h('div', 'st-fields');
 
-    const renderProps = () => {
-      const scene = KlndrScenes.get(clipOf(ed).id);
-      props.replaceChildren(h('p', 'st-hint', scene.description), ...scene.schema.map((f) => sceneField(ed, f)));
-    };
+    S.onReset(pane, () => {
+      clearTimeout(refreshTimer);
+      destroyAll(stripStills);
+      destroyAll(galleryStills);
+      if (ed.refreshClips === refreshClips) ed.refreshClips = null;
+    });
 
-    for (const scene of KlndrScenes.list()) {
-      const current = clipOf(ed);
-      const selected = current.id === scene.id;
-      const tile = h('button', `st-tile${selected ? ' is-selected' : ''}`);
-      tile.type = 'button';
-      tile.title = scene.description;
-      tile.setAttribute('role', 'radio');
-      tile.setAttribute('aria-checked', String(selected));
+    // ---- what is drawn ----
 
-      const art = h('span', 'st-tile-art');
-      const thumb = KlndrAnnouncementMedia.mount(art, {
-        type: 'scene',
-        aspect: '2:1',
-        decorative: true,
-        scene: { clips: [{ id: scene.id, props: selected ? current.props : {} }] }
-      }, { thumbnail: true });
-      S.onReset(pane, () => thumb.destroy());
-
-      const text = h('span', 'st-tile-text');
-      text.append(
-        h('span', 'st-tile-name', scene.name),
-        h('span', 'st-tile-meta', `${(scene.intro / scene.fps).toFixed(1)} s to animate in`)
-      );
-      tile.append(art, text);
-
-      tile.addEventListener('click', () => {
-        const clip = clipOf(ed);
-        if (clip.id === scene.id) return;
-        const next = S.clone(ed.draft.media.scene);
-        next.clips[0] = {
-          id: scene.id,
-          props: KlndrScenes.sanitizeProps(scene.id, carryWords(clip.props, scene.id)),
-          hold: clip.hold
-        };
-        E().setMedia(ed, sceneMedia(ed, next));
-        S.selectIn(tiles, tile);
-        renderProps();
+    function renderHead() {
+      const mode = segment([
+        { id: 'once', label: 'Play once', icon: 'trending_flat' },
+        { id: 'loop', label: 'Loop', icon: 'repeat' }
+      ], motionOf(ed).loop ? 'loop' : 'once', (value) => {
+        motionOf(ed).loop = value === 'loop';
+        sceneChanged(ed);
+        renderStrip();
+        renderHold();
+      }, 'Playback');
+      const copy = S.button('Copy for Remotion', {
+        icon: 'content_copy',
+        small: true,
+        variant: 'ghost',
+        title: 'Copy these clips as props for the Reel composition in motion/',
+        onClick: copyForRemotion
       });
-      tiles.appendChild(tile);
+      head.replaceChildren(h('span', 'st-label', 'Clips'), mode, copy);
     }
 
-    renderProps();
-    pane.append(tiles, props, playbackFields(ed));
+    function chipMeta(plan, index) {
+      const clip = plan.clips[index];
+      const resting = !plan.loop && index === plan.clips.length - 1;
+      return `in ${secondsOf(clip.intro)} · ${resting ? 'then stays' : `idle ${secondsOf(clip.hold)}`}`;
+    }
+
+    function renderStrip() {
+      destroyAll(stripStills);
+      const motion = motionOf(ed);
+      const plan = KlndrMotionTimeline.plan(motion);
+      const selected = clipIndexOf(ed);
+
+      const chips = motion.clips.map((clip, index) => {
+        const scene = KlndrScenes.get(clip.id);
+        const chip = h('button', `st-tile st-clip${index === selected ? ' is-selected' : ''}`);
+        chip.type = 'button';
+        chip.draggable = true;
+        chip.setAttribute('role', 'radio');
+        chip.setAttribute('aria-checked', String(index === selected));
+        chip.setAttribute('aria-label', `Clip ${index + 1} of ${motion.clips.length}: ${scene.name}`);
+        if (motion.clips.length > 1) chip.title = 'Drag, or Alt and an arrow key, to reorder';
+
+        const art = h('span', 'st-tile-art');
+        stripStills.push(clipStill(art, clip));
+        const number = h('span', 'st-clip-number', String(index + 1));
+        number.setAttribute('aria-hidden', 'true');
+        const text = h('span', 'st-tile-text');
+        text.append(h('span', 'st-tile-name', scene.name), h('span', 'st-tile-meta', chipMeta(plan, index)));
+        chip.append(art, number, text);
+
+        chip.addEventListener('click', () => pick(index));
+        chip.addEventListener('keydown', (event) => {
+          const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+          if (!event.altKey || !step) return;
+          event.preventDefault();
+          move(index, index + step);
+        });
+
+        // Reordering by drag. Where a chip lands is decided by which half of
+        // the chip under the pointer it is dropped on.
+        const landing = (event) => {
+          const rect = chip.getBoundingClientRect();
+          return event.clientX > rect.left + rect.width / 2 ? index + 1 : index;
+        };
+        chip.addEventListener('dragstart', (event) => {
+          dragFrom = index;
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', `clip ${index + 1}`);
+          chip.classList.add('is-dragging');
+        });
+        chip.addEventListener('dragend', () => {
+          dragFrom = null;
+          chip.classList.remove('is-dragging');
+          clearDrop();
+        });
+        chip.addEventListener('dragover', (event) => {
+          if (dragFrom == null) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+          clearDrop();
+          chip.classList.add(landing(event) > index ? 'is-drop-after' : 'is-drop-before');
+        });
+        chip.addEventListener('drop', (event) => {
+          if (dragFrom == null) return;
+          event.preventDefault();
+          const from = dragFrom;
+          let to = landing(event);
+          if (from < to) to -= 1;
+          clearDrop();
+          if (from !== to) move(from, to);
+        });
+        return chip;
+      });
+
+      const add = h('button', 'st-tile st-clip-add');
+      add.type = 'button';
+      add.disabled = motion.clips.length >= MAX;
+      add.title = add.disabled ? `A header plays up to ${MAX} clips` : 'Add a copy of this clip after it';
+      add.append(S.icon('add'), h('span', null, 'Add clip'));
+      add.addEventListener('click', addClip);
+
+      strip.replaceChildren(...chips, add);
+
+      const count = plan.clips.length;
+      const clipsSaid = count > 1 ? `${count} clips, ` : '';
+      summary.textContent = plan.loop
+        ? `${clipsSaid}${secondsOf(plan.cycle)} a loop, then it starts again.`
+        : `${clipsSaid}${secondsOf(plan.settle)} to play in, then ${count > 1 ? 'the last clip' : 'it'} stays.`;
+    }
+
+    function clearDrop() {
+      strip.querySelectorAll('.is-drop-before, .is-drop-after')
+        .forEach((node) => node.classList.remove('is-drop-before', 'is-drop-after'));
+    }
+
+    function renderTools() {
+      const motion = motionOf(ed);
+      const count = motion.clips.length;
+      tools.hidden = count < 2;
+      if (count < 2) {
+        tools.replaceChildren();
+        return;
+      }
+      const index = clipIndexOf(ed);
+      const earlier = iconButton('arrow_back', 'Move this clip earlier', () => move(index, index - 1));
+      earlier.disabled = index === 0;
+      const later = iconButton('arrow_forward', 'Move this clip later', () => move(index, index + 1));
+      later.disabled = index === count - 1;
+      const remove = iconButton('delete', 'Remove this clip', () => removeClip(index));
+      const actions = h('div', 'st-clip-tools-actions');
+      actions.append(earlier, later, remove);
+      tools.replaceChildren(
+        h('span', 'st-clip-tools-title', `Editing clip ${index + 1} of ${count}`),
+        actions
+      );
+    }
+
+    function renderClipEditor() {
+      destroyAll(galleryStills);
+      const clip = clipOf(ed);
+      tiles.replaceChildren(...KlndrScenes.list().map((scene) => {
+        const selected = clip.id === scene.id;
+        const tile = h('button', `st-tile${selected ? ' is-selected' : ''}`);
+        tile.type = 'button';
+        tile.title = scene.description;
+        tile.dataset.scene = scene.id;
+        tile.setAttribute('role', 'radio');
+        tile.setAttribute('aria-checked', String(selected));
+
+        const art = h('span', 'st-tile-art');
+        galleryStills.push(clipStill(art, { id: scene.id, props: selected ? clip.props : {} }));
+        const text = h('span', 'st-tile-text');
+        text.append(
+          h('span', 'st-tile-name', scene.name),
+          h('span', 'st-tile-meta', `${secondsOf(scene.intro)} to animate in`)
+        );
+        tile.append(art, text);
+        tile.addEventListener('click', () => swapScene(scene.id));
+        return tile;
+      }));
+      renderProps();
+      renderHold();
+    }
+
+    function renderProps() {
+      const scene = KlndrScenes.get(clipOf(ed).id);
+      props.replaceChildren(h('p', 'st-hint', scene.description), ...scene.schema.map((f) => sceneField(ed, f)));
+    }
+
+    function renderHold() {
+      hold.replaceChildren(holdControl(ed));
+    }
+
+    function renderAll() {
+      renderStrip();
+      renderTools();
+      renderClipEditor();
+    }
+
+    // Words, colours and idle change what a chip shows - its still, how long it
+    // takes to come in - so the strip catches up once typing pauses.
+    function refreshClips() {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        if (state.editor === ed && strip.isConnected) renderStrip();
+      }, 250);
+    }
+    ed.refreshClips = refreshClips;
+
+    // ---- what can be done ----
+
+    function pick(index) {
+      if (index !== clipIndexOf(ed)) {
+        ed.clipIndex = index;
+        renderAll();
+        const chip = strip.children[index];
+        if (chip) chip.focus({ preventScroll: true });
+      }
+      // The preview goes to the clip, arrived, so it shows what is being edited.
+      S.preview.showClip(ed, index, 'arrived');
+    }
+
+    function addClip() {
+      const motion = motionOf(ed);
+      if (motion.clips.length >= MAX) return;
+      const index = clipIndexOf(ed);
+      motion.clips.splice(index + 1, 0, S.clone(motion.clips[index]));
+      ed.clipIndex = index + 1;
+      sceneChanged(ed);
+      renderAll();
+      const chip = strip.children[index + 1];
+      if (chip) {
+        chip.focus({ preventScroll: true });
+        chip.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+      S.preview.showClip(ed, index + 1, 'start');
+    }
+
+    function removeClip(index) {
+      const motion = motionOf(ed);
+      if (motion.clips.length < 2) return;
+      motion.clips.splice(index, 1);
+      if (ed.clipIndex > index) ed.clipIndex -= 1;
+      sceneChanged(ed);
+      renderAll();
+      S.preview.showClip(ed, clipIndexOf(ed), 'arrived');
+    }
+
+    function move(from, to) {
+      const motion = motionOf(ed);
+      if (to < 0 || to >= motion.clips.length || from === to) return;
+      const selected = clipIndexOf(ed);
+      const [clip] = motion.clips.splice(from, 1);
+      motion.clips.splice(to, 0, clip);
+      // The selection stays on the clip it was on.
+      if (selected === from) ed.clipIndex = to;
+      else if (from < selected && to >= selected) ed.clipIndex = selected - 1;
+      else if (from > selected && to <= selected) ed.clipIndex = selected + 1;
+      sceneChanged(ed);
+      renderStrip();
+      renderTools();
+      renderHold();
+      const chip = strip.children[to];
+      if (chip) chip.focus({ preventScroll: true });
+      S.preview.showClip(ed, clipIndexOf(ed), 'arrived');
+    }
+
+    function swapScene(sceneId) {
+      const motion = motionOf(ed);
+      const index = clipIndexOf(ed);
+      const clip = motion.clips[index];
+      if (clip.id === sceneId) return;
+      motion.clips[index] = {
+        id: sceneId,
+        props: KlndrScenes.sanitizeProps(sceneId, carryWords(clip.props, sceneId)),
+        hold: clip.hold
+      };
+      sceneChanged(ed);
+      renderAll();
+      const tile = tiles.querySelector(`[data-scene="${sceneId}"]`);
+      if (tile) tile.focus({ preventScroll: true });
+      if (ed.renderFraming) ed.renderFraming();
+      // A new scene is best seen coming in.
+      S.preview.showClip(ed, index, 'start');
+    }
+
+    async function copyForRemotion() {
+      const props = {
+        theme: window.KlndrTheme ? KlndrTheme.resolved() : 'light',
+        tail: 3,
+        scene: KlndrMotionTimeline.normalize(motionOf(ed))
+      };
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(props, null, 2));
+        S.toast('Copied. Save it as a file in motion/props/, then: npm run render -- Reel --props=props/<file>.json', 'success');
+      } catch (err) {
+        S.toast('Could not reach the clipboard from this page.', 'error');
+      }
+    }
+
+    renderHead();
+    renderAll();
+    pane.append(head, strip, summary, tools, tiles, props, hold);
   }
 
   function fileRow(ed, pane, file) {

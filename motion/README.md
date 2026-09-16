@@ -19,6 +19,7 @@ Headless Shell (about 113 MB) into `node_modules`.
 | Studio folder | Compositions | What they are |
 | --- | --- | --- |
 | **Scenes** | `PopReveal`, `BlockShuffle`, `StickerBurst`, `Checklist`, `Stamp`, `Ticker`, `FlipBoard`, `Keycaps`, `Chat`, `PointClick` | The app's built-in motion scenes, drawn by the same code klndr plays live (`protected/js/motion/scenes.js` and `motion-timeline.js`). |
+| **Scenes** | `Reel` | Several scenes played one after another, the way a header with clips plays them. |
 | **Clips** | `FeatureSpotlight`, `WeekRecap` | Free-form React clips in `src/clips/`. Start a new clip by copying one. |
 
 You rarely need to render a scene for a header. The announcement studio's
@@ -35,6 +36,15 @@ Every scene composition takes three props besides the scene's own:
 | `tail` | `3` | With `loop: false`: seconds of idle after the scene has arrived. |
 
 The composition's length follows them.
+
+`Reel` renders a header's whole run of clips. Its props are what the studio stores:
+`{ theme, tail, scene: { loop, clips: [{ id, props, hold }] } }`. In the studio,
+**Header**, then **Motion scene**, then **Copy for Remotion** copies exactly that;
+save it as a file in `props/` and render it:
+
+```bash
+npm run render -- Reel --props=props/my-reel.json
+```
 
 `npm run compositions` lists every id.
 

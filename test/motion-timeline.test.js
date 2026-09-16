@@ -132,6 +132,83 @@ test("clips play one after another", () => {
   assert.equal(Timeline.at(once, once.settle + 5000).layers[0].clock.exit, 0);
 });
 
+// A recording 2D context that keeps just the calls, for counting what was drawn.
+function recorder() {
+  const calls = [];
+  const ctx = new Proxy({ globalAlpha: 1, font: "10px sans-serif" }, {
+    get(target, prop) {
+      if (prop === "calls") return calls;
+      if (prop === "measureText") return (text) => ({ width: String(text).length * 10 });
+      if (prop in target) return target[prop];
+      return (...args) => calls.push([prop, ...args]);
+    },
+    set(target, prop, value) {
+      target[prop] = value;
+      return true;
+    },
+  });
+  return ctx;
+}
+
+const PAINTS = new Set(["fill", "fillText", "stroke", "fillRect"]);
+
+test("every hand-over between clips happens on an empty stage", () => {
+  const clips = [
+    { id: "stamp", props: { background: "#3ba4f6" }, hold: 1 },
+    { id: "chat", props: {}, hold: 0 },
+    { id: "ticker", props: {}, hold: 2.5 },
+    { id: "keycaps", props: {}, hold: 0.5 },
+  ];
+  for (const loop of [true, false]) {
+    const plan = Timeline.plan({ loop, clips });
+    const joins = plan.clips.slice(1).map((clip) => clip.start);
+    // Looping, the last clip hands back to the first as well.
+    if (loop) joins.push(plan.cycle);
+
+    for (const join of joins) {
+      const before = Timeline.at(plan, join - 1).layers[0];
+      const after = Timeline.at(plan, join).layers[0];
+      assert.equal(before.clock.exit, OUTRO - 1, `the frame before ${join} is the last of an out`);
+      assert.deepEqual(after.clock, { t: 0, exit: 0 }, `frame ${join} is the first of an in`);
+      assert.notEqual(before.index, after.index);
+
+      // The incoming clip's first frame paints its ground and nothing else: one
+      // fill of the canvas and one stroke of the grid.
+      const ctx = recorder();
+      Timeline.render(ctx, plan, join, { width: 1200, height: 600 });
+      const paints = ctx.calls.filter(([call]) => PAINTS.has(call)).map(([call]) => call);
+      assert.deepEqual(paints, ["fillRect", "stroke"], `${loop ? "loop" : "once"}: frame ${join} drew ${paints.join(", ")}`);
+    }
+  }
+});
+
+test("a header that plays once never leaves its last clip, whatever came before", () => {
+  const plan = Timeline.plan({ loop: false, clips: [{ id: "chat" }, { id: "stamp", hold: 0 }, { id: "flip-board" }] });
+  const last = plan.clips[2];
+  for (const T of [last.start + last.intro, last.start + last.intro + 1000, 1e7]) {
+    const frame = Timeline.at(plan, T);
+    assert.equal(frame.layers[0].id, "flip-board");
+    assert.equal(frame.layers[0].clock.exit, 0);
+    assert.equal(frame.progress, 1);
+  }
+  // The bar reaches the end exactly when the last clip has arrived.
+  assert.ok(Timeline.at(plan, last.start + last.intro - 1).progress < 1);
+});
+
+test("editing a run of clips keeps the preview on a clip that still exists", () => {
+  const three = Timeline.plan({ loop: true, clips: [{ id: "stamp" }, { id: "chat" }, { id: "ticker" }] });
+  const inTicker = three.clips[2].start + 10;
+
+  // The ticker was removed: the preview lands on what is now the last clip.
+  const two = Timeline.plan({ loop: true, clips: [{ id: "stamp" }, { id: "chat" }] });
+  const landed = Timeline.at(two, Timeline.reanchor(three, two, inTicker)).layers[0];
+  assert.equal(landed.index, 1);
+
+  // Props changed in the clip that is playing: same clip, same moment.
+  const edited = Timeline.plan({ loop: true, clips: [{ id: "stamp" }, { id: "chat" }, { id: "ticker", props: { headline: "New words" } }] });
+  assert.equal(Timeline.reanchor(three, edited, inTicker), edited.clips[2].start + 10);
+});
+
 test("an edit keeps the preview where it was", () => {
   const before = Timeline.plan({ loop: true, clips: [{ id: "stamp", props: {}, hold: 4 }] });
   const intro = before.clips[0].intro;
