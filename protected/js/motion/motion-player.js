@@ -1,8 +1,13 @@
 // Klndr Motion Player
 //
-// Plays a motion scene in a <canvas> - the live counterpart of rendering it a
+// Plays a header's motion in a <canvas> - the live counterpart of rendering it a
 // frame at a time in the Remotion workspace. It knows nothing about what a
 // scene draws, only the clock, the canvas and the manners.
+//
+// The clock is a single count of frames since playback began. The motion
+// timeline turns that into which clip is on screen and where it is: coming in,
+// idling, going out and round again, or resting on its last clip for good. A
+// header that plays once never stops drawing - its idle state keeps moving.
 //
 // The manners are most of this file. A header animates only while it can be
 // seen, never for someone who has asked for reduced motion unless they press
@@ -10,6 +15,9 @@
 // next frame.
 
 const KlndrMotion = (() => {
+  const Timeline = KlndrMotionTimeline;
+  const FPS = KlndrScenes.FPS;
+
   const reducedMotionQuery = window.matchMedia
     ? window.matchMedia('(prefers-reduced-motion: reduce)')
     : null;
@@ -47,23 +55,23 @@ const KlndrMotion = (() => {
   }
 
   /**
-   * One frame into a canvas, then stop. For thumbnails and gallery tiles.
+   * A header's first clip, arrived and at rest, into a canvas - then stop. For
+   * thumbnails and gallery tiles.
    */
-  function renderStill(canvas, { sceneId, props, frame, ratio = 2, theme }) {
-    const scene = KlndrScenes.get(sceneId);
-    if (!scene) return;
+  function renderStill(canvas, { scene, ratio = 2, theme }) {
+    const plan = Timeline.plan(scene);
+    if (!plan.clips.length) return;
     const { width, height } = KlndrScenes.sizeFor(ratio);
     sizeCanvas(canvas, canvas.clientWidth || 320, width, height);
     const ctx = canvas.getContext('2d');
     ctx.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    KlndrScenes.render(
-      ctx,
-      sceneId,
-      frame == null ? scene.stillFrame : frame,
-      KlndrScenes.sanitizeProps(sceneId, props),
-      { width, height, theme: theme || KlndrMotionCore.readTheme() }
-    );
+    Timeline.render(ctx, plan, plan.still, {
+      width,
+      height,
+      theme: theme || KlndrMotionCore.readTheme(),
+      ambient: 0
+    });
   }
 
   function iconButton(className, icon, label) {
@@ -80,98 +88,97 @@ const KlndrMotion = (() => {
   }
 
   /**
-   * Mount a playing scene into `container`.
+   * Mount a playing header into `container`.
    *
+   * options.scene     the header's motion - { loop, clips }, or an old { id, props }
    * options.autoplay  start playing (reduced motion overrides it)
-   * options.controls  play/pause and a scrubber, for the Studio
    * options.label     what a screen reader says instead of the animation
    */
-  function mount(container, { sceneId, props, ratio = 2, autoplay = true, loop = true, controls = false, label = '' } = {}) {
-    const scene = KlndrScenes.get(sceneId);
-    const fps = KlndrScenes.FPS;
-    const duration = scene ? scene.durationInFrames : 1;
+  function mount(container, { scene, ratio = 2, autoplay = true, label = '' } = {}) {
+    let plan = Timeline.plan(scene);
     const { width, height } = KlndrScenes.sizeFor(ratio);
-    let clean = KlndrScenes.sanitizeProps(sceneId, props);
+    const describe = () => label || Timeline.describe(plan.scene);
 
     const root = document.createElement('div');
     root.className = 'ann-motion';
     const canvas = document.createElement('canvas');
     canvas.className = 'ann-motion-canvas';
     canvas.setAttribute('role', 'img');
-    canvas.setAttribute('aria-label', label || KlndrScenes.describe(sceneId, clean));
+    canvas.setAttribute('aria-label', describe());
     root.appendChild(canvas);
     container.appendChild(root);
 
     const ctx = canvas.getContext('2d');
     let theme = KlndrMotionCore.readTheme();
-    let wantsPlay = Boolean(autoplay) && (controls || !prefersReducedMotion());
-    let frame = wantsPlay ? 0 : (scene ? scene.stillFrame : 0);
+    let wantsPlay = Boolean(autoplay) && !prefersReducedMotion();
+    // Until someone asks for the motion, reduced motion gets the resting pose.
+    let resting = !wantsPlay;
+    let time = resting ? plan.still : 0;
     let playing = false;
     let visible = true;
     let raf = 0;
     let startedAt = 0;
-    let drawn = -1;
+    let drawn = null;
     let destroyed = false;
-
-    let playButton = null;
-    let scrubber = null;
-    let clock = null;
     let overlay = null;
 
+    const playable = () => plan.clips.length > 0;
+    const now = () => Timeline.at(plan, time);
+
     function draw(force) {
-      if (!scene || destroyed || (!force && frame === drawn)) return;
+      if (!playable() || destroyed || (!force && time === drawn)) return;
       ctx.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
       ctx.clearRect(0, 0, width, height);
-      KlndrScenes.render(ctx, sceneId, frame, clean, { width, height, theme });
-      drawn = frame;
-      if (scrubber) {
-        scrubber.value = String(frame);
-        clock.textContent = `${(frame / fps).toFixed(1)}s`;
-      }
+      Timeline.render(ctx, plan, time, { width, height, theme, ambient: resting ? 0 : 1 });
+      drawn = time;
     }
 
-    function tick(now) {
+    function rebase() {
+      startedAt = performance.now() - (time / FPS) * 1000;
+    }
+
+    function tick(stamp) {
       raf = 0;
       if (!playing) return;
-      const elapsed = Math.floor(((now - startedAt) / 1000) * fps);
-      if (!loop && elapsed >= duration - 1) {
-        frame = duration - 1;
-        draw();
-        pause();
-        return;
+      // A loop's count is folded back a pass at a time, so it never grows
+      // without end - but once past its first pass, it stays past it.
+      if (plan.loop && plan.cycle > 0) {
+        const cycleMs = (plan.cycle / FPS) * 1000;
+        while (stamp - startedAt >= 2 * cycleMs) startedAt += cycleMs;
       }
-      frame = ((elapsed % duration) + duration) % duration;
+      time = Math.max(0, Math.floor(((stamp - startedAt) / 1000) * FPS));
       draw();
       raf = requestAnimationFrame(tick);
     }
 
-    function syncButton() {
-      if (!playButton) return;
-      playButton.firstChild.textContent = wantsPlay ? 'pause' : 'play_arrow';
-      playButton.setAttribute('aria-label', wantsPlay ? 'Pause' : 'Play');
-    }
-
     // Plays only while it is wanted, on screen, and in a tab that is in front.
     function reconcile() {
-      const shouldPlay = wantsPlay && visible && !document.hidden && Boolean(scene) && !destroyed;
+      const shouldPlay = wantsPlay && visible && !document.hidden && playable() && !destroyed;
       if (shouldPlay && !playing) {
         playing = true;
-        startedAt = performance.now() - (frame / fps) * 1000;
+        rebase();
         raf = requestAnimationFrame(tick);
       } else if (!shouldPlay && playing) {
         playing = false;
         if (raf) cancelAnimationFrame(raf);
         raf = 0;
       }
-      syncButton();
     }
 
-    function play() {
-      wantsPlay = true;
+    function wake() {
       if (overlay) {
         overlay.remove();
         overlay = null;
       }
+      if (!resting) return;
+      resting = false;
+      time = 0;
+    }
+
+    function play() {
+      wake();
+      wantsPlay = true;
+      draw(true);
       reconcile();
     }
 
@@ -180,34 +187,23 @@ const KlndrMotion = (() => {
       reconcile();
     }
 
-    function seek(to) {
-      frame = Math.min(duration - 1, Math.max(0, Math.round(to)));
-      if (playing) startedAt = performance.now() - (frame / fps) * 1000;
+    /** Jump to a frame count since playback began. */
+    function setTime(frame) {
+      wake();
+      time = Math.max(0, Math.round(frame));
+      if (playing) rebase();
       draw(true);
     }
 
-    if (controls) {
-      const bar = document.createElement('div');
-      bar.className = 'ann-motion-controls';
-      playButton = iconButton('ann-motion-play', 'play_arrow', 'Play');
-      playButton.addEventListener('click', () => (wantsPlay ? pause() : play()));
-      scrubber = document.createElement('input');
-      scrubber.type = 'range';
-      scrubber.className = 'ann-motion-scrubber';
-      scrubber.min = '0';
-      scrubber.max = String(duration - 1);
-      scrubber.step = '1';
-      scrubber.setAttribute('aria-label', 'Scrub through the animation');
-      scrubber.addEventListener('input', () => {
-        pause();
-        seek(Number(scrubber.value));
-      });
-      clock = document.createElement('span');
-      clock.className = 'ann-motion-clock';
-      bar.append(playButton, scrubber, clock);
-      root.appendChild(bar);
-    } else if (autoplay && !wantsPlay) {
-      // Reduced motion: a still, and a way to ask for the motion anyway.
+    /** Jump to a point on the bar: a frame from 0 to `length`. */
+    function seek(position) {
+      const last = plan.loop ? Math.max(0, plan.cycle - 1) : plan.settle;
+      const pass = plan.loop && plan.cycle > 0 && time >= plan.cycle ? plan.cycle : 0;
+      setTime(Math.min(last, Math.max(0, Math.round(position))) + pass);
+    }
+
+    if (autoplay && !wantsPlay) {
+      // Reduced motion: the resting pose, and a way to ask for the motion anyway.
       overlay = iconButton('ann-media-play', 'play_arrow', 'Play animation');
       overlay.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -253,8 +249,36 @@ const KlndrMotion = (() => {
       play,
       pause,
       seek,
-      get frame() {
-        return frame;
+      setTime,
+      get plan() {
+        return plan;
+      },
+      /** Frames since playback began, never wrapped. */
+      get time() {
+        return time;
+      },
+      /** Where on the bar playback is, as a frame from 0 to `length`. */
+      get position() {
+        return now().position;
+      },
+      /** The frames the bar spans: a whole loop, or the way in. */
+      get length() {
+        return plan.length;
+      },
+      /** How full the bar is, 0 to 1. A header that plays once stays full once it has arrived. */
+      get progress() {
+        return resting ? 1 : now().progress;
+      },
+      get loop() {
+        return plan.loop;
+      },
+      /** Showing the rest pose because nobody has asked for the motion yet. */
+      get resting() {
+        return resting;
+      },
+      /** Played once and arrived: idling for good. */
+      get settled() {
+        return !resting && now().settled;
       },
       get playing() {
         return playing;
@@ -263,14 +287,18 @@ const KlndrMotion = (() => {
       get paused() {
         return !wantsPlay;
       },
-      get duration() {
-        return duration;
-      },
-      /** New props without remounting, so an edit in the Studio keeps playing. */
-      update(nextProps) {
-        clean = KlndrScenes.sanitizeProps(sceneId, nextProps);
-        canvas.setAttribute('aria-label', label || KlndrScenes.describe(sceneId, clean));
+      /**
+       * New motion without remounting, so an edit in the Studio keeps playing
+       * from where it was.
+       */
+      update(nextScene) {
+        const next = Timeline.plan(nextScene);
+        time = resting ? next.still : Timeline.reanchor(plan, next, time);
+        plan = next;
+        canvas.setAttribute('aria-label', describe());
+        if (playing) rebase();
         draw(true);
+        reconcile();
       },
       destroy() {
         destroyed = true;

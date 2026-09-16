@@ -258,7 +258,7 @@ html, body {
 .st-swatch, .st-tile,
 .chart-table-toggle,
 .ann-icon-btn, .ann-btn-secondary, .ann-btn-ghost, .ann-reaction, .ann-nav-btn,
-.ann-media-play, .ann-media-sound, .ann-motion-play,
+.ann-media-play, .ann-media-sound,
 /* Group B - controls that are already wearing the accent. */
 .btn-continue, .btn-boot-retry, .btn-modal-primary, .admin-analytics-link,
 .ann-btn-primary {
@@ -292,7 +292,7 @@ html, body {
 .ann-icon-btn:hover:not(:disabled), .ann-btn-secondary:hover:not(:disabled),
 .ann-btn-ghost:hover:not(:disabled), .ann-reaction:hover:not(:disabled),
 .ann-nav-btn:hover:not(:disabled), .ann-media-play:hover:not(:disabled),
-.ann-media-sound:hover:not(:disabled), .ann-motion-play:hover:not(:disabled) {
+.ann-media-sound:hover:not(:disabled) {
   background: var(--accent-mint);
   transform: translateY(-1px);
 }
@@ -330,7 +330,7 @@ html, body {
 .ann-icon-btn:active:not(:disabled), .ann-btn-secondary:active:not(:disabled),
 .ann-btn-ghost:active:not(:disabled), .ann-reaction:active:not(:disabled),
 .ann-nav-btn:active:not(:disabled), .ann-media-play:active:not(:disabled),
-.ann-media-sound:active:not(:disabled), .ann-motion-play:active:not(:disabled),
+.ann-media-sound:active:not(:disabled),
 .ann-btn-primary:active:not(:disabled) {
   transform: translateY(1px);
 }
@@ -413,7 +413,7 @@ button:disabled, select:disabled, input:disabled,
   .admin-analytics-link:hover, .sidebar-task-card:hover,
   .ann-icon-btn:hover, .ann-btn-secondary:hover, .ann-btn-ghost:hover,
   .ann-reaction:hover, .ann-nav-btn:hover, .ann-media-play:hover,
-  .ann-media-sound:hover, .ann-motion-play:hover, .ann-btn-primary:hover {
+  .ann-media-sound:hover, .ann-btn-primary:hover {
     transform: none;
   }
 }

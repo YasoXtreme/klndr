@@ -95,13 +95,12 @@ const KlndrAnnouncementMedia = (() => {
    *
    * options.thumbnail  a small still: no video element, no Lottie player, no loop
    * options.autoplay   defaults to true; reduced motion overrides it
-   * options.controls   a scrubber on motion scenes (the Studio)
    *
-   * Returns { element, player, destroy }. `player` is the motion player when the
-   * header is a scene, so the Studio can push new props into it.
+   * Returns { element, player, progress, destroy }. `player` is the motion
+   * player when the header is a scene, so the Studio can push edits into it.
    */
   function mount(container, media, options = {}) {
-    const { thumbnail = false, autoplay = true, controls = false } = options;
+    const { thumbnail = false, autoplay = true } = options;
     const frame = el('div', `ann-media${thumbnail ? ' is-thumb' : ''}`);
     frame.style.setProperty('--ann-aspect', String(ratioOf(media)));
     if (media && media.background) frame.style.setProperty('--ann-media-bg', media.background);
@@ -119,9 +118,9 @@ const KlndrAnnouncementMedia = (() => {
         return player;
       },
       /**
-       * How far through its loop the header is, 0 to 1 - or null when it is not
-       * playing or has no length to it (a picture, a still). A story's progress
-       * bar follows this.
+       * How far through its playback the header is, 0 to 1 - or null when it is
+       * not playing or has no length to it (a picture, a still). A story's
+       * progress bar follows this.
        */
       progress: () => progress(),
       destroy() {
@@ -333,36 +332,27 @@ const KlndrAnnouncementMedia = (() => {
       }
 
       case 'scene': {
-        const scene = media.scene && KlndrScenes.get(media.scene.id);
-        if (!scene) return fail(), result;
+        const scene = KlndrMotionTimeline.normalize(media.scene);
+        if (!scene.clips.length) return fail(), result;
 
         if (thumbnail) {
           const canvas = el('canvas', 'ann-media-el ann-motion-canvas', {
             role: 'img',
-            'aria-label': KlndrScenes.describe(media.scene.id, media.scene.props)
+            'aria-label': KlndrMotionTimeline.describe(scene)
           });
           frame.appendChild(canvas);
-          const still = () => KlndrMotion.renderStill(canvas, {
-            sceneId: media.scene.id,
-            props: media.scene.props,
-            ratio: ratioOf(media)
-          });
+          const still = () => KlndrMotion.renderStill(canvas, { scene, ratio: ratioOf(media) });
           KlndrMotion.whenFontReady().then(still);
           window.addEventListener('klndr:themechange', still);
           cleanups.push(() => window.removeEventListener('klndr:themechange', still));
           break;
         }
 
-        player = KlndrMotion.mount(frame, {
-          sceneId: media.scene.id,
-          props: media.scene.props,
-          ratio: ratioOf(media),
-          autoplay,
-          controls,
-          label
-        });
+        player = KlndrMotion.mount(frame, { scene, ratio: ratioOf(media), autoplay, label });
         cleanups.push(() => player.destroy());
-        progress = () => (player.paused ? null : player.frame / Math.max(1, player.duration - 1));
+        // A loop fills the bar once a pass; a header that plays once fills it on
+        // the way in, then leaves it full while it idles.
+        progress = () => (player.paused ? null : player.progress);
         break;
       }
 

@@ -1,5 +1,6 @@
 const Rules = require("../../protected/js/announcements/rules");
 const Scenes = require("../../protected/js/motion/scenes");
+const MotionTimeline = require("../../protected/js/motion/motion-timeline");
 const { HttpError } = require("../http-error");
 
 // Everything the Studio can send, reduced to what an announcement may hold.
@@ -84,12 +85,21 @@ function sanitizeMedia(input) {
   };
 
   if (input.type === "scene") {
-    const id = input.scene && input.scene.id;
-    if (!Scenes.get(id)) throw invalid("Pick a motion scene from the gallery.", "media.scene");
+    // A run of clips, or - from before clips - a single { id, props }. Every clip
+    // has to be a scene klndr knows; its words, colours and idle are then
+    // cleaned, the same way they are cleaned whenever a post is read.
+    const scene = input.scene && typeof input.scene === "object" ? input.scene : {};
+    const clips = Array.isArray(scene.clips) ? scene.clips : scene.id ? [scene] : [];
+    if (!clips.length || clips.some((clip) => !clip || !Scenes.get(clip.id))) {
+      throw invalid("Pick a motion scene from the gallery.", "media.scene");
+    }
+    if (clips.length > MotionTimeline.MAX_CLIPS) {
+      throw invalid(`A header can play up to ${MotionTimeline.MAX_CLIPS} clips.`, "media.scene");
+    }
     return {
       type: "scene",
       ...framing,
-      scene: { id, props: Scenes.sanitizeProps(id, input.scene.props) },
+      scene: MotionTimeline.normalize(scene),
     };
   }
 

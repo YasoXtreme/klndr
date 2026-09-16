@@ -744,6 +744,99 @@
   line-height: 1.4;
 }
 
+/* A slider in the house style: a pill track that fills with ink up to a chunky
+   thumb, which sits on its own slab. */
+.st-range-value {
+  color: var(--ink-strong);
+  font-size: 12.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.st-range {
+  --st-range-fill: 0%;
+  --st-range-track: linear-gradient(90deg, var(--ink-strong) var(--st-range-fill), var(--surface-2) var(--st-range-fill));
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.st-range::-webkit-slider-runnable-track {
+  box-sizing: border-box;
+  height: 14px;
+  border: var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--st-range-track);
+}
+
+.st-range::-moz-range-track {
+  box-sizing: border-box;
+  height: 14px;
+  border: var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--st-range-track);
+}
+
+.st-range::-webkit-slider-thumb {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  margin-top: -7px;
+  border: var(--border-control);
+  border-radius: 50%;
+  background: var(--accent-active);
+  box-shadow: calc(var(--slab) / 2) calc(var(--slab) / 2) 0 var(--shadow-slab);
+  appearance: none;
+  transition: transform 0.12s ease;
+}
+
+.st-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border: var(--border-control);
+  border-radius: 50%;
+  background: var(--accent-active);
+  box-shadow: calc(var(--slab) / 2) calc(var(--slab) / 2) 0 var(--shadow-slab);
+  transition: transform 0.12s ease;
+}
+
+.st-range:hover::-webkit-slider-thumb {
+  transform: translateY(-1px);
+}
+
+.st-range:hover::-moz-range-thumb {
+  transform: translateY(-1px);
+}
+
+.st-range:active::-webkit-slider-thumb {
+  transform: translateY(1px);
+}
+
+.st-range:active::-moz-range-thumb {
+  transform: translateY(1px);
+}
+
+.st-range:focus-visible {
+  outline-offset: 2px;
+  border-radius: var(--radius-pill);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-range::-webkit-slider-thumb {
+    transition: none;
+  }
+
+  .st-range::-moz-range-thumb {
+    transition: none;
+  }
+}
+
 /* Sized to its buttons. Inside a field or a card body it would otherwise be
    stretched across the whole row, as a grid or column item is. */
 .st-segment {

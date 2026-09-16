@@ -262,55 +262,6 @@
   font-size: 20px;
 }
 
-.ann-motion-controls {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 5px 12px 5px 5px;
-  border: var(--border-control);
-  border-radius: var(--radius-pill);
-  background: var(--surface-1);
-}
-
-.ann-motion-play {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: var(--border-control);
-  border-radius: 50%;
-  background: var(--accent-active);
-  color: var(--accent-active-ink);
-  cursor: pointer;
-}
-
-.ann-motion-play .material-symbols-outlined {
-  font-size: 20px;
-  font-variation-settings: 'FILL' 1;
-}
-
-.ann-motion-scrubber {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--ink-strong);
-}
-
-.ann-motion-clock {
-  min-width: 36px;
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
 /* ====================================================
    THE READER
    ==================================================== */
@@ -983,7 +934,8 @@ h5.ann-md-heading {
 
 /* The current story's playhead: it fills as the header's animation or clip
    plays, and starts over when that loops (--ann-progress, set by inbox.js). A
-   header with no length to it - a picture, a still - leaves it full. */
+   motion header that plays once fills it on the way in and leaves it full while
+   it idles; one with no length to it - a picture, a still - leaves it full. */
 .ann-story-segment.is-current {
   background: linear-gradient(90deg, var(--ink-strong) calc(var(--ann-progress, 1) * 100%), var(--line-soft) 0);
 }

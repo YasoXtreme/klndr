@@ -199,6 +199,51 @@ const KlndrStudio = (() => {
     return wrap;
   }
 
+  /**
+   * A labelled slider with its value read out beside it. `format` turns the
+   * number into the words shown and announced ("2.5 s").
+   */
+  function slider({ label, id, min, max, step, value, format = String, onInput, hint }) {
+    const wrap = h('div', 'st-field st-slider');
+    const row = h('div', 'st-label-row');
+    const input = h('input', 'st-range');
+    input.type = 'range';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(value);
+    const output = h('output', 'st-range-value');
+    output.setAttribute('aria-hidden', 'true');
+
+    if (id) {
+      input.id = id;
+      const text = h('label', 'st-label', label);
+      text.htmlFor = id;
+      row.appendChild(text);
+    } else {
+      input.setAttribute('aria-label', label);
+      row.appendChild(h('span', 'st-label', label));
+    }
+    row.appendChild(output);
+
+    const sync = () => {
+      const n = Number(input.value);
+      output.textContent = format(n);
+      input.setAttribute('aria-valuetext', format(n));
+      input.style.setProperty('--st-range-fill', `${((n - min) / (max - min)) * 100}%`);
+    };
+    input.addEventListener('input', () => {
+      sync();
+      onInput(Number(input.value));
+    });
+    sync();
+
+    wrap.append(row, input);
+    if (hint) wrap.appendChild(h('p', 'st-hint', hint));
+    wrap.input = input;
+    return wrap;
+  }
+
   function statusPill(status) {
     const pill = h('span', 'st-status', STATUS_LABELS[status] || status);
     pill.dataset.status = status;
@@ -522,6 +567,7 @@ const KlndrStudio = (() => {
     section,
     counterFor,
     field,
+    slider,
     statusPill,
     note,
     storageNote,

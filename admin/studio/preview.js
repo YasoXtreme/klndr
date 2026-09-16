@@ -86,14 +86,17 @@
     return a.summary || KlndrMarkdown.toPlainText(a.body, { max });
   }
 
-  // The story's bar is the header's playhead, as in the app. Here it can also be
-  // dragged, and a button beside it pauses - so nothing sits over the animation.
+  // The story's bar is the header's playhead, as in the app: a loop fills it
+  // once a pass, a header that plays once fills it on the way in and then leaves
+  // it full while it idles. Here it can also be dragged, and buttons beside it
+  // pause and replay - so nothing sits over the animation.
   function playhead(ed, top, bar, segment, media, cleanups) {
     const player = media && media.player;
     let raf = 0;
     let shown = null;
-    let shownFrame = -1;
+    let shownAt = null;
     let toggle = null;
+    let replay = null;
 
     if (player) {
       toggle = iconButton('pause', 'Pause', () => {
@@ -101,14 +104,18 @@
         if (ed.previewPaused) player.pause();
         else player.play();
       });
-      top.prepend(toggle);
+      replay = iconButton('replay', 'Play from the start', () => {
+        ed.previewPaused = false;
+        player.seek(0);
+        player.play();
+      });
+      top.prepend(toggle, replay);
 
       bar.classList.add('is-scrubbable');
       bar.tabIndex = 0;
       bar.setAttribute('role', 'slider');
       bar.setAttribute('aria-label', 'Scrub through the animation');
       bar.setAttribute('aria-valuemin', '0');
-      bar.setAttribute('aria-valuemax', String(player.duration - 1));
 
       const hold = () => {
         ed.previewPaused = true;
@@ -117,7 +124,7 @@
       const seekTo = (event) => {
         const rect = bar.getBoundingClientRect();
         const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-        player.seek(fraction * (player.duration - 1));
+        player.seek(fraction * player.length);
       };
       bar.addEventListener('pointerdown', (event) => {
         hold();
@@ -132,12 +139,12 @@
         if (step === undefined) return;
         event.preventDefault();
         hold();
-        player.seek(player.frame + step * (event.shiftKey ? 10 : 1));
+        player.seek(player.position + step * (event.shiftKey ? 10 : 1));
       });
     }
 
     const follow = () => {
-      const progress = player ? player.frame / Math.max(1, player.duration - 1) : media ? media.progress() : null;
+      const progress = player ? player.progress : media ? media.progress() : null;
       const value = progress == null ? '1' : progress.toFixed(3);
       if (value !== shown) segment.style.setProperty('--ann-progress', (shown = value));
 
@@ -148,10 +155,18 @@
           toggle.setAttribute('aria-label', label);
           toggle.title = label;
         }
-        if (player.frame !== shownFrame) {
-          shownFrame = player.frame;
-          bar.setAttribute('aria-valuenow', String(shownFrame));
-          bar.setAttribute('aria-valuetext', `${(shownFrame / KlndrScenes.FPS).toFixed(1)} seconds`);
+        // Loop can be switched while this plays, so the bar's span can change.
+        replay.hidden = player.loop;
+        const span = player.loop ? Math.max(0, player.length - 1) : player.length;
+        const at = `${player.position}/${span}/${player.settled}`;
+        if (at !== shownAt) {
+          shownAt = at;
+          bar.setAttribute('aria-valuemax', String(span));
+          bar.setAttribute('aria-valuenow', String(player.position));
+          bar.setAttribute(
+            'aria-valuetext',
+            `${(player.position / KlndrScenes.FPS).toFixed(1)} seconds${player.settled ? ', idling' : ''}`
+          );
         }
       }
       raf = requestAnimationFrame(follow);
@@ -266,13 +281,13 @@
     if (!stage) return;
 
     const a = asAnnouncement(ed);
-    const sceneId = a.media && a.media.type === 'scene' ? a.media.scene.id : null;
     const aspect = a.media ? a.media.aspect : null;
 
-    // An edit to the words should not restart the animation it sits under.
+    // An edit should not restart the animation it sits under: the new player
+    // picks up where the old one was.
     const before = ed.preview;
-    const resumeAt = before && before.player && before.sceneId === sceneId && before.aspect === aspect
-      ? before.player.frame
+    const resume = before && before.player && !before.player.resting
+      ? { plan: before.player.plan, time: before.player.time }
       : null;
     if (before) before.destroy();
 
@@ -291,13 +306,12 @@
     }
 
     stage.replaceChildren(mock);
-    if (player && resumeAt != null) player.seek(resumeAt);
+    if (player && resume) player.setTime(KlndrMotionTimeline.reanchor(resume.plan, player.plan, resume.time));
     // A pause survives the redraw an edit causes.
     if (player && ed.previewPaused) player.pause();
 
     ed.preview = {
       player,
-      sceneId,
       aspect,
       destroy: () => cleanups.splice(0).forEach((fn) => fn())
     };
@@ -306,9 +320,9 @@
   function schedule(ed, { sceneOnly = false } = {}) {
     const media = ed.draft.media;
     const current = ed.preview;
-    if (sceneOnly && current && current.player && media && media.type === 'scene' &&
-      current.sceneId === media.scene.id && current.aspect === media.aspect) {
-      current.player.update(media.scene.props);
+    // Words, colours, loop and idle all reach a playing preview without a redraw.
+    if (sceneOnly && current && current.player && media && media.type === 'scene' && current.aspect === media.aspect) {
+      current.player.update(media.scene);
       return;
     }
     clearTimeout(ed.previewTimer);

@@ -13,10 +13,26 @@ export type SceneInfo = {
   name: string;
   description: string;
   fps: number;
-  durationInFrames: number;
-  stillFrame: number;
+  /** Frames to animate in. */
+  intro: number;
+  /** Frames to animate out. */
+  outro: number;
   schema: FieldSchema[];
   defaults: Record<string, unknown>;
+};
+
+/** A header's motion: clips played one after another, then looped or left idling. */
+export type MotionScene = {
+  loop: boolean;
+  clips: Array<{ id: string; props: Record<string, unknown>; hold: number }>;
+};
+
+export type MotionPlan = {
+  loop: boolean;
+  cycle: number;
+  settle: number;
+  length: number;
+  still: number;
 };
 
 export type ThemeName = 'light' | 'dark';
@@ -41,18 +57,29 @@ export type Theme = {
 
 type ScenesApi = {
   FPS: number;
+  OUTRO: number;
   list(): SceneInfo[];
   get(id: string): SceneInfo | null;
   sanitizeProps(id: string, props: unknown): Record<string, unknown>;
   describe(id: string, props: unknown): string;
   sizeFor(ratio: number): { width: number; height: number };
+  timing(id: string, props: unknown): { intro: number; outro: number } | null;
+};
+
+type TimelineApi = {
+  HOLD_DEFAULT: number;
+  HOLD_MAX: number;
+  HOLD_STEP: number;
+  MAX_CLIPS: number;
+  normalize(scene: unknown): MotionScene;
+  plan(scene: unknown): MotionPlan;
   render(
     ctx: CanvasRenderingContext2D,
-    id: string,
+    plan: MotionPlan,
     frame: number,
-    props: Record<string, unknown>,
-    env: { width: number; height: number; theme: Theme }
-  ): void;
+    env: { width: number; height: number; theme: Theme; ambient?: number }
+  ): unknown;
+  videoLength(plan: MotionPlan, tailSeconds?: number): number;
 };
 
 type CoreApi = {
@@ -62,6 +89,7 @@ type CoreApi = {
 };
 
 export const KlndrScenes: ScenesApi = require('../../../protected/js/motion/scenes.js');
+export const KlndrMotionTimeline: TimelineApi = require('../../../protected/js/motion/motion-timeline.js');
 export const KlndrMotionCore: CoreApi = require('../../../protected/js/motion/motion-core.js');
 export const KlndrPalette: { colors: string[] } = require('../../../protected/js/palette.js');
 

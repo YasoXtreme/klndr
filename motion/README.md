@@ -18,13 +18,23 @@ Headless Shell (about 113 MB) into `node_modules`.
 
 | Studio folder | Compositions | What they are |
 | --- | --- | --- |
-| **Scenes** | `PopReveal`, `BlockShuffle`, `StickerBurst`, `Checklist`, `Stamp`, `Ticker`, `FlipBoard`, `Keycaps`, `Chat`, `PointClick` | The app's built-in motion scenes, drawn by the same code klndr plays live (`protected/js/motion/scenes.js`). |
+| **Scenes** | `PopReveal`, `BlockShuffle`, `StickerBurst`, `Checklist`, `Stamp`, `Ticker`, `FlipBoard`, `Keycaps`, `Chat`, `PointClick` | The app's built-in motion scenes, drawn by the same code klndr plays live (`protected/js/motion/scenes.js` and `motion-timeline.js`). |
 | **Clips** | `FeatureSpotlight`, `WeekRecap` | Free-form React clips in `src/clips/`. Start a new clip by copying one. |
 
 You rarely need to render a scene for a header. The announcement studio's
 **Motion scene** option plays them natively: sharper than a video, a few
 kilobytes instead of megabytes, and they follow the reader's light or dark
 theme. Render one when you want it as a file, or tweak its props here first.
+
+Every scene composition takes three props besides the scene's own:
+
+| Prop | Default | Effect |
+| --- | --- | --- |
+| `loop` | `true` | Render one whole loop: in, idle, out, ending on the empty first frame. |
+| `hold` | `2` | Seconds of idle before the out, in steps of 0.5, up to 10. |
+| `tail` | `3` | With `loop: false`: seconds of idle after the scene has arrived. |
+
+The composition's length follows them.
 
 `npm run compositions` lists every id.
 

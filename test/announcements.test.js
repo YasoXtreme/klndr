@@ -299,13 +299,45 @@ test("sanitize keeps what is valid and refuses what never could be", () => {
   assert.equal(fields.kind, "feature");
   assert.equal(fields.delivery, "banner");
   assert.deepEqual(fields.audience.user_ids, ["usr_aaaaaaaaaaaa"]);
-  assert.equal(fields.media.scene.props.label, "WAY TOO LO");
-  assert.equal(fields.media.scene.props.color, "#fde047");
+  assert.equal(fields.media.scene.clips[0].props.label, "WAY TOO LO");
+  assert.equal(fields.media.scene.clips[0].props.color, "#fde047");
 
   assert.throws(() => sanitize({ title: "x".repeat(91) }), { status: 400 });
   assert.throws(() => sanitize({ cta: { label: "Go", url: "javascript:alert(1)" } }), { status: 400 });
   assert.throws(() => sanitize({ media: { type: "scene", scene: { id: "nope" } } }), { status: 400 });
   assert.throws(() => sanitize({ publish_at: Date.now() }), { status: 400 });
+});
+
+test("a motion header keeps its clips, loop and idle through a save", () => {
+  const { media } = sanitize({
+    media: {
+      type: "scene",
+      scene: { loop: false, clips: [{ id: "chat", props: { messages: ["Hi"] }, hold: 99 }, { id: "stamp", hold: 1.2 }] },
+    },
+  });
+  assert.equal(media.scene.loop, false);
+  assert.deepEqual(media.scene.clips.map((c) => [c.id, c.hold]), [["chat", 10], ["stamp", 1]]);
+  assert.deepEqual(media.scene.clips[0].props.messages, ["Hi"]);
+
+  assert.throws(
+    () => sanitize({ media: { type: "scene", scene: { loop: true, clips: [{ id: "stamp" }, { id: "nope" }] } } }),
+    { status: 400 },
+  );
+  assert.throws(() => sanitize({ media: { type: "scene", scene: { loop: true, clips: [] } } }), { status: 400 });
+  const seven = Array.from({ length: 7 }, () => ({ id: "stamp" }));
+  assert.throws(() => sanitize({ media: { type: "scene", scene: { clips: seven } } }), { status: 400 });
+});
+
+test("a motion header from before clips reads as one looping clip", () => {
+  const stored = sanitize({ media: { type: "scene", scene: { id: "stamp", props: { label: "v2" } } } }).media;
+  // What an older build stored: the whole scene as { id, props }.
+  const legacy = { ...stored, scene: { id: "stamp", props: stored.scene.clips[0].props } };
+  const read = model.normalize(post({ media: legacy })).media;
+  assert.equal(read.scene.loop, true);
+  assert.deepEqual(read.scene.clips.map((c) => [c.id, c.props.label, c.hold]), [["stamp", "v2", 2]]);
+
+  // Saving it straight back is no change - so a live post is not stamped "Updated".
+  assert.equal(JSON.stringify(sanitize({ media: read }).media), JSON.stringify(read));
 });
 
 test("publishing lists what is missing", () => {

@@ -192,7 +192,8 @@ protected/                   Served only to an authenticated session
       inbox.js               Unread dot and menu entry, inbox, reader, stories, banner and corner card
     motion/
       motion-core.js         Springs, easing, seeded randomness, theme tokens, canvas text
-      scenes.js              The built-in motion scenes, each a pure function of a frame
+      scenes.js              The built-in motion scenes: in, idle and out, each a pure function of its clock
+      motion-timeline.js     What plays when: clips, idle, loop or play once, the progress bar — the server requires it too
       motion-player.js       Canvas player: pauses offscreen and hidden, respects reduced motion
   css/announcements.css      Everything announcement-shaped a person sees
   vendor/                    lottie-web (light build) and fflate, copied by npm run vendor
@@ -223,7 +224,7 @@ docs/                        Manual regression checklists
 - **New members do not inherit the announcement backlog.** A post reaches someone's badge or pops up for them only if they already had an account when it went live (or when it was last sent again), unless the post says "also show to people who join later". Older posts still sit in their inbox, already marked read. Before this, a new account's read watermark started at `0`, so every announcement ever posted played at their first sign-in.
 - **Read state is per post, not a watermark.** A receipt per person per post records delivery, opening, dismissal, button click and reaction, stamped with the delivery version it belongs to. "Notify again" makes a post unread for everyone without erasing anyone's history. Posts from before receipts still honour the old `last_seen_announcement_id` watermark, read at request time; nothing was backfilled.
 - **Media bytes never pass through Express.** Vercel caps a function body at 4.5 MB. So the studio asks the server for presigned R2 URLs, with type, size and cache headers bound into the signature, and uploads straight to the bucket with a progress bar. The server then confirms the object with a HEAD request, and reads SVG and Lottie files to reject anything scriptable.
-- **One motion scene, two renderers.** A scene is a pure function from a frame number to canvas drawing. The app's player and the Remotion workspace in `motion/` call the same function, so a rendered clip matches the in-app scene frame for frame, and a still frame costs nothing to show under reduced motion.
+- **One motion scene, two renderers.** A scene animates in, stays idle - still moving - for as long as it is asked to, then animates out. It is a pure function from its clock (frames since it began, and frames since its out began) to canvas drawing, so any length of idle joins its out without a jump. The app's player and the Remotion workspace in `motion/` run the same timeline and the same functions, so a rendered clip matches the in-app scene frame for frame, and a resting pose costs nothing to show under reduced motion.
 
 ### Data model
 
@@ -252,7 +253,7 @@ schema.
 
 An **announcement** has four groups of fields:
 - **Words:** `title`, `summary`, a Markdown `body` and a `kind`.
-- **Header:** `media`. This is an uploaded file referenced by `media_id` or a motion scene with its props, plus alt text and framing.
+- **Header:** `media`. This is an uploaded file referenced by `media_id`, or motion: `scene: { loop, clips: [{ id, props, hold }] }`, plus alt text and framing. Posts saved before clips existed stored `scene: { id, props }`; they are read as one looping clip with two seconds of idle.
 - **Extras:** an optional `cta` button and `reactions_enabled`.
 - **Sending:** `delivery`, `audience`, `evergreen`, `pinned`, `publish_at` and `expires_at`.
 
@@ -442,7 +443,7 @@ new** button in the top bar, and each post also arrives the way it was sent.
 
 ### Writing a post
 
-- **Header.** Upload an image, an animated GIF, PNG or WebP, an SVG, an MP4 or WebM video, or a Lottie file: drop it, paste it, pick it, or reuse one from the library. Or choose a **motion scene** and edit its words and colours. Scenes are drawn live, follow the reader's theme and need no download. Framing covers aspect ratio, fit, focal point, background and alt text.
+- **Header.** Upload an image, an animated GIF, PNG or WebP, an SVG, an MP4 or WebM video, or a Lottie file: drop it, paste it, pick it, or reuse one from the library. Or choose a **motion scene** and edit its words and colours. It can **play once** - animate in, then stay in its idle state - or **loop**, idling for as long as the slider says before it animates out and starts again; the story's progress bar fills on the way in, or once per loop. Scenes are drawn live, follow the reader's theme and need no download. Framing covers aspect ratio, fit, focal point, background and alt text.
 - **Body.** Markdown with a toolbar: headings, lists, checklists, callouts (`> [!TIP]`), code, keycaps (`[[Ctrl+Z]]`), links, and images pasted or dropped straight in.
 - **Button and reactions.** An optional button that opens a link or a klndr screen (categories, integrations, settings, account, analytics), and 🎉 ❤️ 🔥 👏 👀 reactions.
 - **Delivery.**
@@ -574,7 +575,8 @@ They cover:
 - the announcement rules, including someone who joins after thirty posts;
 - Markdown escaping and the legacy renderer;
 - media validation and signed upload URLs;
-- the motion helpers, and the scenes' determinism and seamless loops.
+- the motion helpers, the scenes' determinism, and their in, idle and out: an empty stage at both ends after any idle, no jump into the out, and an intro that has really finished when it says so;
+- the motion timeline: clips, loop and play-once progress, and edits that keep the preview's place.
 
 `test-e2e.js` is a raw-`http` smoke test of the API: auth redirects, session
 handling, task CRUD and the announcement lifecycle. Start the server, then:

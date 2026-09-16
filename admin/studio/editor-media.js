@@ -20,13 +20,28 @@
     };
   }
 
-  function sceneMedia(ed, sceneId, props) {
+  function sceneMedia(ed, scene) {
+    return { type: 'scene', ...framingFrom(ed.draft.media), fit: 'cover', scene };
+  }
+
+  // A header that becomes a motion scene plays once, with the usual idle ready
+  // for the moment someone turns looping on.
+  function freshScene(sceneId) {
     return {
-      type: 'scene',
-      ...framingFrom(ed.draft.media),
-      fit: 'cover',
-      scene: { id: sceneId, props: KlndrScenes.sanitizeProps(sceneId, props) }
+      loop: false,
+      clips: [{ id: sceneId, props: KlndrScenes.sanitizeProps(sceneId, {}), hold: KlndrMotionTimeline.HOLD_DEFAULT }]
     };
+  }
+
+  // The clip being edited. Read fresh every time: picking another scene swaps
+  // the whole header object out from under anything that held on to the old one.
+  function clipOf(ed) {
+    return ed.draft.media.scene.clips[0];
+  }
+
+  function sceneChanged(ed) {
+    ed.lastScene = S.clone(ed.draft.media.scene);
+    E().changed(ed, { sceneOnly: true });
   }
 
   // The shape closest to the file's own, so a new upload starts uncropped.
@@ -151,13 +166,12 @@
   }
 
   function sceneField(ed, f) {
-    const media = ed.draft.media;
     const update = (value) => {
-      media.scene.props = KlndrScenes.sanitizeProps(media.scene.id, { ...media.scene.props, [f.key]: value });
-      ed.lastScene = S.clone(media.scene);
-      E().changed(ed, { sceneOnly: true });
+      const clip = clipOf(ed);
+      clip.props = KlndrScenes.sanitizeProps(clip.id, { ...clip.props, [f.key]: value });
+      sceneChanged(ed);
     };
-    const value = media.scene.props[f.key];
+    const value = clipOf(ed).props[f.key];
 
     switch (f.type) {
       case 'text': {
@@ -183,10 +197,52 @@
   // PANES
   // ==========================================
 
+  // Play once or loop, and - when it loops - how long it idles before it goes
+  // out and comes round again.
+  function playbackFields(ed) {
+    const box = h('div', 'st-fields');
+    const detail = h('div', 'st-fields');
+    const Timeline = KlndrMotionTimeline;
+
+    const renderDetail = () => {
+      if (!ed.draft.media.scene.loop) {
+        detail.replaceChildren(h('p', 'st-hint', 'It animates in once, then stays in its idle state: still moving, never starting over.'));
+        return;
+      }
+      detail.replaceChildren(S.slider({
+        label: 'Idle before it animates out',
+        id: 'stSceneHold',
+        min: 0,
+        max: Timeline.HOLD_MAX,
+        step: Timeline.HOLD_STEP,
+        value: clipOf(ed).hold,
+        format: (seconds) => `${seconds.toFixed(1)} s`,
+        onInput: (seconds) => {
+          clipOf(ed).hold = Timeline.cleanHold(seconds);
+          sceneChanged(ed);
+        },
+        hint: 'Then it animates out and plays again from the start.'
+      }));
+    };
+
+    const mode = segment([
+      { id: 'once', label: 'Play once', icon: 'trending_flat' },
+      { id: 'loop', label: 'Loop', icon: 'repeat' }
+    ], ed.draft.media.scene.loop ? 'loop' : 'once', (value) => {
+      ed.draft.media.scene.loop = value === 'loop';
+      sceneChanged(ed);
+      renderDetail();
+    }, 'Playback');
+
+    renderDetail();
+    box.append(field({ label: 'Playback', control: mode }), detail);
+    return box;
+  }
+
   function scenePane(ed, pane) {
     if (!ed.draft.media || ed.draft.media.type !== 'scene') {
-      const last = ed.lastScene;
-      E().setMedia(ed, sceneMedia(ed, last ? last.id : 'pop-reveal', last ? last.props : {}));
+      const last = ed.lastScene ? KlndrMotionTimeline.normalize(ed.lastScene) : null;
+      E().setMedia(ed, sceneMedia(ed, last && last.clips.length ? last : freshScene('pop-reveal')));
     }
 
     const tiles = h('div', 'st-tiles');
@@ -195,12 +251,12 @@
     const props = h('div', 'st-fields');
 
     const renderProps = () => {
-      const scene = KlndrScenes.get(ed.draft.media.scene.id);
+      const scene = KlndrScenes.get(clipOf(ed).id);
       props.replaceChildren(h('p', 'st-hint', scene.description), ...scene.schema.map((f) => sceneField(ed, f)));
     };
 
     for (const scene of KlndrScenes.list()) {
-      const current = ed.draft.media.scene;
+      const current = clipOf(ed);
       const selected = current.id === scene.id;
       const tile = h('button', `st-tile${selected ? ' is-selected' : ''}`);
       tile.type = 'button';
@@ -213,21 +269,27 @@
         type: 'scene',
         aspect: '2:1',
         decorative: true,
-        scene: { id: scene.id, props: selected ? current.props : {} }
+        scene: { clips: [{ id: scene.id, props: selected ? current.props : {} }] }
       }, { thumbnail: true });
       S.onReset(pane, () => thumb.destroy());
 
       const text = h('span', 'st-tile-text');
       text.append(
         h('span', 'st-tile-name', scene.name),
-        h('span', 'st-tile-meta', `${Math.round(scene.durationInFrames / scene.fps)} second loop`)
+        h('span', 'st-tile-meta', `${(scene.intro / scene.fps).toFixed(1)} s to animate in`)
       );
       tile.append(art, text);
 
       tile.addEventListener('click', () => {
-        if (ed.draft.media.scene.id === scene.id) return;
-        const next = sceneMedia(ed, scene.id, carryWords(ed.draft.media.scene.props, scene.id));
-        E().setMedia(ed, next);
+        const clip = clipOf(ed);
+        if (clip.id === scene.id) return;
+        const next = S.clone(ed.draft.media.scene);
+        next.clips[0] = {
+          id: scene.id,
+          props: KlndrScenes.sanitizeProps(scene.id, carryWords(clip.props, scene.id)),
+          hold: clip.hold
+        };
+        E().setMedia(ed, sceneMedia(ed, next));
         S.selectIn(tiles, tile);
         renderProps();
       });
@@ -235,7 +297,7 @@
     }
 
     renderProps();
-    pane.append(tiles, props);
+    pane.append(tiles, props, playbackFields(ed));
   }
 
   function fileRow(ed, pane, file) {
@@ -523,7 +585,7 @@
     alt.type = 'text';
     alt.maxLength = 200;
     alt.value = media.alt || '';
-    alt.placeholder = isScene ? KlndrScenes.describe(media.scene.id, media.scene.props) : 'Describe what it shows';
+    alt.placeholder = isScene ? KlndrMotionTimeline.describe(media.scene) : 'Describe what it shows';
     alt.disabled = Boolean(media.decorative);
     alt.addEventListener('input', () => {
       media.alt = alt.value;

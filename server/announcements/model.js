@@ -1,4 +1,5 @@
 const Rules = require("../../protected/js/announcements/rules");
+const MotionTimeline = require("../../protected/js/motion/motion-timeline");
 
 // The shape an announcement has in memory, whatever shape it was stored in.
 //
@@ -36,6 +37,16 @@ function legacyMedia(raw) {
   };
 }
 
+// A motion header saved before clips existed ({ id, props }) is read as the one
+// clip it was, looping as it always did. The normalizer is the very one a save
+// runs, and the object keeps its key order, so saving such a post unchanged
+// compares equal and does not earn it an "Updated" label.
+function mediaOf(raw) {
+  const media = raw.media || legacyMedia(raw);
+  if (!media || media.type !== "scene") return media;
+  return { ...media, scene: MotionTimeline.normalize(media.scene) };
+}
+
 function normalize(raw) {
   if (!raw) return null;
   const legacy = isLegacy(raw);
@@ -47,7 +58,7 @@ function normalize(raw) {
     body: legacy ? raw.content || "" : raw.body || "",
     body_format: legacy ? "legacy" : raw.body_format || "md",
     kind: raw.kind || (legacy ? "news" : "feature"),
-    media: raw.media || legacyMedia(raw),
+    media: mediaOf(raw),
     cta: raw.cta || null,
     delivery: raw.delivery || "story",
     audience: raw.audience || { type: "everyone", user_ids: [] },

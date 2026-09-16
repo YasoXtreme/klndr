@@ -3,8 +3,8 @@ import { NewComposition } from './NewComposition';
 import React from 'react';
 import { Composition, Folder } from 'remotion';
 import './klndr/fonts';
-import { KlndrScenes } from './klndr/shared';
-import { sceneComponent } from './klndr/SceneComposition';
+import { KlndrMotionTimeline, KlndrScenes } from './klndr/shared';
+import { sceneComponent, sceneLength } from './klndr/SceneComposition';
 import { compositionId, schemaFor } from './klndr/schema';
 import { FeatureSpotlight, featureSpotlightDefaults, featureSpotlightSchema } from './clips/FeatureSpotlight';
 import { WeekRecap, weekRecapDefaults, weekRecapSchema } from './clips/WeekRecap';
@@ -17,21 +17,33 @@ const HEIGHT = 600;
 
 export const RemotionRoot: React.FC = () => (
   <>
-    {/* The app's built-in scenes, drawn by the same code klndr plays live. */}
+    {/* The app's built-in scenes, drawn by the same code klndr plays live. A
+        render loops by default - an uploaded video header repeats anyway - and
+        its length follows the props: one loop, or the way in plus a tail. */}
     <Folder name="Scenes">
-      {KlndrScenes.list().map((scene) => (
-        <Composition
-          key={scene.id}
-          id={compositionId(scene.id)}
-          component={sceneComponent(scene.id)}
-          schema={schemaFor(scene.id)}
-          defaultProps={{ theme: 'light', ...scene.defaults }}
-          durationInFrames={scene.durationInFrames}
-          fps={scene.fps}
-          width={WIDTH}
-          height={HEIGHT}
-        />
-      ))}
+      {KlndrScenes.list().map((scene) => {
+        const defaultProps = {
+          theme: 'light',
+          loop: true,
+          hold: KlndrMotionTimeline.HOLD_DEFAULT,
+          tail: 3,
+          ...scene.defaults
+        };
+        return (
+          <Composition
+            key={scene.id}
+            id={compositionId(scene.id)}
+            component={sceneComponent(scene.id)}
+            schema={schemaFor(scene.id)}
+            defaultProps={defaultProps}
+            calculateMetadata={({ props }) => ({ durationInFrames: sceneLength(scene.id, props) })}
+            durationInFrames={sceneLength(scene.id, defaultProps)}
+            fps={scene.fps}
+            width={WIDTH}
+            height={HEIGHT}
+          />
+        );
+      })}
       <Composition
         id="test"
         component={Test}

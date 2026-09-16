@@ -305,7 +305,8 @@
           decorative: false,
           focal: { x: 0.5, y: 0.5 },
           background: null,
-          scene: { id: 'pop-reveal', props: {} }
+          // New headers play once; looping is a switch away.
+          scene: { loop: false, clips: [{ id: 'pop-reveal', props: {}, hold: KlndrMotionTimeline.HOLD_DEFAULT }] }
         }
       });
       S.updateListEntry(created);

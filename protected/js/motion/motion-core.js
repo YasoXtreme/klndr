@@ -4,10 +4,10 @@
 // interpolate, spring and easing in the shape Remotion gives them, a seeded
 // random, colour arithmetic, and the drawing helpers every scene shares.
 //
-// Everything a scene draws is a pure function of the frame number. That is what
-// lets one scene play live inside klndr, jump to any frame in the Studio's
+// Everything a scene draws is a pure function of where it is in time. That is
+// what lets one scene play live inside klndr, jump to any frame in the Studio's
 // scrubber, and render to video from the Remotion workspace in motion/ - there
-// is no clock anywhere in here, only frames.
+// is no wall clock anywhere in here, only frame counts.
 //
 // Browser global and CommonJS module, like palette.js: the Remotion project and
 // the unit tests require it.
@@ -174,9 +174,44 @@ const KlndrMotionCore = (() => {
     };
   }
 
-  /** A wave completing a whole number of cycles over the loop, so the loop is seamless. */
-  function loopWave(frame, duration, cycles = 1, phase = 0) {
-    return Math.sin(((frame / duration) * cycles + phase) * Math.PI * 2);
+  // ---- time ------------------------------------------------------------------------
+
+  /**
+   * A sine over time, one cycle every `period` frames. A scene's idle state has
+   * no loop length to fit into - it lasts as long as the admin asks - so waves
+   * are pure time, and nothing about them needs to meet up with frame 0.
+   */
+  function wave(t, period, phase = 0) {
+    return Math.sin((t / period + phase) * Math.PI * 2);
+  }
+
+  /** 0 to 1 and back, once every `period` frames, starting from rest at 0. */
+  function swell(t, period, phase = 0) {
+    return (1 - Math.cos((t / period + phase) * Math.PI * 2)) / 2;
+  }
+
+  /**
+   * 0 to 1 over `frames`, leaving 0 at no speed. Motion that only exists once a
+   * scene has arrived is scaled by this, so it grows out of stillness instead of
+   * starting mid-swing.
+   */
+  function rampIn(t, frames) {
+    return interpolate(t, [0, frames], [0, 1], { easing: Easing.inOut(Easing.sin) });
+  }
+
+  /** Which repetition of an every-`every`-frames event `t` is in, and how far into it. */
+  function beat(t, every) {
+    const index = Math.floor(Math.max(0, t) / every);
+    return { index, local: Math.max(0, t) - index * every };
+  }
+
+  /**
+   * How far through a stretch of its out a scene is: 0 until the out begins, and
+   * exactly 0 on its first frame, so the out starts from precisely what the idle
+   * state was drawing.
+   */
+  function outOf(clock, start, end, easing = Easing.linear) {
+    return progress(clock.exit || 0, start, end, easing);
   }
 
   // ---- colour ----------------------------------------------------------------------
@@ -350,7 +385,9 @@ const KlndrMotionCore = (() => {
    * the colour of that line - the same drawing as a pane or a task block.
    */
   function slabBox(ctx, { x, y, w, h, r = 18, fill, line, lineWidth = 4, slab = 8, slabColor }) {
-    if (slab) {
+    // A slab thinner than half a pixel hides behind the box's own line - a key
+    // pressed all the way down has none.
+    if (slab >= 0.5) {
       roundRectPath(ctx, x + slab, y + slab, w, h, r);
       ctx.fillStyle = slabColor || line;
       ctx.fill();
@@ -406,7 +443,11 @@ const KlndrMotionCore = (() => {
     progress,
     spring,
     random,
-    loopWave,
+    wave,
+    swell,
+    rampIn,
+    beat,
+    outOf,
     parseHex,
     toHex,
     mix,

@@ -29,6 +29,14 @@
     expires_at: 'schedule'
   };
 
+  // The server hands motion headers over in their current shape already; this
+  // only makes sure, so the editor never has to know any other.
+  function mediaDraft(media) {
+    const draft = S.clone(media);
+    if (draft && draft.type === 'scene') draft.scene = KlndrMotionTimeline.normalize(draft.scene);
+    return draft;
+  }
+
   function draftOf(doc) {
     return {
       title: doc.title || '',
@@ -38,7 +46,7 @@
       body: doc.body_format === 'legacy' ? MD.convertLegacy(doc.body || '') : doc.body || '',
       body_format: 'md',
       kind: doc.kind,
-      media: S.clone(doc.media),
+      media: mediaDraft(doc.media),
       cta: S.clone(doc.cta),
       delivery: doc.delivery,
       audience: S.clone(doc.audience) || { type: 'everyone', user_ids: [] },
