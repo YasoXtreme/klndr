@@ -23,7 +23,8 @@ const SHEETS = [
   'protected/css/responsive.css',
   'protected/css/announcements.css',
   'admin/analytics.css',
-  'admin/announcements.css'
+  'admin/announcements.css',
+  'admin/admin.css'
 ];
 
 // common.css is where the scale is DEFINED, so it is the one file allowed to

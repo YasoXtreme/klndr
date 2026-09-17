@@ -9,12 +9,9 @@ const WINDOW_SECONDS = 5 * 60;
 // admin refreshing the dashboard for an hour register as a twelve-ping day,
 // which makes the one person reading the numbers the one distorting them. The
 // Studio is the same thing faster: it autosaves every few seconds while a post
-// is being written, and uploads go through the media routes.
-const EXCLUDED_PREFIXES = [
-  "/api/admin/analytics",
-  "/api/admin/announcements",
-  "/api/admin/media",
-];
+// is being written. Every admin tool - accounts included - lives under this
+// prefix, so a new one is left out without anyone remembering to add it here.
+const EXCLUDED_PREFIX = "/api/admin/";
 
 /**
  * Note that this person was here, at most once every WINDOW_SECONDS.

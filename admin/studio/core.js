@@ -1,12 +1,18 @@
 // Announcement Studio - shared pieces.
 //
-// The Studio is split across a few files in admin/studio/, each adding to one
-// global, KlndrStudio, the way the app's own scripts share KlndrPalette and
-// friends. This one holds what every view needs: page state, small DOM
-// builders, formatting, and the router. admin/announcements.js boots it.
+// The Studio is the Announcements section of the admin page. It is split
+// across a few files in admin/studio/, each adding to one global, KlndrStudio,
+// the way the app's own scripts share KlndrPalette and friends. This one holds
+// what every view needs: page state, small DOM builders, formatting, and the
+// router. admin/announcements.js registers it with the admin shell.
 
 const KlndrStudio = (() => {
   const Rules = KlndrAnnouncementRules;
+  // The pieces every admin section shares live in the shell; the Studio's
+  // views keep reaching them through KlndrStudio.
+  const { h, icon, button, iconButton, toast, confirmDialog, menu, errorBox } = KlndrAdmin.ui;
+
+  const BASE = '/admin/announcements';
 
   const STATUS_LABELS = {
     draft: 'Draft',
@@ -48,45 +54,11 @@ const KlndrStudio = (() => {
     editor: null
   };
 
-  const main = () => document.getElementById('stMain');
+  const main = () => KlndrAdmin.content();
 
   // ==========================================
   // DOM
   // ==========================================
-
-  function h(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text !== undefined && text !== null) node.textContent = text;
-    return node;
-  }
-
-  function icon(name) {
-    const glyph = h('span', 'material-symbols-outlined', name);
-    glyph.setAttribute('aria-hidden', 'true');
-    return glyph;
-  }
-
-  function button(label, { icon: glyph, variant = 'secondary', small = false, onClick, title, ariaLabel } = {}) {
-    const node = h('button', `ann-btn ann-btn-${variant}${small ? ' ann-btn-small' : ''}`);
-    node.type = 'button';
-    if (glyph) node.appendChild(icon(glyph));
-    if (label) node.appendChild(h('span', 'ann-btn-label', label));
-    if (title) node.title = title;
-    if (ariaLabel) node.setAttribute('aria-label', ariaLabel);
-    if (onClick) node.addEventListener('click', onClick);
-    return node;
-  }
-
-  function iconButton(glyph, label, onClick) {
-    const node = h('button', 'ann-icon-btn');
-    node.type = 'button';
-    node.setAttribute('aria-label', label);
-    node.title = label;
-    node.appendChild(icon(glyph));
-    if (onClick) node.addEventListener('click', onClick);
-    return node;
-  }
 
   function checkbox(label, checked, onChange, hint) {
     const wrap = h('label', 'st-check');
@@ -364,129 +336,8 @@ const KlndrStudio = (() => {
   }
 
   // ==========================================
-  // FEEDBACK: TOAST, DIALOG, MENU
-  // ==========================================
-
-  let toastTimer = 0;
-  function toast(message, kind = 'info') {
-    const node = document.getElementById('stToast');
-    if (!node) return;
-    node.textContent = message;
-    node.className = `st-toast${kind === 'error' ? ' is-error' : kind === 'success' ? ' is-success' : ''}`;
-    node.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      node.hidden = true;
-    }, kind === 'error' ? 7000 : 3500);
-  }
-
-  function confirmDialog({ title, body, confirm = 'Confirm', danger = false }) {
-    return new Promise((resolve) => {
-      const dialog = h('dialog', 'st-dialog');
-      const content = h('div', 'st-dialog-body');
-      content.appendChild(h('h2', null, title));
-      if (body) content.appendChild(h('p', null, body));
-      const actions = h('div', 'st-dialog-actions');
-      const cancel = button('Cancel', { onClick: () => dialog.close('cancel') });
-      const ok = button(confirm, { variant: danger ? 'danger' : 'primary', onClick: () => dialog.close('ok') });
-      actions.append(cancel, ok);
-      dialog.append(content, actions);
-      dialog.addEventListener('close', () => {
-        dialog.remove();
-        resolve(dialog.returnValue === 'ok');
-      });
-      document.body.appendChild(dialog);
-      dialog.showModal();
-      // A destructive choice should never be the one Enter lands on.
-      (danger ? cancel : ok).focus();
-    });
-  }
-
-  /** A button that opens a small menu. items: [{ label, icon, onClick, danger } | { separator } | null] */
-  function menu(trigger, items) {
-    const wrap = h('div', 'st-menu-wrap');
-    const list = h('div', 'st-menu');
-    list.hidden = true;
-    list.setAttribute('role', 'menu');
-    trigger.setAttribute('aria-haspopup', 'menu');
-    trigger.setAttribute('aria-expanded', 'false');
-
-    const close = () => {
-      list.hidden = true;
-      trigger.setAttribute('aria-expanded', 'false');
-      document.removeEventListener('pointerdown', outside, true);
-      document.removeEventListener('keydown', onKey, true);
-    };
-    const outside = (event) => {
-      if (!wrap.contains(event.target)) close();
-    };
-    const onKey = (event) => {
-      if (event.key === 'Escape') {
-        close();
-        trigger.focus();
-      }
-    };
-
-    trigger.addEventListener('click', () => {
-      if (!list.hidden) return close();
-      list.hidden = false;
-      trigger.setAttribute('aria-expanded', 'true');
-      document.addEventListener('pointerdown', outside, true);
-      document.addEventListener('keydown', onKey, true);
-      const first = list.querySelector('button');
-      if (first) first.focus();
-      return undefined;
-    });
-
-    for (const item of items) {
-      if (!item) continue;
-      if (item.separator) {
-        list.appendChild(h('div', 'st-menu-sep'));
-        continue;
-      }
-      const row = h('button', `st-menu-item${item.danger ? ' is-danger' : ''}`);
-      row.type = 'button';
-      row.setAttribute('role', 'menuitem');
-      row.append(icon(item.icon), h('span', null, item.label));
-      row.addEventListener('click', () => {
-        close();
-        item.onClick();
-      });
-      list.appendChild(row);
-    }
-
-    // Drop a trailing or doubled separator left by items that did not apply.
-    list.querySelectorAll('.st-menu-sep').forEach((sep) => {
-      const next = sep.nextElementSibling;
-      if (!next || next.classList.contains('st-menu-sep') || !sep.previousElementSibling) sep.remove();
-    });
-
-    wrap.append(trigger, list);
-    return wrap;
-  }
-
-  function errorBox(err) {
-    const box = h('div', 'an-error');
-    box.appendChild(h('p', null,
-      err && err.status === 403
-        ? 'The studio is for admins. Your account does not have access.'
-        : "Couldn't load that."));
-    if (err && err.message && err.status !== 403) box.appendChild(h('p', 'an-error-detail', err.message));
-    return box;
-  }
-
-  // ==========================================
   // PAGE
   // ==========================================
-
-  // The sticky editor bar sits under the sticky topbar, and the preview under
-  // both, so their real heights go into custom properties.
-  function measureChrome() {
-    const topbar = document.querySelector('.an-topbar');
-    if (topbar) document.body.style.setProperty('--st-topbar', `${topbar.offsetHeight}px`);
-    const bar = document.querySelector('.st-bar');
-    if (bar) document.body.style.setProperty('--st-bar', `${bar.offsetHeight}px`);
-  }
 
   /**
    * Open the app with this post playing as it would arrive. Opened before any
@@ -527,13 +378,27 @@ const KlndrStudio = (() => {
   // Filled in by the view files: routes[name](id).
   const routes = {};
 
+  // The Studio's own paths - '/', '/new', '/edit/12', '/stats/12' - hang off
+  // /admin/announcements. The shell hands over whatever follows that.
+  let current = '/';
+
+  function href(path) {
+    return path === '/' ? BASE : `${BASE}${path}`;
+  }
+
+  /** Still on this Studio path? For a view whose data arrives after a wait. */
+  function isAt(path) {
+    return KlndrAdmin.isAt('announcements', path === '/' ? '' : path);
+  }
+
   function teardownView() {
     if (state.view && state.view.cleanup) state.view.cleanup();
     state.view = null;
   }
 
-  function route() {
-    const [name, rawId] = window.location.hash.replace(/^#\/?/, '').split('/');
+  function route(subpath = current) {
+    current = subpath || '/';
+    const [name, rawId] = current.replace(/^\/+/, '').split('/');
     const id = Number(rawId);
     teardownView();
     window.scrollTo(0, 0);
@@ -543,9 +408,18 @@ const KlndrStudio = (() => {
     return routes.list ? routes.list() : undefined;
   }
 
-  function go(path) {
-    if (window.location.hash === `#${path}`) route();
-    else window.location.hash = path;
+  /** Go to a Studio path. Going to where you already are draws it again. */
+  function go(path, options) {
+    KlndrAdmin.navigate(href(path), options);
+  }
+
+  /** The header while a post loads: the way back, and nothing to act on yet. */
+  function loadingHeader() {
+    KlndrAdmin.header({
+      back: { label: 'All announcements', href: href('/') },
+      title: '',
+      documentTitle: 'Announcements'
+    });
   }
 
   return {
@@ -589,13 +463,15 @@ const KlndrStudio = (() => {
     confirmDialog,
     menu,
     errorBox,
-    measureChrome,
     previewInApp,
     emptyStats,
     updateListEntry,
     routes,
     route,
     go,
+    href,
+    isAt,
+    loadingHeader,
     teardownView
   };
 })();

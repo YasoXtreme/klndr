@@ -1,4 +1,4 @@
-// Announcement Studio - the editor: its state, saving, and the bar across the top.
+// Announcement Studio - the editor: its state, saving, and the page header's bar.
 //
 // Every change autosaves a beat after the last keystroke, through the revision
 // check, so two admins editing one post find out instead of quietly overwriting
@@ -262,30 +262,30 @@
     ];
   }
 
+  // The editor's bar is the admin page header: where the post stands on the
+  // left, what can happen to it on the right.
   function renderBar(ed) {
-    const bar = ed.dom.bar;
-    if (!bar) return;
+    // Only while this editor is the page. A late call from an editor that has
+    // been left would draw over whatever page came next.
+    if (!ed.dom.editor || !ed.dom.editor.isConnected) return;
 
-    const back = h('a', 'ann-link-btn');
-    back.href = '#/';
-    back.append(icon('arrow_back'), h('span', 'st-hide-narrow', 'All announcements'));
-
-    const title = h('div', 'st-bar-title');
-    ed.dom.heading = h('h2', null, ed.draft.title || 'Untitled');
+    ed.dom.heading = h('h1', null, ed.draft.title || 'Untitled');
     ed.dom.saveState = h('span', 'st-save-state');
     ed.dom.saveState.setAttribute('role', 'status');
-    title.append(statusPill(ed.doc.studio_status), ed.dom.heading, ed.dom.saveState);
 
-    const actions = h('div', 'st-bar-actions');
-    actions.append(
-      button('Preview in app', { icon: 'open_in_new', small: true, onClick: () => S.previewInApp(ed.id, () => save(ed)) }),
-      menu(iconButton('more_horiz', 'More actions'), editorMenu(ed)),
-      ...primaryActions(ed)
-    );
-
-    bar.replaceChildren(back, title, actions);
+    KlndrAdmin.header({
+      back: { label: 'All announcements', href: S.href('/') },
+      lead: [statusPill(ed.doc.studio_status)],
+      title: ed.dom.heading,
+      meta: [ed.dom.saveState],
+      actions: [
+        button('Preview in app', { icon: 'open_in_new', small: true, onClick: () => S.previewInApp(ed.id, () => save(ed)) }),
+        menu(iconButton('more_horiz', 'More actions'), editorMenu(ed)),
+        ...primaryActions(ed)
+      ],
+      documentTitle: `${ed.draft.title || 'Untitled'} · Announcements`
+    });
     renderSaveState(ed);
-    S.measureChrome();
   }
 
   // ==========================================
@@ -479,11 +479,9 @@
 
   function renderEditor(ed) {
     runCleanups(ed);
-    document.title = `${ed.draft.title || 'Untitled'} · Studio`;
     ed.dom = {};
 
     const view = h('section', 'st-view');
-    ed.dom.bar = h('div', 'st-bar');
     ed.dom.notices = h('div');
     ed.dom.problems = h('div');
     ed.dom.paneSwitch = S.segment(
@@ -510,16 +508,6 @@
     editor.append(form, S.preview.panel(ed));
     view.append(ed.dom.notices, ed.dom.problems, ed.dom.paneSwitch, editor);
     S.main().replaceChildren(view);
-
-    // The bar joins the page header rather than the view: a child of body, it
-    // spans the page and stays stuck under the topbar however far down you are.
-    const bar = ed.dom.bar;
-    document.querySelector('.an-topbar').after(bar);
-    document.body.classList.add('st-has-bar');
-    ed.cleanups.push(() => {
-      bar.remove();
-      document.body.classList.remove('st-has-bar');
-    });
 
     renderBar(ed);
     renderConflict(ed);
@@ -551,6 +539,7 @@
   }
 
   async function openEditor(id) {
+    S.loadingHeader();
     S.main().replaceChildren(h('p', 'an-loading', 'Opening…'));
     let data;
     try {
@@ -560,7 +549,7 @@
       return;
     }
     // Someone may have moved on while it loaded.
-    if (!data || window.location.hash !== `#/edit/${id}`) return;
+    if (!data || !S.isAt(`/edit/${id}`)) return;
     const ed = createEditorState(data.announcement, data.stats);
     state.editor = ed;
     state.view = { name: 'edit', cleanup: () => closeEditor(ed) };

@@ -937,94 +937,6 @@
               <div id="integrationsList"></div>
             </div>
 
-            <!-- Tab 2: Admin Beta Users Manager -->
-            <div class="modal-tab-panel" id="tabPanelAdmin" style="display: none">
-              <!-- This link is hidden for non-admins along with the whole tab,
-                   but hiding it is PRESENTATION, not the control. /analytics and
-                   every endpoint behind it are guarded server-side; do not
-                   "simplify" those guards away on the strength of this. -->
-              <a class="admin-analytics-link" href="/analytics">
-                <span class="material-symbols-outlined">insights</span>
-                <span>
-                  <strong>Open analytics</strong>
-                  <em>Usage, engagement and health across every account</em>
-                </span>
-                <span class="material-symbols-outlined admin-analytics-chevron"
-                  >chevron_right</span
-                >
-              </a>
-
-              <a class="admin-analytics-link" href="/announcements">
-                <span class="material-symbols-outlined">campaign</span>
-                <span>
-                  <strong>Open the announcement studio</strong>
-                  <em>Write, schedule and follow what everyone sees</em>
-                </span>
-                <span class="material-symbols-outlined admin-analytics-chevron"
-                  >chevron_right</span
-                >
-              </a>
-
-              <form
-                id="adminAddUserForm"
-                class="modal-form"
-                style="margin-bottom: 20px"
-              >
-                <div id="adminUserStatusMsg" class="status-msg"></div>
-                <div class="form-row">
-                  <label for="adminNewUsername">New Beta Username</label>
-                  <input
-                    type="text"
-                    id="adminNewUsername"
-                    required
-                    placeholder="e.g. john"
-                  />
-                </div>
-                <div class="form-row-group">
-                  <div class="form-row">
-                    <label for="adminNewPassword">Password</label>
-                    <input
-                      type="password"
-                      id="adminNewPassword"
-                      required
-                      placeholder="••••••••"
-                    />
-                  </div>
-                  <div class="form-row">
-                    <label for="adminNewRole">Role</label>
-                    <select id="adminNewRole">
-                      <option value="user">Beta Tester</option>
-                      <option value="admin">Administrator</option>
-                    </select>
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  class="btn-modal-primary"
-                  style="align-self: flex-end"
-                >
-                  Add User
-                </button>
-              </form>
-
-              <h3 style="font-size: 15px; font-weight: 800; margin-bottom: 8px">
-                Active Beta Accounts
-              </h3>
-              <div class="admin-users-scroll">
-                <table class="admin-users-table">
-                  <thead>
-                    <tr>
-                      <th>Username</th>
-                      <th>Role</th>
-                      <th>Created</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody id="adminUsersTableBody"></tbody>
-                </table>
-              </div>
-            </div>
-
             <!-- Tab: Categories. Rows are rendered by app.js from
                  GET /api/categories. klndr ships no categories at all, so an empty
                  list here is the normal starting state, not an error. -->
@@ -1090,17 +1002,6 @@
             >
               <span class="material-symbols-outlined">hub</span>
               <span>Integrations</span>
-            </button>
-            <button
-              type="button"
-              class="modal-tab-btn"
-              id="tabBtnAdmin"
-              data-panel="tabPanelAdmin"
-              data-title="Beta Users"
-              style="display: none"
-            >
-              <span class="material-symbols-outlined">group</span>
-              <span>Beta Users</span>
             </button>
           </div>
         </nav>
@@ -1335,9 +1236,9 @@
         <header class="ann-inbox-head">
           <h2 id="annInboxTitle">What's new</h2>
           <div class="ann-inbox-head-actions">
-            <a class="ann-link-btn" id="annOpenStudio" href="/announcements" hidden>
+            <a class="ann-link-btn" id="annOpenStudio" href="/admin/announcements" hidden>
               <span class="material-symbols-outlined" aria-hidden="true">edit_square</span>
-              Studio
+              Manage
             </a>
             <button type="button" class="ann-link-btn" id="annMarkAllRead">
               <span class="material-symbols-outlined" aria-hidden="true">done_all</span>
@@ -1534,7 +1435,9 @@
     <!-- The account menu, opened by the profile pill (app.js initUserMenu).
          A .context-menu like the one above, so closeAllModals() and Escape put
          it away, and at phone width it becomes the same bottom sheet.
-         KlndrAnnouncements wires What's new and Studio and keeps the count. -->
+         KlndrAnnouncements wires What's new and keeps its count; app.js shows
+         Admin to admins. Hiding it is presentation - /admin is guarded on the
+         server. -->
     <div class="context-menu user-menu" id="userMenu" role="menu" aria-labelledby="userProfileTrigger">
       <button type="button" class="context-menu-item" id="userMenuAccount" role="menuitem">
         <span class="material-symbols-outlined" aria-hidden="true">person</span>
@@ -1549,9 +1452,9 @@
         <span>What's new</span>
         <span class="user-menu-count" id="userMenuWhatsNewCount" hidden></span>
       </button>
-      <a class="context-menu-item" id="userMenuStudio" href="/announcements" role="menuitem" hidden>
-        <span class="material-symbols-outlined" aria-hidden="true">edit_square</span>
-        <span>Studio</span>
+      <a class="context-menu-item" id="userMenuAdmin" href="/admin" role="menuitem" hidden>
+        <span class="material-symbols-outlined" aria-hidden="true">admin_panel_settings</span>
+        <span>Admin</span>
       </a>
     </div>
 

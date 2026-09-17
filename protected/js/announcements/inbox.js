@@ -56,7 +56,6 @@ class KlndrAnnouncements {
       sr: $('userUnreadSr'),
       entry: $('userMenuWhatsNew'),
       count: $('userMenuWhatsNewCount'),
-      menuStudio: $('userMenuStudio'),
       inbox: $('annInboxModal'),
       filters: $('annInboxFilters'),
       list: $('annInboxList'),
@@ -204,7 +203,6 @@ class KlndrAnnouncements {
     if (!this.dom.inbox) return;
     const admin = Boolean(this.app.user && this.app.user.role === 'admin');
     if (this.dom.studio) this.dom.studio.hidden = !admin;
-    if (this.dom.menuStudio) this.dom.menuStudio.hidden = !admin;
 
     const params = new URLSearchParams(window.location.search);
     const previewId = Number(params.get('announcementPreview'));
@@ -366,7 +364,7 @@ class KlndrAnnouncements {
         if (app.user && app.user.role === 'admin') {
           // Leaving for another page is not a preview ending: nothing to close.
           if (this.preview) this.previewEnding = true;
-          window.location.href = '/analytics';
+          window.location.href = '/admin/analytics';
         }
         return undefined;
       default:
@@ -903,7 +901,7 @@ class KlndrAnnouncements {
     this.previewNote = this.el('span', null, 'Preview - nothing you do here is recorded');
     ribbon.append(this.icon('visibility'), this.previewNote);
     const end = this.el('a', 'ann-preview-end', 'End preview');
-    end.href = `/announcements#/edit/${a.id}`;
+    end.href = `/admin/announcements/edit/${a.id}`;
     end.addEventListener('click', (event) => {
       event.preventDefault();
       this.endPreview();
@@ -951,7 +949,7 @@ class KlndrAnnouncements {
       // A tab the browser would not let a script close, or a preview opened
       // some other way, goes to the post's editor instead.
       setTimeout(() => {
-        if (!window.closed) window.location.replace(`/announcements#/edit/${this.previewId}`);
+        if (!window.closed) window.location.replace(`/admin/announcements/edit/${this.previewId}`);
       }, this.previewFrom === 'tab' ? 150 : 0);
     };
     setTimeout(leave, finished ? KlndrAnnouncements.PREVIEW_EXIT_MS : 0);

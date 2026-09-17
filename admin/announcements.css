@@ -1,47 +1,16 @@
 /* Announcement Studio.
    ====================================================
-   Loads after analytics.css and announcements.css. The admin chrome - topbar,
-   cards, tables, stat tiles - comes from the first; the post itself, in the
-   live preview, from the second. This file is only the editor around them:
-   the same scale, the same tokens, and no app.css.
+   The Announcements section of the admin page. Loads after analytics.css and
+   announcements.css: cards, tables and stat tiles come from the first; the
+   post itself, in the live preview, from the second. The frame around it all -
+   sidebar, page header, toast, menus, dialogs - is admin.css. This file is only
+   the Studio's own views: the same scale, the same tokens, and no app.css.
 
    Hover, press and "selected" for every control here live in common.css's
    interactive-state lists, like the rest of the product. */
 
-.st-page {
-  --st-topbar: 58px;
-  --st-bar: 58px;
-}
-
-.st-main {
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 18px 18px 72px;
-}
-
-.st-heading {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  color: var(--ink-strong);
-}
-
-.st-subheading {
-  margin: 4px 0 0;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ink-soft);
-}
-
-.ann-btn-danger {
-  background: var(--danger-bg);
-  border-color: var(--danger-line);
-  color: var(--danger-ink);
-}
-
 /* ----------------------------------------------------
-   NOTES, TOAST, MENU, DIALOG
+   NOTES
    ---------------------------------------------------- */
 
 .st-note {
@@ -83,137 +52,6 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
-}
-
-.st-toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(20px + env(safe-area-inset-bottom));
-  z-index: 4000;
-  max-width: min(520px, calc(100vw - 32px));
-  padding: 11px 16px;
-  border: var(--border-container);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-  box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
-  color: var(--ink);
-  font-size: 13.5px;
-  font-weight: 700;
-  transform: translateX(-50%);
-}
-
-.st-toast[hidden] {
-  display: none;
-}
-
-.st-toast.is-error {
-  background: var(--danger-bg);
-  color: var(--danger-ink-deep);
-}
-
-.st-toast.is-success {
-  background: var(--success-bg);
-  color: var(--success-ink);
-}
-
-.st-menu-wrap {
-  position: relative;
-}
-
-.st-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 60;
-  min-width: 210px;
-  padding: 6px;
-  border: var(--border-container);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-  box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
-}
-
-.st-menu[hidden] {
-  display: none;
-}
-
-.st-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 10px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--ink-strong);
-  font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 700;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background-color var(--dur-fast) ease;
-}
-
-.st-menu-item .material-symbols-outlined {
-  font-size: 18px;
-  color: var(--ink-soft);
-}
-
-.st-menu-item.is-danger,
-.st-menu-item.is-danger .material-symbols-outlined {
-  color: var(--danger-ink);
-}
-
-.st-menu-sep {
-  height: var(--line-hair);
-  margin: 4px 2px;
-  background: var(--line-soft);
-}
-
-/* margin: auto is what centres a modal <dialog>. The browser gives it that,
-   but common.css's reset (* { margin: 0 }) takes it away again, which left the
-   dialog stuck in the top-left corner. */
-.st-dialog {
-  width: min(460px, calc(100vw - 32px));
-  margin: auto;
-  padding: 0;
-  border: var(--border-container);
-  border-radius: var(--radius-lg);
-  background: var(--surface-1);
-  box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
-  color: var(--ink);
-}
-
-.st-dialog::backdrop {
-  background: var(--scrim);
-}
-
-.st-dialog-body {
-  padding: 22px 24px 6px;
-}
-
-.st-dialog h2 {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 800;
-  color: var(--ink-strong);
-}
-
-.st-dialog p {
-  margin: 8px 0 0;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.5;
-  color: var(--ink-soft);
-}
-
-.st-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 18px 24px 20px;
 }
 
 /* ----------------------------------------------------
@@ -275,13 +113,14 @@
    LIST
    ---------------------------------------------------- */
 
+/* The list's filters, in one row: the status tabs, then the search. */
 .st-list-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .st-search {
@@ -321,7 +160,8 @@
 .st-tabs {
   display: flex;
   gap: 8px;
-  margin-bottom: 18px;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
   scrollbar-width: thin;
 }
@@ -488,44 +328,8 @@
    EDITOR
    ---------------------------------------------------- */
 
-/* The editor's bar is a second row of the page header: placed straight after
-   .an-topbar by editor.js, full width, sticking under it. */
-.st-bar {
-  position: sticky;
-  top: var(--st-topbar);
-  z-index: 15;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  padding: 10px 18px;
-  border-bottom: var(--border-container);
-  background: var(--surface-1);
-}
-
-/* With the bar under it, the two rows read as one header with one hard edge. */
-.st-has-bar .an-topbar {
-  border-bottom: var(--border-hair);
-}
-
-.st-bar-title {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.st-bar-title h2 {
-  margin: 0;
-  overflow: hidden;
-  color: var(--ink-strong);
-  font-size: 17px;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* The editor's bar is the admin page header (editor.js renderBar): its status,
+   title and save state on the left, its actions on the right. */
 .st-save-state {
   display: inline-flex;
   align-items: center;
@@ -576,7 +380,7 @@
 }
 
 .st-section {
-  scroll-margin-top: calc(var(--st-topbar) + var(--st-bar) + 16px);
+  scroll-margin-top: calc(var(--adm-topbar, 0px) + var(--adm-header, 62px) + 16px);
 }
 
 .st-section .an-card-body {
@@ -1484,7 +1288,7 @@
 
 .st-preview {
   position: sticky;
-  top: calc(var(--st-topbar) + var(--st-bar) + 16px);
+  top: calc(var(--adm-topbar, 0px) + var(--adm-header, 62px) + 16px);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1504,7 +1308,7 @@
   justify-content: center;
   align-items: flex-start;
   min-height: 440px;
-  max-height: calc(100vh - var(--st-topbar) - var(--st-bar) - 110px);
+  max-height: calc(100vh - var(--adm-topbar, 0px) - var(--adm-header, 62px) - 110px);
   overflow: auto;
   padding: 18px;
   border: var(--border-container);
@@ -1696,24 +1500,6 @@
    STATS
    ---------------------------------------------------- */
 
-.st-stats-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  margin-bottom: 18px;
-}
-
-.st-stats-head h2 {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  color: var(--ink-strong);
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.4px;
-}
-
 .st-yes {
   color: var(--success-ink);
   font-weight: 800;
@@ -1727,7 +1513,10 @@
    NARROW
    ---------------------------------------------------- */
 
-@media (max-width: 1100px) {
+/* By the room the content area has, not the window: the admin sidebar takes
+   240px of a wide screen and none of a narrow one. Below this width the form
+   and the preview take turns, behind the Write / Preview switch. */
+@container admin-content (max-width: 960px) {
   .st-pane-switch {
     display: inline-flex;
   }
@@ -1751,16 +1540,8 @@
 }
 
 @media (max-width: 640px) {
-  .st-main {
-    padding: 12px 12px 64px;
-  }
-
-  .st-bar {
-    padding: 8px 12px;
-  }
-
-  .st-hide-narrow {
-    display: none;
+  .st-search {
+    width: 100%;
   }
 
   .st-file {

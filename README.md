@@ -42,7 +42,7 @@ lie about the outcome.
 - **Mobile and touch** — pointer events throughout, long-press to drag, sticky mode chips replacing the modifier keys a finger cannot hold, and a phone tab bar.
 - **Integrations** — pull outstanding work from other apps into the tasks panel; ticking it off writes back to the source.
 - **Announcements** — posts written in a dedicated studio with a live preview. The header can be an image, a GIF, an SVG, a video, a Lottie file or a built-in motion scene. Each post chooses how it arrives (a story, a banner, a corner card, or inbox only), who it is for, when it goes live and expires, and whether it has reactions and a button. People who join later are not handed the backlog.
-- **Admin tooling** — beta account management, one-shot password resets, an analytics dashboard, and the announcement studio.
+- **Admin tooling** — one admin page at `/admin`, with a sidebar of sections: analytics, the announcement studio, and accounts (create, one-shot password resets, delete). A new tool is one script that registers a section.
 
 ### Keyboard and pointer
 
@@ -198,10 +198,13 @@ protected/                   Served only to an authenticated session
   css/announcements.css      Everything announcement-shaped a person sees
   vendor/                    lottie-web (light build) and fflate, copied by npm run vendor
 
-admin/                       Admin pages
-  analytics.*, charts.js     /analytics
-  announcements.*            /announcements — the announcement studio
+admin/                       The admin page, /admin — every URL under it serves index.html
+  index.html, shell.js       Sidebar, page header, router, shared dialogs and menus
+  admin.css                  The shell's layout
+  analytics.*, charts.js     Analytics section, and the cards, tables and charts every section uses
+  announcements.*            Announcements section — the announcement studio
   studio/                    Studio views: list, editor and its sections, uploads, preview, stats
+  accounts.js                Accounts section
 
 public/                      Login page, brand assets, fonts — unauthenticated
 brand/                       Logo kit, source SVGs, PNG renders (see brand/README.md)
@@ -376,15 +379,16 @@ signed read URL.
 | `GET` | `/api/admin/analytics/system` | Sessions, integrations, announcements, settings distribution |
 
 All five take `?days=` (clamped to 7–3650) and return a `meta` block describing
-what was measurable over that range. The page itself is `GET /analytics`.
+what was measurable over that range. The page itself is `GET /admin/analytics`;
+`/analytics` redirects there.
 
 **Task content is never exposed.** No title and no note leaves these endpoints,
 and a category name appears only pooled instance-wide once **two distinct
 accounts** use it — enforced in the aggregation pipeline, not in the template, so
 no change to the page can leak one.
 
-Analytics requests are excluded from activity tracking, so an admin watching the
-dashboard does not register as engagement.
+Everything under `/api/admin/` is excluded from activity tracking, so an admin
+watching the dashboard or writing a post does not register as engagement.
 
 </details>
 
@@ -412,7 +416,8 @@ dashboard does not register as engagement.
 
 Every status change (`publish`, `unpublish`, `archive` and `redeliver`) also
 takes `{ revision }`, so nobody publishes a version of a post they have not
-seen. Studio requests are excluded from activity tracking, like analytics.
+seen. Studio requests are excluded from activity tracking, like every other
+admin request.
 
 </details>
 
@@ -438,9 +443,10 @@ because the browser is following a redirect and would otherwise render raw JSON.
 
 ## Announcements
 
-Admins write posts in the announcement studio at **/announcements**, linked from
-the Admin tab in Account & Settings. Everyone finds posts under the **What's
-new** button in the top bar, and each post also arrives the way it was sent.
+Admins write posts in the announcement studio, the Announcements section of the
+admin page at **/admin/announcements** (**Admin** in the account menu). Everyone
+finds posts under **What's new** in the account menu, and each post also arrives
+the way it was sent.
 
 ### Writing a post
 

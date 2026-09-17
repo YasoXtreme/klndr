@@ -2147,107 +2147,6 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
   border: var(--line-hair) solid var(--danger-line);
 }
 
-.admin-users-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-  font-size: 13px;
-}
-
-.admin-users-table th,
-.admin-users-table td {
-  padding: 8px 10px;
-  text-align: left;
-  border-bottom: var(--border-hair);
-}
-
-.admin-users-table th {
-  background: var(--surface-2);
-  font-weight: 700;
-}
-
-.role-badge {
-  padding: 2px 8px;
-  border-radius: var(--radius-md);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.role-badge.admin { background: var(--success-bg); color: var(--success-ink); border: var(--line-hair) solid var(--success-line); }
-.role-badge.user { background: var(--surface-3); color: var(--ink-muted); border: var(--line-hair) solid var(--line-faint); }
-
-.btn-delete-user {
-  background: none;
-  border: none;
-  color: var(--danger-line);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.btn-reset-user {
-  background: none;
-  border: none;
-  color: var(--ink-dim);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.btn-reset-user:hover {
-  color: var(--ink);
-}
-
-/* The two actions sit in one cell; without this they stack, because both
-   buttons are display:flex. */
-.admin-user-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.reset-pending-badge {
-  padding: 2px 8px;
-  border-radius: var(--radius-md);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  background: var(--warn-bg);
-  color: var(--warn-ink);
-  border: var(--line-hair) solid var(--warn-line);
-  white-space: nowrap;
-}
-
-/* The one and only time this password is legible. Monospaced and selectable
-   on purpose: it exists to be copied or read aloud, and it is not recoverable
-   afterwards. */
-.admin-temp-password {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border: var(--line-hair) solid var(--warn-line);
-  border-radius: var(--radius-sm);
-  background: var(--warn-bg-soft);
-}
-
-.admin-temp-password code {
-  display: block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--ink);
-  user-select: all;
-  margin-bottom: 6px;
-}
-
-.admin-temp-password p {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--warn-ink);
-  margin: 0;
-}
-
 /* Sits above every other modal: while it is up, the API refuses everything
    else, so nothing behind it is actionable anyway. */
 .forced-password-modal {
@@ -2697,62 +2596,13 @@ body.is-placing-split .timeline-task-card {
 }
 
 
-/* The way into the analytics page, at the top of the Admin tab. The link is
-   hidden with the tab for non-admins, but that is presentation - /analytics
-   carries its own page guard and every endpoint behind it is admin-only. */
-.admin-analytics-link {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  margin-bottom: 20px;
-  text-decoration: none;
-  background: var(--accent-active);
-  border: var(--border-control);
-  border-radius: var(--radius-md);
-  color: var(--accent-active-ink);
-  box-shadow: var(--slab) var(--slab) 0 var(--shadow-slab);
-  transition: transform 0.12s ease, background 0.12s ease;
-}
-
-
-.admin-analytics-link > span:nth-child(2) {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-
-.admin-analytics-link strong {
-  font-size: 13.5px;
-  font-weight: 800;
-  color: var(--accent-active-ink);
-}
-
-.admin-analytics-link em {
-  font-size: 11.5px;
-  font-weight: 600;
-  font-style: normal;
-  color: var(--accent-active-ink-soft);
-}
-
-.admin-analytics-link .material-symbols-outlined {
-  font-size: 20px;
-  color: var(--accent-active-ink);
-}
-
-.admin-analytics-chevron {
-  font-size: 18px !important;
-  color: var(--accent-active-ink-dim) !important;
-}
-
 /* ====================================================
-   TWO CONTAINERS THAT USED TO BE INLINE STYLES
+   A CONTAINER THAT USED TO BE AN INLINE STYLE
    ====================================================
-   Both of these lived in index.html as style="" attributes hand-rolling a
-   1.5px line and an 8px radius - a treatment no class owned, so nothing kept
-   them in step with the boxes around them. They are objects: a bordered thing
-   holding content inside a pane. */
+   This lived in index.html as a style="" attribute hand-rolling a 1.5px line
+   and an 8px radius - a treatment no class owned, so nothing kept it in step
+   with the boxes around it. It is an object: a bordered thing holding content
+   inside a pane. */
 .settings-identity-box {
   margin-bottom: 16px;
   background: var(--surface-2);
@@ -2760,11 +2610,4 @@ body.is-placing-split .timeline-task-card {
   border: var(--border-control);
   border-radius: var(--radius-md);
   font-size: 13.5px;
-}
-
-.admin-users-scroll {
-  max-height: 180px;
-  overflow-y: auto;
-  border: var(--border-control);
-  border-radius: var(--radius-md);
 }
