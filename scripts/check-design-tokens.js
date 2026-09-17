@@ -21,7 +21,10 @@ const SHEETS = [
   'public/css/login.css',
   'protected/css/app.css',
   'protected/css/responsive.css',
-  'admin/analytics.css'
+  'protected/css/announcements.css',
+  'admin/analytics.css',
+  'admin/announcements.css',
+  'admin/admin.css'
 ];
 
 // common.css is where the scale is DEFINED, so it is the one file allowed to
@@ -83,23 +86,67 @@ for (const rel of SHEETS) {
   });
 }
 
+// --- theme.css, as declarations ---------------------------------------------
+const themeSrc = fs.readFileSync(path.join(ROOT, 'public/css/theme.css'), 'utf8');
+const grab = (start, end) => {
+  const a = themeSrc.indexOf(start);
+  if (a < 0) return null;
+  const b = themeSrc.indexOf(end, a);
+  return themeSrc.slice(a + start.length, b);
+};
+const decls = (block) => {
+  const out = {};
+  const clean = block.replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const m of clean.matchAll(/(--[\w-]+|color-scheme)\s*:\s*([^;]+);/g)) {
+    out[m[1]] = m[2].trim();
+  }
+  return out;
+};
+
+// --- the motion scenes' static theme has to match ---------------------------
+// In the browser a scene reads its tokens off the page. Node, the tests and the
+// Remotion workspace in motion/ have no stylesheet, so they draw with the copy
+// in motion-core.js - and a clip rendered from a stale copy would quietly
+// disagree with the app it is announcing.
+{
+  const rel = 'protected/js/motion/motion-core.js';
+  const { TOKEN_VARS, THEMES } = require(path.join(ROOT, rel));
+  const lightBlock = grab('\n:root {\n', '\n}\n');
+  const darkBlock = grab(':root:not([data-theme="light"]) {', '\n  }\n');
+  if (lightBlock && darkBlock) {
+    const light = decls(lightBlock);
+    // Dark only redeclares what changes; the rest falls through to :root.
+    const dark = { ...light, ...decls(darkBlock) };
+    const resolve = (vars, name, depth = 0) => {
+      const value = vars[name];
+      if (value === undefined || depth > 8) return undefined;
+      const ref = value.match(/^var\((--[\w-]+)\)$/);
+      return ref ? resolve(vars, ref[1], depth + 1) : value.toLowerCase();
+    };
+    for (const [name, vars] of [['light', light], ['dark', dark]]) {
+      const copy = THEMES[name];
+      for (const [key, cssVar] of Object.entries(TOKEN_VARS)) {
+        const css = resolve(vars, cssVar);
+        if (css !== copy[key]) {
+          fail(rel, 0, `THEMES.${name}.${key} is ${copy[key]} but theme.css ${cssVar} is ${css}`);
+        }
+      }
+      const mix = vars['--task-mix'] === undefined ? 100 : parseFloat(vars['--task-mix']);
+      if (mix !== copy.taskMix) {
+        fail(rel, 0, `THEMES.${name}.taskMix is ${copy.taskMix} but theme.css --task-mix is ${mix}`);
+      }
+      const into = resolve(vars, '--task-mix-into') || null;
+      if (into !== copy.taskMixInto) {
+        fail(rel, 0, `THEMES.${name}.taskMixInto is ${copy.taskMixInto} but theme.css --task-mix-into is ${into}`);
+      }
+    }
+  } else {
+    fail('public/css/theme.css', 0, 'could not locate the light and dark blocks for the motion theme check');
+  }
+}
+
 // --- the two dark blocks have to stay in step -------------------------------
 {
-  const src = fs.readFileSync(path.join(ROOT, 'public/css/theme.css'), 'utf8');
-  const grab = (start, end) => {
-    const a = src.indexOf(start);
-    if (a < 0) return null;
-    const b = src.indexOf(end, a);
-    return src.slice(a + start.length, b);
-  };
-  const decls = (block) => {
-    const out = {};
-    const clean = block.replace(/\/\*[\s\S]*?\*\//g, '');
-    for (const m of clean.matchAll(/(--[\w-]+|color-scheme)\s*:\s*([^;]+);/g)) {
-      out[m[1]] = m[2].trim();
-    }
-    return out;
-  };
   const media = grab(':root:not([data-theme="light"]) {', '\n  }\n');
   const attr = grab('\n:root[data-theme="dark"] {\n', '\n}\n');
   if (media && attr) {

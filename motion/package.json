@@ -1,0 +1,28 @@
+{
+  "name": "klndr-motion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion workspace for klndr announcement clips. Not part of the app, its build or its deploy.",
+  "scripts": {
+    "assets": "node scripts/sync-assets.mjs",
+    "studio": "npm run assets && remotion studio src/index.ts",
+    "compositions": "npm run assets && remotion compositions src/index.ts",
+    "render": "npm run assets && node scripts/render.mjs",
+    "render:webm": "npm run assets && node scripts/render.mjs --webm",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.524",
+    "@remotion/effects": "4.0.524",
+    "@remotion/fonts": "4.0.524",
+    "@remotion/zod-types": "4.0.524",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "4.0.524",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "typescript": "^5.6.0"
+  }
+}

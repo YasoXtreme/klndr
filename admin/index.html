@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f2ffec" />
+
+    <!-- Stamps the pinned theme before the first paint. Must stay the first
+         script on the page, same as index.html and login.html. -->
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem("klndr:theme");
+          if (mode === "light" || mode === "dark") {
+            document.documentElement.setAttribute("data-theme", mode);
+          }
+        } catch (e) {}
+      })();
+    </script>
+
+    <title>klndr admin</title>
+    <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" />
+    <link rel="icon" href="/assets/favicon-16.png" sizes="16x16" />
+    <link rel="shortcut icon" href="/assets/favicon.ico" />
+
+    <link
+      rel="preload"
+      as="font"
+      type="font/ttf"
+      href="/assets/ElmsSans.ttf"
+      crossorigin
+    />
+
+    <link rel="stylesheet" href="/public/css/theme.css" />
+    <link rel="stylesheet" href="/public/css/common.css" />
+    <!-- Cards, tables, stat tiles and charts, which every section uses. -->
+    <link rel="stylesheet" href="/admin/analytics.css" />
+    <!-- The rules the app itself draws announcements with, so the Studio's
+         preview is the real thing rather than a lookalike. -->
+    <link rel="stylesheet" href="/protected/css/announcements.css" />
+    <link rel="stylesheet" href="/admin/announcements.css" />
+    <link rel="stylesheet" href="/admin/admin.css" />
+
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      onload="this.rel = 'stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      />
+    </noscript>
+  </head>
+  <body>
+    <!-- The frame every admin tool shares; admin/shell.js fills the sidebar
+         from the sections that register, and each section fills the header and
+         the content. The server sends this page for every URL under /admin. -->
+    <div class="adm-app">
+      <!-- Phones and tablets only: the sidebar becomes a drawer behind this. -->
+      <header class="adm-mobilebar" id="admMobilebar">
+        <button
+          type="button"
+          class="ann-icon-btn"
+          id="admMenuButton"
+          aria-controls="admSidebar"
+          aria-expanded="false"
+          aria-label="Admin menu"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+        </button>
+        <a class="adm-brand" href="/admin" data-adm-home aria-label="klndr admin home">
+          <span class="klndr-lockup" aria-hidden="true">
+            <span class="klndr-plate"><span>k</span></span>
+            <span class="klndr-wordmark">klndr</span>
+          </span>
+          <span class="adm-tag" aria-hidden="true">admin</span>
+        </a>
+      </header>
+
+      <aside class="adm-sidebar" id="admSidebar" aria-label="Admin">
+        <a class="adm-brand" href="/admin" data-adm-home aria-label="klndr admin home">
+          <span class="klndr-lockup" aria-hidden="true">
+            <span class="klndr-plate"><span>k</span></span>
+            <span class="klndr-wordmark">klndr</span>
+          </span>
+          <span class="adm-tag" aria-hidden="true">admin</span>
+        </a>
+        <nav class="adm-nav" id="admNav" aria-label="Admin sections"></nav>
+        <div class="adm-sidebar-foot">
+          <p class="adm-whoami" id="admWhoami"></p>
+          <a class="adm-nav-link" href="/">
+            <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+            <span>Back to klndr</span>
+          </a>
+        </div>
+      </aside>
+      <div class="adm-scrim" id="admScrim" hidden></div>
+
+      <main class="adm-main" id="admMain">
+        <header class="adm-header" id="admHeader"></header>
+        <div class="adm-content" id="adminContent" tabindex="-1">
+          <p class="an-loading">Opening admin…</p>
+        </div>
+      </main>
+    </div>
+
+    <div class="adm-toast" id="admToast" role="status" aria-live="polite" hidden></div>
+
+    <script src="/public/js/theme.js"></script>
+    <script src="/protected/js/api.js"></script>
+    <script src="/protected/js/palette.js"></script>
+    <script src="/admin/charts.js"></script>
+    <script src="/protected/js/announcements/rules.js"></script>
+    <script src="/protected/js/announcements/markdown.js"></script>
+    <script src="/protected/js/motion/motion-core.js"></script>
+    <script src="/protected/js/motion/scenes.js"></script>
+    <script src="/protected/js/motion/motion-timeline.js"></script>
+    <script src="/protected/js/motion/motion-player.js"></script>
+    <script src="/protected/js/announcements/media-view.js"></script>
+    <script src="/protected/js/announcements/reader.js"></script>
+
+    <script src="/admin/shell.js"></script>
+
+    <!-- The sections, in sidebar order. -->
+    <script src="/admin/analytics.js"></script>
+
+    <script src="/admin/studio/core.js"></script>
+    <script src="/admin/studio/uploads.js"></script>
+    <script src="/admin/studio/list.js"></script>
+    <script src="/admin/studio/editor.js"></script>
+    <script src="/admin/studio/editor-sections.js"></script>
+    <script src="/admin/studio/editor-media.js"></script>
+    <script src="/admin/studio/preview.js"></script>
+    <script src="/admin/studio/stats.js"></script>
+    <script src="/admin/announcements.js"></script>
+
+    <script src="/admin/accounts.js"></script>
+  </body>
+</html>

@@ -85,7 +85,7 @@ async function earliest(collection, field) {
 }
 
 async function buildMeta(days) {
-  const { users, tasks, activity } = await collections();
+  const { users, tasks, activity, receipts } = await collections();
   const to = nowSeconds();
   const window = clampDays(days);
   const from = to - window * DAY;
@@ -101,6 +101,7 @@ async function buildMeta(days) {
     tasksWithCreated,
     tasksCompleted,
     tasksCompletedStamped,
+    firstReceipt,
   ] = await Promise.all([
     activity.find({}).sort({ day_ts: 1 }).limit(1).project({ day_ts: 1 }).next(),
     earliest(tasks, "created_at"),
@@ -112,6 +113,7 @@ async function buildMeta(days) {
     tasks.countDocuments({ created_at: { $exists: true } }),
     tasks.countDocuments({ completed: true }),
     tasks.countDocuments({ completed: true, completed_at: { $exists: true } }),
+    earliest(receipts, "delivered_at"),
   ]);
 
   return {
@@ -125,6 +127,9 @@ async function buildMeta(days) {
       // The earliest login ever OBSERVED, which is when instrumentation landed
       // - not when the account was first used.
       login: firstLogin,
+      // When announcement read receipts started. Posts read before then are
+      // counted from the legacy read marker, which never recorded when.
+      announcement_receipts: firstReceipt,
     },
     coverage: {
       users_total: usersTotal,

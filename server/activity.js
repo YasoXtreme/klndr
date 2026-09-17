@@ -5,10 +5,13 @@ const db = require("./db");
 // it is not a tuning knob.
 const WINDOW_SECONDS = 5 * 60;
 
-// The admin's own dashboard is not engagement. Leaving this out would let an
-// admin refreshing the page for an hour register as a twelve-ping day, which
-// makes the one person reading the numbers the one distorting them.
-const EXCLUDED_PREFIX = "/api/admin/analytics";
+// The admin's own tools are not engagement. Leaving analytics in would let an
+// admin refreshing the dashboard for an hour register as a twelve-ping day,
+// which makes the one person reading the numbers the one distorting them. The
+// Studio is the same thing faster: it autosaves every few seconds while a post
+// is being written. Every admin tool - accounts included - lives under this
+// prefix, so a new one is left out without anyone remembering to add it here.
+const EXCLUDED_PREFIX = "/api/admin/";
 
 /**
  * Note that this person was here, at most once every WINDOW_SECONDS.

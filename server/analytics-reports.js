@@ -1,5 +1,7 @@
 const { collections } = require("./db");
 const A = require("./analytics");
+const Rules = require("../protected/js/announcements/rules");
+const model = require("./announcements/model");
 
 const { TZ, DAY, WEEK, WEEK_EPOCH } = A;
 
@@ -174,12 +176,12 @@ function activeBadge(lastSeen, todayTs, createdAt, watchingSince) {
 }
 
 async function people(days) {
-  const { users, settings, integrations, announcements } = await collections();
+  const { users, settings, integrations, announcements, receipts } = await collections();
   const meta = await A.buildMeta(days);
   const todayTs = A.utcDayTs(meta.generated_at);
   const watchingSince = meta.instrumented_since.activity;
 
-  const [userRows, taskStats, sessions, settingsRows, integrationRows, allActivity, recentActivity, lastAnnouncement] =
+  const [userRows, taskStats, sessions, settingsRows, integrationRows, allActivity, recentActivity, announcementRows, receiptRows] =
     await Promise.all([
       users.find({}, { projection: { _id: 0, password_hash: 0 } }).toArray(),
       A.taskStatsByUser(),
@@ -202,7 +204,10 @@ async function people(days) {
         .toArray(),
       A.activityRows(null, null),
       A.activityRows(todayTs - 30 * DAY, todayTs, true),
-      announcements.find({}).sort({ id: -1 }).limit(1).next(),
+      announcements.find({}, { projection: { _id: 0 } }).toArray(),
+      receipts
+        .find({}, { projection: { _id: 0, announcement_id: 1, user_id: 1, version: 1, opened_at: 1 } })
+        .toArray(),
     ]);
 
   const streaks = A.streaksByUser(allActivity, todayTs);
@@ -224,7 +229,25 @@ async function people(days) {
       has_error: Boolean(row.last_sync_error),
     });
   }
-  const latestAnnouncementId = lastAnnouncement ? lastAnnouncement.id : 0;
+  // Unread the way the app counts it, not watermark arithmetic: only posts a
+  // person was here for (or evergreen ones), read by receipt or by the legacy
+  // marker. The rules are protected/js/announcements/rules.js.
+  const liveAnnouncements = announcementRows
+    .map(model.normalize)
+    .filter((a) => Rules.isLive(a, meta.generated_at));
+  const receiptsByUser = new Map();
+  for (const receipt of receiptRows) {
+    if (!receiptsByUser.has(receipt.user_id)) receiptsByUser.set(receipt.user_id, new Map());
+    receiptsByUser.get(receipt.user_id).set(receipt.announcement_id, receipt);
+  }
+  const unreadFor = (user) => {
+    const mine = receiptsByUser.get(user.id);
+    return liveAnnouncements.filter(
+      (a) =>
+        Rules.isDeliverable(a, user, meta.generated_at) &&
+        !Rules.isRead(a, user, mine && mine.get(a.id)),
+    ).length;
+  };
 
   const rows = userRows.map((user) => {
     const session = sessions.get(user.id);
@@ -305,10 +328,7 @@ async function people(days) {
       },
       announcements: {
         last_seen_id: user.last_seen_announcement_id || 0,
-        unread: Math.max(
-          0,
-          latestAnnouncementId - (user.last_seen_announcement_id || 0),
-        ),
+        unread: unreadFor(user),
       },
     };
   });
@@ -931,7 +951,7 @@ function collapse(rows, key) {
 // ==========================================
 
 async function system(days) {
-  const { users, sessions, integrations, announcements, settings, tasks, activity } =
+  const { users, sessions, integrations, announcements, settings, tasks, activity, receipts } =
     await collections();
   const meta = await A.buildMeta(days);
 
@@ -944,6 +964,7 @@ async function system(days) {
     taskSourceRows,
     activityCount,
     activityDays,
+    receiptRows,
   ] = await Promise.all([
     users
       .find(
@@ -956,6 +977,7 @@ async function system(days) {
             must_change_password: 1,
             last_login_at: 1,
             last_seen_announcement_id: 1,
+            created_at: 1,
           },
         },
       )
@@ -967,7 +989,7 @@ async function system(days) {
       ])
       .toArray(),
     integrations.find({}, { projection: { _id: 0, access_token: 0, refresh_token: 0 } }).toArray(),
-    announcements.find({}).sort({ id: 1 }).toArray(),
+    announcements.find({}, { projection: { _id: 0 } }).sort({ id: 1 }).toArray(),
     settings.find({}, { projection: { _id: 0 } }).toArray(),
     tasks
       .aggregate([
@@ -981,6 +1003,12 @@ async function system(days) {
       .toArray(),
     activity.countDocuments(),
     activity.aggregate([{ $group: { _id: "$day_ts" } }, { $count: "n" }]).next(),
+    receipts
+      .find(
+        {},
+        { projection: { _id: 0, announcement_id: 1, user_id: 1, version: 1, opened_at: 1, cta_at: 1, reaction: 1 } },
+      )
+      .toArray(),
   ]);
 
   const sessionHistogram = new Map();
@@ -1012,24 +1040,40 @@ async function system(days) {
     p.dismissed_items += (row.dismissed_ids || []).length;
   }
 
-  // Watermark semantics: last_seen_announcement_id marks everything up to and
-  // including that id as seen, so this is a CUMULATIVE read-through rate -
-  // "read at least this far" - not a per-announcement open rate. One pass over
-  // the users already in memory, not N countDocuments calls.
-  const eligible = userRows.length;
-  const announcementStats = announcementRows.map((a) => {
-    const readThrough = userRows.filter(
-      (u) => (u.last_seen_announcement_id || 0) >= a.id,
-    ).length;
-    return {
-      id: a.id,
-      title: a.title,
-      created_at: a.created_at,
-      read_through: readThrough,
-      eligible,
-      rate: eligible ? Number((readThrough / eligible).toFixed(3)) : 0,
-    };
-  });
+  // Per post, at its current delivery: who it was for (the people already
+  // here when it went out, or everyone for an evergreen post), how many opened
+  // it, clicked its button or reacted. A post read before receipts existed is
+  // counted from the legacy watermark, and `tracked_by` says so rather than
+  // leaving the difference unexplained.
+  const receiptsByAnnouncement = new Map();
+  for (const receipt of receiptRows) {
+    if (!receiptsByAnnouncement.has(receipt.announcement_id)) {
+      receiptsByAnnouncement.set(receipt.announcement_id, new Map());
+    }
+    receiptsByAnnouncement.get(receipt.announcement_id).set(receipt.user_id, receipt);
+  }
+  const announcementStats = announcementRows
+    .map(model.normalize)
+    .filter((a) => a.status !== "draft")
+    .map((a) => {
+      const mine = receiptsByAnnouncement.get(a.id) || new Map();
+      const audience = Rules.audienceOf(a, userRows);
+      const opened = audience.filter((u) => Rules.isRead(a, u, mine.get(u.id))).length;
+      const clicked = audience.filter((u) => Rules.clickedThrough(a, mine.get(u.id))).length;
+      const reactions = [...mine.values()].filter((r) => r.reaction).length;
+      return {
+        id: a.id,
+        title: a.title,
+        status: Rules.studioStatus(a, meta.generated_at),
+        publish_at: a.publish_at,
+        eligible: audience.length,
+        opened,
+        clicked,
+        reactions,
+        rate: audience.length ? Number((opened / audience.length).toFixed(3)) : 0,
+        tracked_by: mine.size ? "receipts" : "watermark",
+      };
+    });
 
   const distribution = (key) => {
     const out = new Map();

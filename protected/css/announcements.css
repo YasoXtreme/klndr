@@ -1,0 +1,1262 @@
+/* ====================================================
+   ANNOUNCEMENTS
+   ====================================================
+   Everything a person sees of announcements - the inbox, the reader, stories,
+   the banner and the corner card - and the header media all of them share.
+   The way in - the account menu and the unread dot on the avatar - lives with
+   the topbar in app.css.
+
+   Written against theme.css and common.css ONLY. The Studio builds its live
+   preview out of these exact rules and does not load app.css, so nothing here
+   may lean on a class that lives there. Where an element also carries an
+   app.css class (.modal-card, .modal-close-btn), that is for the behaviour the
+   class brings in the app; the look is stated again below.
+   ==================================================== */
+
+/* ---- Kinds ----
+   Each kind borrows a chart slot. Those eight are already validated for
+   contrast and colour-blind separation in both themes, which a fresh set of
+   announcement colours would not be. */
+:where(.ann-kind, .ann-notice, .ann-toast-card, .ann-reader, .ann-inbox-thumb, .st-kind) {
+  --ann-kind: var(--chart-1);
+}
+:where(.ann-kind, .ann-notice, .ann-toast-card, .ann-reader, .ann-inbox-thumb, .st-kind)[data-kind="feature"] { --ann-kind: var(--chart-7); }
+:where(.ann-kind, .ann-notice, .ann-toast-card, .ann-reader, .ann-inbox-thumb, .st-kind)[data-kind="improvement"] { --ann-kind: var(--chart-1); }
+:where(.ann-kind, .ann-notice, .ann-toast-card, .ann-reader, .ann-inbox-thumb, .st-kind)[data-kind="fix"] { --ann-kind: var(--chart-3); }
+:where(.ann-kind, .ann-notice, .ann-toast-card, .ann-reader, .ann-inbox-thumb, .st-kind)[data-kind="tip"] { --ann-kind: var(--chart-4); }
+:where(.ann-kind, .ann-notice, .ann-toast-card, .ann-reader, .ann-inbox-thumb, .st-kind)[data-kind="heads_up"] { --ann-kind: var(--chart-2); }
+:where(.ann-kind, .ann-notice, .ann-toast-card, .ann-reader, .ann-inbox-thumb, .st-kind)[data-kind="news"] { --ann-kind: var(--chart-5); }
+
+.ann-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px 0 6px;
+  border: var(--line-hair) solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.ann-kind .material-symbols-outlined {
+  font-size: 15px;
+  color: var(--ann-kind);
+  font-variation-settings: 'FILL' 1;
+}
+
+:is(.ann-btn, .ann-link-btn, .ann-nav-btn, .ann-icon-btn)[hidden] {
+  display: none;
+}
+
+/* ====================================================
+   BUTTONS
+   ==================================================== */
+
+.ann-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--control-md);
+  padding: 0 16px;
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ann-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+/* Flat, like .btn-modal-primary: in this system a slab says "a box that sits
+   or floats", and a button is neither. */
+.ann-btn-primary {
+  background: var(--accent-active);
+  color: var(--accent-active-ink);
+}
+
+.ann-btn-secondary {
+  background: var(--surface-1);
+  color: var(--ink-strong);
+}
+
+.ann-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-soft);
+}
+
+.ann-btn-small {
+  height: var(--control-sm);
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.ann-btn-small.ann-btn-primary {
+  box-shadow: 3px 3px 0 var(--shadow-slab);
+}
+
+.ann-icon-btn,
+.ann-nav-btn {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-strong);
+  cursor: pointer;
+}
+
+.ann-nav-btn {
+  border-radius: var(--radius-pill);
+}
+
+.ann-icon-btn .material-symbols-outlined,
+.ann-nav-btn .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.ann-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+
+.ann-link-btn:hover:not(:disabled) {
+  background: var(--accent-mint);
+  color: var(--ink-strong);
+}
+
+.ann-link-btn .material-symbols-outlined {
+  font-size: 17px;
+}
+
+/* ====================================================
+   HEADER MEDIA
+   ====================================================
+   The box has its shape before anything loads - aspect-ratio from the post,
+   never from the file - so nothing below it moves when the media arrives. */
+
+.ann-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--ann-aspect, 2);
+  overflow: hidden;
+  background: var(--ann-media-bg, var(--surface-2));
+  isolation: isolate;
+}
+
+.ann-media-el {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ann-media[data-fit="contain"] .ann-media-el {
+  object-fit: contain;
+}
+
+.ann-media-lottie svg {
+  display: block;
+}
+
+.ann-motion {
+  position: absolute;
+  inset: 0;
+}
+
+.ann-motion-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ann-media.is-broken,
+.ann-media.is-empty {
+  display: grid;
+  place-items: center;
+}
+
+.ann-media-fallback {
+  font-size: 34px;
+  color: var(--ink-faint);
+}
+
+.ann-media.is-thumb .ann-media-fallback {
+  font-size: 22px;
+}
+
+/* Centred with inset and margin rather than a transform, because common.css
+   lifts every control with a transform on hover. */
+.ann-media-play {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin: auto;
+  padding: 0;
+  border: var(--border-control);
+  border-radius: 50%;
+  background: var(--surface-1);
+  color: var(--ink-strong);
+  box-shadow: var(--slab) var(--slab) 0 var(--shadow-slab);
+  cursor: pointer;
+}
+
+.ann-media-play .material-symbols-outlined {
+  font-size: 32px;
+  font-variation-settings: 'FILL' 1;
+}
+
+.ann-media-sound {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: var(--border-control);
+  border-radius: 50%;
+  background: var(--surface-1);
+  color: var(--ink-strong);
+  cursor: pointer;
+}
+
+.ann-media-sound .material-symbols-outlined {
+  font-size: 20px;
+}
+
+/* ====================================================
+   THE READER
+   ==================================================== */
+
+.ann-reader {
+  display: block;
+  color: var(--ink);
+}
+
+.ann-reader-hero {
+  border-bottom: var(--border-container);
+}
+
+.ann-reader-body {
+  padding: 22px 28px 26px;
+}
+
+.ann-reader-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ann-reader:not(:has(.ann-reader-hero)) .ann-reader-meta {
+  padding-right: 48px;
+}
+
+.ann-reader-date {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-dim);
+}
+
+.ann-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+
+.ann-flag .material-symbols-outlined {
+  font-size: 15px;
+}
+
+.ann-flag.is-updated {
+  color: var(--warn-ink);
+}
+
+.ann-reader-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  color: var(--ink-strong);
+  overflow-wrap: anywhere;
+}
+
+.ann-reader-summary {
+  margin: 8px 0 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.ann-reader-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.ann-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: var(--border-hair);
+}
+
+.ann-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--ink-strong);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.ann-reaction-emoji {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.ann-reaction-count:empty {
+  display: none;
+}
+
+.ann-reaction.is-mine .ann-reaction-emoji {
+  animation: ann-pop 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes ann-pop {
+  0% { transform: scale(0.5); }
+  100% { transform: scale(1); }
+}
+
+/* ---- The body's formatting ---- */
+
+.ann-md {
+  margin-top: 14px;
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.65;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* A blank line between blocks is a visible gap. The :not() lifts this above the
+   blocks' own `margin: 0` below, which would otherwise win by coming later;
+   headings keep their larger gap. */
+.ann-md > * + :not(.ann-md-heading) {
+  margin-top: 12px;
+}
+
+.ann-md-p {
+  margin: 0;
+}
+
+.ann-md-heading {
+  margin: 22px 0 0;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.2px;
+  color: var(--ink-strong);
+}
+
+.ann-md > .ann-md-heading:first-child {
+  margin-top: 0;
+}
+
+h3.ann-md-heading { font-size: 19px; }
+h4.ann-md-heading { font-size: 16.5px; }
+
+h5.ann-md-heading {
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.ann-md strong {
+  font-weight: 800;
+  color: var(--ink-strong);
+}
+
+.ann-md em {
+  font-style: italic;
+}
+
+.ann-md del {
+  color: var(--ink-dim);
+}
+
+.ann-md-link {
+  color: var(--ink-strong);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: var(--chart-1);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.ann-md-link:hover {
+  background: var(--accent-mint);
+}
+
+.ann-md-list {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.ann-md-list li + li {
+  margin-top: 4px;
+}
+
+.ann-md-list.is-checklist {
+  padding-left: 0;
+  list-style: none;
+}
+
+.ann-md-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ann-md-box {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 4px;
+  border: var(--border-control);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+}
+
+.ann-md-check.is-done .ann-md-box {
+  background: var(--accent-active);
+}
+
+.ann-md-check.is-done .ann-md-box::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border-left: var(--line-control) solid var(--accent-active-ink);
+  border-bottom: var(--line-control) solid var(--accent-active-ink);
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.ann-md-check.is-done > span:last-child {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+.ann-md-quote {
+  margin: 0;
+  padding: 2px 0 2px 16px;
+  box-shadow: inset var(--line-container) 0 0 var(--line-mid);
+  color: var(--ink-soft);
+}
+
+.ann-md-callout {
+  margin: 0;
+  padding: 12px 14px;
+  border: var(--border-control);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.ann-md-callout[data-callout="tip"] {
+  background: var(--success-bg);
+}
+
+.ann-md-callout[data-callout="warning"],
+.ann-md-callout[data-callout="important"] {
+  background: var(--warn-bg);
+}
+
+.ann-md-callout > * + :not(.ann-md-heading) {
+  margin-top: 8px;
+}
+
+.ann-md-callout-title {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--ink-strong);
+}
+
+.ann-md-inline-code,
+.ann-md-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.ann-md-inline-code {
+  padding: 1px 5px;
+  border: var(--border-hair);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+}
+
+.ann-md-code {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border: var(--border-control);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  line-height: 1.5;
+}
+
+.ann-md-kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 0 6px;
+  border: var(--border-control);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  box-shadow: 0 2px 0 var(--shadow-slab);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 20px;
+  text-align: center;
+  color: var(--ink-strong);
+}
+
+.ann-md-figure {
+  margin: 0;
+}
+
+.ann-md-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: var(--border-control);
+  border-radius: var(--radius-md);
+}
+
+.ann-md-rule {
+  height: var(--line-control);
+  margin: 20px 0;
+  border: none;
+  background: var(--line-soft);
+}
+
+/* Posts from before the rewrite render through the old rules, which put their
+   own spacing in the markup. */
+.ann-md.is-legacy > * + * {
+  margin-top: 0;
+}
+
+.ann-md.is-legacy .announcement-p {
+  margin: 0 0 8px;
+}
+
+.ann-md.is-legacy .announcement-p:last-child {
+  margin-bottom: 0;
+}
+
+.ann-md.is-legacy .announcement-ul {
+  margin: 6px 0 10px;
+  padding-left: 24px;
+  list-style: disc;
+}
+
+.ann-md.is-legacy .announcement-ul li + li {
+  margin-top: 4px;
+}
+
+.ann-md.is-legacy .announcement-spacer {
+  height: 8px;
+}
+
+/* ====================================================
+   MODALS: INBOX, READER, STORIES
+   ==================================================== */
+
+.ann-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.ann-inbox-card,
+.ann-reader-card,
+.ann-story-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.ann-inbox-card {
+  max-width: 440px;
+  max-height: min(680px, calc(100dvh - 96px));
+}
+
+.ann-reader-card {
+  max-width: 640px;
+  max-height: min(88dvh, 900px);
+}
+
+.ann-story-card {
+  max-width: 600px;
+  max-height: min(88dvh, 860px);
+}
+
+.ann-floating-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  width: 40px;
+  height: 40px;
+  border: var(--border-control);
+  border-radius: 50%;
+  background: var(--surface-1);
+  box-shadow: 3px 3px 0 var(--shadow-slab);
+}
+
+.ann-reader-nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: var(--border-hair);
+}
+
+.ann-reader-nav:has(.ann-nav-btn[hidden]) {
+  display: none;
+}
+
+.ann-reader-position,
+.ann-story-count {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Inbox ---- */
+
+.ann-inbox-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 10px 10px 20px;
+  border-bottom: var(--border-hair);
+}
+
+.ann-inbox-head h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: var(--ink-strong);
+}
+
+.ann-inbox-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ann-inbox-filters {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: var(--border-hair);
+}
+
+.ann-inbox-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.ann-filter {
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border: var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ann-inbox-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ann-inbox-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 34px 12px 16px;
+  border: none;
+  border-bottom: var(--border-hair);
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease;
+}
+
+.ann-inbox-thumb {
+  display: block;
+  overflow: hidden;
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.ann-inbox-thumb.is-icon {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  background: color-mix(in srgb, var(--ann-kind) 24%, var(--surface-1));
+}
+
+.ann-inbox-thumb.is-icon .material-symbols-outlined {
+  font-size: 26px;
+  color: var(--ink-strong);
+}
+
+.ann-inbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ann-inbox-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ann-inbox-meta > .material-symbols-outlined {
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.ann-inbox-when {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.ann-inbox-title,
+.ann-inbox-summary,
+.ann-toast-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.ann-inbox-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ink-strong);
+}
+
+.ann-inbox-item.is-unread .ann-inbox-title {
+  font-weight: 800;
+}
+
+.ann-inbox-summary {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.ann-unread-dot {
+  position: absolute;
+  top: 18px;
+  right: 14px;
+  width: 10px;
+  height: 10px;
+  border: var(--line-hair) solid var(--color-border);
+  border-radius: 50%;
+  background: var(--danger-line);
+}
+
+.ann-inbox-empty {
+  padding: 22px 24px 30px;
+  text-align: center;
+}
+
+.ann-inbox-empty-art {
+  max-width: 260px;
+  margin: 0 auto 14px;
+  overflow: hidden;
+  border: var(--border-control);
+  border-radius: var(--radius-md);
+}
+
+.ann-inbox-empty-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink-strong);
+}
+
+.ann-inbox-empty-note {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+@media (min-width: 768px) {
+  /* On a desktop the inbox is a panel hanging under the account menu it was
+     opened from, not a dialog in the middle of the screen - and nothing behind
+     it needs dimming. */
+  .ann-inbox-modal {
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding-top: calc(var(--topbar-height, 54px) + 16px);
+    padding-right: max(24px, env(safe-area-inset-right));
+  }
+
+  .ann-inbox-modal .modal-backdrop {
+    background: transparent;
+    backdrop-filter: none;
+  }
+}
+
+/* ---- Stories ---- */
+
+.ann-story-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  border-bottom: var(--border-hair);
+}
+
+.ann-story-progress {
+  flex: 1;
+  display: flex;
+  gap: 5px;
+}
+
+.ann-story-segment {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--line-soft);
+}
+
+.ann-story-segment.is-done {
+  background: var(--ink-strong);
+}
+
+/* The current story's playhead: it fills as the header's animation or clip
+   plays, and starts over when that loops (--ann-progress, set by inbox.js). A
+   motion header that plays once fills it on the way in and leaves it full while
+   it idles; one with no length to it - a picture, a still - leaves it full. */
+.ann-story-segment.is-current {
+  background: linear-gradient(90deg, var(--ink-strong) calc(var(--ann-progress, 1) * 100%), var(--line-soft) 0);
+}
+
+.ann-story-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: var(--border-hair);
+}
+
+.ann-story-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.ann-story-more {
+  padding: 44px 28px 40px;
+  text-align: center;
+}
+
+.ann-story-more-art {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 18px;
+  border: var(--border-control);
+  border-radius: var(--radius-lg);
+  background: var(--accent-active);
+  color: var(--accent-active-ink);
+  box-shadow: var(--slab) var(--slab) 0 var(--shadow-slab);
+}
+
+.ann-story-more-art .material-symbols-outlined {
+  font-size: 40px;
+}
+
+.ann-story-more-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink-strong);
+}
+
+.ann-story-more-note {
+  margin: 6px 0 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+/* ====================================================
+   BANNER AND CORNER CARD
+   ====================================================
+   Both float over the workspace rather than taking room in it. The canvas does
+   its own layout maths against the space it is given, and a notice that
+   pushed it down would change that geometry under a drag in progress. */
+
+.ann-notice-host {
+  position: fixed;
+  top: calc(var(--topbar-height, 54px) + 18px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 950;
+  width: min(760px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.ann-notice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 9px 9px 20px;
+  overflow: hidden;
+  border: var(--border-container);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.ann-notice::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 7px;
+  background: var(--ann-kind);
+}
+
+.ann-notice.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+.ann-notice-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ann-notice-title,
+.ann-notice-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ann-notice-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink-strong);
+}
+
+.ann-notice-summary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.ann-toast-host {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 960;
+  width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.ann-toast-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 12px 16px;
+  overflow: hidden;
+  border: var(--border-container);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 200ms ease, transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ann-toast-card:not(:has(.ann-toast-thumb)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ann-toast-card.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+.ann-toast-thumb {
+  width: 96px;
+  align-self: start;
+  overflow: hidden;
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+}
+
+.ann-toast-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ann-toast-title {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--ink-strong);
+}
+
+.ann-toast-summary {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.ann-toast-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ann-toast-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 4px;
+  background: var(--ann-kind);
+  transform-origin: left;
+  animation: ann-toast-timer var(--ann-card-ms, 10s) linear forwards;
+}
+
+.ann-toast-card.is-paused .ann-toast-timer {
+  animation-play-state: paused;
+}
+
+@keyframes ann-toast-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* ---- Preview (admins) ---- */
+
+.ann-preview-ribbon {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 4100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border: var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--warn-bg);
+  color: var(--warn-ink-deep);
+  box-shadow: var(--slab) var(--slab) 0 var(--shadow-slab);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.ann-preview-ribbon .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.ann-preview-end {
+  padding: 5px 12px;
+  border: var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--ink-strong);
+  text-decoration: none;
+}
+
+.ann-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ====================================================
+   PHONES
+   ====================================================
+   responsive.css turns every .modal-card into a bottom sheet, and this file
+   loads after it - so the sizes restated above for desktop have to be undone
+   here, or they would win on a phone too. */
+
+@media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+  .ann-inbox-card,
+  .ann-reader-card,
+  .ann-story-card {
+    max-width: none;
+    max-height: 88dvh;
+    padding: 0 0 env(safe-area-inset-bottom);
+  }
+
+  .ann-reader-body {
+    padding: 18px 18px 22px;
+  }
+
+  .ann-reader-title {
+    font-size: 22px;
+  }
+
+  .ann-inbox-item {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+
+  .ann-toast-host {
+    right: 16px;
+    left: 16px;
+    bottom: calc(56px + 12px + env(safe-area-inset-bottom));
+    width: auto;
+  }
+
+  .ann-notice .ann-kind {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ann-reaction.is-mine .ann-reaction-emoji,
+  .ann-notice,
+  .ann-toast-card {
+    transition: none;
+  }
+
+  .ann-toast-timer {
+    display: none;
+  }
+}

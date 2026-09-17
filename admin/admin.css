@@ -1,0 +1,557 @@
+/* klndr admin - the shell.
+   ====================================================
+   The frame every admin tool sits in: a sidebar, one page header, and the
+   content beside them. Loads last, after analytics.css (cards, tables, charts)
+   and the Studio's stylesheets. Like those it loads theme.css and common.css
+   but not app.css, so the visual language is restated from the same tokens.
+
+   Hover, press and "current" for the sidebar rows come from common.css's
+   interactive-state lists, like every other control in the product. */
+
+/* common.css pins body to 100% of the viewport. The sticky sidebar and header
+   are only sticky inside their parents, so the page grows instead. */
+body {
+  margin: 0;
+  height: auto;
+  min-height: 100vh;
+  font-family: var(--font-family);
+  background: var(--bg-gradient);
+  background-attachment: fixed;
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* align-content: start, or the rows share out min-height between them and a
+   phone's slim top bar grows as tall as the page is short. */
+.adm-app {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  align-content: start;
+  min-height: 100vh;
+}
+
+/* ----------------------------------------------------
+   SIDEBAR
+   ---------------------------------------------------- */
+
+.adm-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  height: 100vh;
+  height: 100dvh;
+  padding: 14px 12px 12px;
+  overflow-y: auto;
+  border-right: var(--border-container);
+  background: var(--surface-1);
+  scrollbar-width: thin;
+}
+
+/* The app top bar's lockup, with the admin tag outside its clear space. */
+.adm-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  border-radius: var(--radius-md);
+  color: inherit;
+  text-decoration: none;
+}
+
+.adm-sidebar .adm-brand {
+  align-self: flex-start;
+}
+
+.adm-brand .klndr-lockup {
+  --klndr-size: 32px;
+  --klndr-shadow: 0px;
+}
+
+.adm-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border: var(--line-hair) solid var(--success-line);
+  border-radius: var(--radius-pill);
+  background: var(--success-bg);
+  color: var(--success-ink);
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.adm-nav {
+  flex: 1;
+}
+
+.adm-nav-list,
+.adm-nav-pages {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.adm-nav-list {
+  gap: 4px;
+}
+
+/* The Account & Settings modal's nav row, so a list of places looks the same
+   wherever klndr has one. */
+.adm-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--control-md);
+  padding: 7px 12px;
+  border: var(--line-control) solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--ink-strong);
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.adm-nav-link .material-symbols-outlined {
+  flex-shrink: 0;
+  font-size: 19px;
+}
+
+/* A section's pages show while you are in it. The rule down their left edge
+   hangs from the section's icon, and their labels line up with its label. */
+.adm-nav-pages {
+  display: none;
+  gap: 2px;
+  margin: 2px 0 6px 21px;
+  padding-left: 8px;
+  border-left: var(--border-hair);
+}
+
+.adm-nav-group.is-open > .adm-nav-pages {
+  display: flex;
+}
+
+.adm-nav-group.is-open > .adm-nav-link {
+  font-weight: 800;
+}
+
+.adm-nav-page {
+  min-height: var(--control-sm);
+  padding: 4px 10px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.adm-sidebar-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: var(--border-hair);
+}
+
+.adm-whoami {
+  margin: 0;
+  padding: 0 14px;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-whoami:empty {
+  display: none;
+}
+
+.adm-mobilebar,
+.adm-scrim {
+  display: none;
+}
+
+/* ----------------------------------------------------
+   MAIN COLUMN
+   ---------------------------------------------------- */
+
+.adm-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* One header for every page: where you are, then what you can do. */
+.adm-header {
+  position: sticky;
+  top: var(--adm-topbar, 0px);
+  z-index: 15;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  min-height: 62px;
+  padding: 10px 18px;
+  border-bottom: var(--border-container);
+  background: var(--surface-1);
+}
+
+/* Its basis is what keeps a title legible: once the actions would squeeze it
+   below that, they wrap onto a row of their own instead. */
+.adm-header-main {
+  display: flex;
+  flex: 1 1 280px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.adm-eyebrow {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.adm-header-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.adm-title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-strong);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adm-subtitle {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.adm-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.adm-content {
+  container: admin-content / inline-size;
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 18px 18px 72px;
+}
+
+.adm-content:focus {
+  outline: 0;
+}
+
+/* ----------------------------------------------------
+   TOAST, MENU, DIALOG
+   ---------------------------------------------------- */
+
+.ann-btn-danger {
+  background: var(--danger-bg);
+  border-color: var(--danger-line);
+  color: var(--danger-ink);
+}
+
+.adm-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 4000;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 11px 16px;
+  border: var(--border-container);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 700;
+  transform: translateX(-50%);
+}
+
+.adm-toast[hidden] {
+  display: none;
+}
+
+.adm-toast.is-error {
+  background: var(--danger-bg);
+  color: var(--danger-ink-deep);
+}
+
+.adm-toast.is-success {
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+
+.adm-menu-wrap {
+  position: relative;
+}
+
+.adm-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 210px;
+  padding: 6px;
+  border: var(--border-container);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
+}
+
+.adm-menu[hidden] {
+  display: none;
+}
+
+.adm-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-strong);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) ease;
+}
+
+.adm-menu-item .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--ink-soft);
+}
+
+.adm-menu-item.is-danger,
+.adm-menu-item.is-danger .material-symbols-outlined {
+  color: var(--danger-ink);
+}
+
+.adm-menu-sep {
+  height: var(--line-hair);
+  margin: 4px 2px;
+  background: var(--line-soft);
+}
+
+/* margin: auto is what centres a modal <dialog>. The browser gives it that,
+   but common.css's reset (* { margin: 0 }) takes it away again, which left the
+   dialog stuck in the top-left corner. */
+.adm-dialog {
+  width: min(460px, calc(100vw - 32px));
+  margin: auto;
+  padding: 0;
+  border: var(--border-container);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
+  color: var(--ink);
+}
+
+.adm-dialog::backdrop {
+  background: var(--scrim);
+}
+
+.adm-dialog-body {
+  padding: 22px 24px 6px;
+}
+
+.adm-dialog h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--ink-strong);
+}
+
+.adm-dialog p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.adm-dialog-body > .st-fields {
+  margin-top: 16px;
+}
+
+.adm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 18px 24px 20px;
+}
+
+/* ----------------------------------------------------
+   ACCOUNTS
+   ---------------------------------------------------- */
+
+.adm-cell-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.adm-cell-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.an-table td.adm-actions-cell {
+  width: 1%;
+}
+
+.adm-icon-danger {
+  color: var(--danger-ink);
+}
+
+.adm-form-error {
+  padding: 8px 12px;
+  border: var(--line-hair) solid var(--danger-line);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger-ink-deep);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.adm-form-error[hidden] {
+  display: none;
+}
+
+/* The one and only time a temporary password is legible. Monospaced and
+   selectable on purpose: it exists to be copied or read aloud, and nothing can
+   show it again afterwards. */
+.adm-secret-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.adm-secret {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  overflow-x: auto;
+  border: var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--ink-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  user-select: all;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------
+   NARROW: THE SIDEBAR BECOMES A DRAWER
+   ---------------------------------------------------- */
+
+@media (max-width: 1023px) {
+  .adm-app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adm-mobilebar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: var(--border-hair);
+    background: var(--surface-1);
+  }
+
+  /* Alignment applies to a fixed child of a grid too: without stretch, the
+     start above would shrink the drawer to its links instead of the screen. */
+  .adm-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    align-self: stretch;
+    width: min(300px, 86vw);
+    height: auto;
+    box-shadow: var(--slab-float) 0 0 var(--shadow-container);
+    transform: translateX(calc(-100% - var(--slab-float)));
+    visibility: hidden;
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.22s;
+  }
+
+  .adm-drawer-open .adm-sidebar {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .adm-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: block;
+    background: var(--scrim);
+  }
+
+  .adm-scrim[hidden] {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .adm-header {
+    padding: 8px 12px;
+  }
+
+  .adm-content {
+    padding: 12px 12px 64px;
+  }
+
+  .adm-hide-narrow {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adm-sidebar,
+  .adm-drawer-open .adm-sidebar {
+    transition: none;
+  }
+}

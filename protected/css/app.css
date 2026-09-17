@@ -182,6 +182,13 @@ body {
   --klndr-shadow: 0px;
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* A button: it opens the account menu (app.js initUserMenu). */
 .user-profile-pill {
   display: flex;
   align-items: center;
@@ -189,15 +196,82 @@ body {
   background: var(--surface-1);
   border: var(--border-control);
   border-radius: var(--radius-pill);
-  padding: 4px 14px 4px 8px;
+  padding: 4px 8px;
+  color: var(--ink-strong);
+  font-family: inherit;
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.12s ease;
 }
 
+.user-profile-pill .user-profile-chevron {
+  margin-left: -2px;
+  font-size: 18px;
+  color: var(--ink-soft);
+  transition: transform var(--dur-fast) ease;
+}
+
+.user-profile-pill[aria-expanded="true"] .user-profile-chevron {
+  transform: rotate(180deg);
+}
+
+/* The only sign of unread announcements up here. No number and no colour that
+   reads as an error: the count is inside the menu, and new posts have already
+   announced themselves by arriving. */
+.user-unread-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
+  border: var(--border-hair);
+  border-radius: 50%;
+  background: var(--chart-7);
+}
+
+.user-unread-dot[hidden],
+.user-menu [hidden] {
+  display: none;
+}
+
+/* ---- Account menu ----
+   The task menu's look. Its rows are buttons and a link here, so they shed
+   what a browser gives those - at zero specificity, so the shared row hover in
+   common.css still wins. */
+.user-menu {
+  min-width: 220px;
+}
+
+.user-menu :where(.context-menu-item) {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--ink-strong);
+  font-family: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+.user-menu-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 6px;
+  border: var(--border-hair);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink-strong);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
 
 .user-avatar-circle {
+  position: relative;
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -2073,107 +2147,6 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
   border: var(--line-hair) solid var(--danger-line);
 }
 
-.admin-users-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-  font-size: 13px;
-}
-
-.admin-users-table th,
-.admin-users-table td {
-  padding: 8px 10px;
-  text-align: left;
-  border-bottom: var(--border-hair);
-}
-
-.admin-users-table th {
-  background: var(--surface-2);
-  font-weight: 700;
-}
-
-.role-badge {
-  padding: 2px 8px;
-  border-radius: var(--radius-md);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.role-badge.admin { background: var(--success-bg); color: var(--success-ink); border: var(--line-hair) solid var(--success-line); }
-.role-badge.user { background: var(--surface-3); color: var(--ink-muted); border: var(--line-hair) solid var(--line-faint); }
-
-.btn-delete-user {
-  background: none;
-  border: none;
-  color: var(--danger-line);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.btn-reset-user {
-  background: none;
-  border: none;
-  color: var(--ink-dim);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-.btn-reset-user:hover {
-  color: var(--ink);
-}
-
-/* The two actions sit in one cell; without this they stack, because both
-   buttons are display:flex. */
-.admin-user-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.reset-pending-badge {
-  padding: 2px 8px;
-  border-radius: var(--radius-md);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  background: var(--warn-bg);
-  color: var(--warn-ink);
-  border: var(--line-hair) solid var(--warn-line);
-  white-space: nowrap;
-}
-
-/* The one and only time this password is legible. Monospaced and selectable
-   on purpose: it exists to be copied or read aloud, and it is not recoverable
-   afterwards. */
-.admin-temp-password {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border: var(--line-hair) solid var(--warn-line);
-  border-radius: var(--radius-sm);
-  background: var(--warn-bg-soft);
-}
-
-.admin-temp-password code {
-  display: block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--ink);
-  user-select: all;
-  margin-bottom: 6px;
-}
-
-.admin-temp-password p {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--warn-ink);
-  margin: 0;
-}
-
 /* Sits above every other modal: while it is up, the API refuses everything
    else, so nothing behind it is actionable anyway. */
 .forced-password-modal {
@@ -2204,282 +2177,6 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--on-color-border);
   justify-content: center;
   box-sizing: border-box;
 }
-
-/* ====================================================
-   ANNOUNCEMENT SYSTEM
-   ==================================================== */
-
-/* Tab header row with create button */
-.announcements-tab-header {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
-
-.btn-create-announcement {
-  display: flex;
-  align-items: center;
-  height: var(--control-md);
-  padding: 0 14px;
-}
-
-/* Scrollable list of announcements */
-.announcements-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  max-height: 340px;
-  overflow-y: auto;
-  border: var(--border-control);
-  border-radius: var(--radius-md);
-}
-
-.announcements-list:empty::after {
-  content: 'No announcements yet.';
-  display: block;
-  padding: 24px 16px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-dim);
-}
-
-.announcement-list-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: var(--border-hair);
-  cursor: pointer;
-  transition: background 0.1s ease;
-  user-select: none;
-}
-
-.announcement-list-item:last-child {
-  border-bottom: none;
-}
-
-
-.announcement-list-item-title {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--ink-strong);
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.announcement-list-item-date {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--ink-dim);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.announcement-list-item-chevron {
-  color: var(--ink-faint);
-  flex-shrink: 0;
-}
-
-/* Announcement view modal card — slightly wider */
-.announcement-view-card {
-  max-width: 580px !important;
-}
-
-.announcement-view-header-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-/* Shared meta text (date & time beneath title) */
-.announcement-meta {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-dim);
-  margin-top: 1px;
-}
-
-/* Optional header image banner */
-.announcement-header-img {
-  width: 100%;
-  margin-bottom: 16px;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  border: var(--border-control);
-}
-
-.announcement-header-img img {
-  width: 100%;
-  max-height: 220px;
-  object-fit: cover;
-  display: block;
-}
-
-/* Multi-line content body */
-.announcement-content {
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.65;
-  color: var(--ink);
-  word-break: break-word;
-  margin-top: 12px;
-}
-
-.announcement-content .announcement-p {
-  margin: 0 0 8px 0;
-}
-
-.announcement-content .announcement-p:last-child {
-  margin-bottom: 0;
-}
-
-.announcement-content .announcement-ul {
-  margin: 6px 0 10px 0;
-  padding-left: 24px;
-  list-style-type: disc;
-}
-
-.announcement-content .announcement-ul li {
-  margin-bottom: 4px;
-  line-height: 1.55;
-}
-
-.announcement-content .announcement-ul li:last-child {
-  margin-bottom: 0;
-}
-
-.announcement-content .announcement-spacer {
-  height: 8px;
-}
-
-.announcement-content strong {
-  font-weight: 800;
-  color: var(--ink-strong);
-}
-
-.announcement-content em {
-  font-style: italic;
-}
-
-/* Create announcement textarea */
-.announcement-create-textarea {
-  width: 100%;
-  background: var(--surface-1);
-  border: var(--border-control);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 500;
-  line-height: 1.55;
-  color: var(--ink-strong);
-  resize: vertical;
-  min-height: 140px;
-  box-sizing: border-box;
-}
-
-.announcement-create-textarea::placeholder {
-  color: var(--ink-faint);
-  font-style: italic;
-}
-
-/* ---- Missed Announcements Carousel ---- */
-.announcement-carousel-card {
-  max-width: 560px !important;
-  padding-top: 18px !important;
-}
-
-.announcement-carousel-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
-  padding-bottom: 12px;
-  border-bottom: var(--border-control);
-}
-
-.carousel-left-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.carousel-campaign-icon {
-  font-size: 22px !important;
-  color: var(--ink-strong);
-}
-
-.carousel-counter {
-  font-size: 13px;
-  font-weight: 700;
-  background: var(--surface-3);
-  border: var(--border-control);
-  border-radius: var(--radius-pill);
-  padding: 2px 10px;
-}
-
-.carousel-nav-btns {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-carousel-nav {
-  width: var(--control-sm);
-  height: var(--control-sm);
-  background: var(--surface-1);
-  border: var(--border-control);
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-
-.btn-carousel-nav:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.btn-carousel-dismiss {
-  height: var(--control-sm);
-  padding: 0 14px;
-  background: var(--surface-1);
-  border: var(--border-control);
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  transition: all 0.12s ease;
-}
-
-.btn-carousel-dismiss:hover {
-  background: var(--danger-bg);
-  border-color: var(--danger-line);
-  color: var(--danger-ink);
-}
-
-.carousel-title {
-  font-size: 22px;
-  font-weight: 800;
-  margin: 0 0 4px 0;
-}
-
-.carousel-content {
-  max-height: 260px;
-  overflow-y: auto;
-}
-
 
 /* ====================================================
    9. TIMELINE TOOLTIP & DRAG HINT
@@ -2899,62 +2596,13 @@ body.is-placing-split .timeline-task-card {
 }
 
 
-/* The way into the analytics page, at the top of the Admin tab. The link is
-   hidden with the tab for non-admins, but that is presentation - /analytics
-   carries its own page guard and every endpoint behind it is admin-only. */
-.admin-analytics-link {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  margin-bottom: 20px;
-  text-decoration: none;
-  background: var(--accent-active);
-  border: var(--border-control);
-  border-radius: var(--radius-md);
-  color: var(--accent-active-ink);
-  box-shadow: var(--slab) var(--slab) 0 var(--shadow-slab);
-  transition: transform 0.12s ease, background 0.12s ease;
-}
-
-
-.admin-analytics-link > span:nth-child(2) {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-
-.admin-analytics-link strong {
-  font-size: 13.5px;
-  font-weight: 800;
-  color: var(--accent-active-ink);
-}
-
-.admin-analytics-link em {
-  font-size: 11.5px;
-  font-weight: 600;
-  font-style: normal;
-  color: var(--accent-active-ink-soft);
-}
-
-.admin-analytics-link .material-symbols-outlined {
-  font-size: 20px;
-  color: var(--accent-active-ink);
-}
-
-.admin-analytics-chevron {
-  font-size: 18px !important;
-  color: var(--accent-active-ink-dim) !important;
-}
-
 /* ====================================================
-   TWO CONTAINERS THAT USED TO BE INLINE STYLES
+   A CONTAINER THAT USED TO BE AN INLINE STYLE
    ====================================================
-   Both of these lived in index.html as style="" attributes hand-rolling a
-   1.5px line and an 8px radius - a treatment no class owned, so nothing kept
-   them in step with the boxes around them. They are objects: a bordered thing
-   holding content inside a pane. */
+   This lived in index.html as a style="" attribute hand-rolling a 1.5px line
+   and an 8px radius - a treatment no class owned, so nothing kept it in step
+   with the boxes around it. It is an object: a bordered thing holding content
+   inside a pane. */
 .settings-identity-box {
   margin-bottom: 16px;
   background: var(--surface-2);
@@ -2962,11 +2610,4 @@ body.is-placing-split .timeline-task-card {
   border: var(--border-control);
   border-radius: var(--radius-md);
   font-size: 13.5px;
-}
-
-.admin-users-scroll {
-  max-height: 180px;
-  overflow-y: auto;
-  border: var(--border-control);
-  border-radius: var(--radius-md);
 }

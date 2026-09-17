@@ -33,6 +33,9 @@ const API = {
       // display text.
       err.code = data.code;
       err.status = response.status;
+      // The whole payload, for the few errors that carry more than a
+      // sentence - a Studio save that lost a race gets the stored post back.
+      err.data = data;
       throw err;
     }
     return data;
@@ -55,6 +58,13 @@ const API = {
     return this.request('/api/admin/create-user', {
       method: 'POST',
       body: JSON.stringify({ username, password, role })
+    });
+  },
+
+  // Takes their tasks, settings, activity and reactions with it.
+  async deleteUser(username) {
+    return this.request(`/api/admin/users/${encodeURIComponent(username)}`, {
+      method: 'DELETE'
     });
   },
 
@@ -156,28 +166,118 @@ const API = {
   },
 
   // Announcements APIs
-  async getAnnouncements() {
-    return this.request('/api/announcements');
+  //
+  // The feed carries everything the app needs up front - read state, reactions
+  // and whether a post still has to arrive - so opening the inbox never waits on
+  // the network. The pulse is the cheap poll that decides whether the feed is
+  // worth fetching again.
+  async getAnnouncementFeed() {
+    return this.request('/api/announcements/feed');
   },
 
-  async getMissedAnnouncements() {
-    const data = await this.request('/api/announcements/missed');
-    return data ? data.announcements || [] : [];
+  async getAnnouncementPulse() {
+    return this.request('/api/announcements/pulse');
   },
 
-  async createAnnouncement(title, content, headerImageUrl) {
-    const data = await this.request('/api/announcements', {
+  async getAnnouncement(id) {
+    const data = await this.request(`/api/announcements/${encodeURIComponent(id)}`);
+    return data ? data.announcement : null;
+  },
+
+  // Fire-and-forget, like pushIntegrationCompletion: a lost receipt costs one
+  // post popping up a second time, which is not worth an error on screen.
+  recordAnnouncementEvent(id, event) {
+    return this.request(`/api/announcements/${encodeURIComponent(id)}/receipts`, {
       method: 'POST',
-      body: JSON.stringify({ title, content, header_image_url: headerImageUrl || null })
+      body: JSON.stringify({ event })
+    }).catch(() => null);
+  },
+
+  async reactToAnnouncement(id, reaction) {
+    return this.request(`/api/announcements/${encodeURIComponent(id)}/reaction`, {
+      method: 'PUT',
+      body: JSON.stringify({ reaction })
+    });
+  },
+
+  async markAllAnnouncementsRead() {
+    return this.request('/api/announcements/read-all', { method: 'POST' });
+  },
+
+  // Announcement Studio (admin)
+  async listStudioAnnouncements() {
+    return this.request('/api/admin/announcements');
+  },
+
+  async getStudioAnnouncement(id) {
+    return this.request(`/api/admin/announcements/${encodeURIComponent(id)}`);
+  },
+
+  async createStudioAnnouncement(fields) {
+    const data = await this.request('/api/admin/announcements', {
+      method: 'POST',
+      body: JSON.stringify(fields)
     });
     return data ? data.announcement : null;
   },
 
-  async markAnnouncementsSeen(lastSeenId) {
-    return this.request('/api/announcements/seen', {
+  // `fields.revision` is the revision being edited. A 409 carries the stored
+  // post on err.data.announcement, so the Studio can offer to load it.
+  async saveStudioAnnouncement(id, fields) {
+    const data = await this.request(`/api/admin/announcements/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      body: JSON.stringify({ last_seen_id: lastSeenId })
+      body: JSON.stringify(fields)
     });
+    return data ? data.announcement : null;
+  },
+
+  // action: publish | unpublish | archive | redeliver | duplicate
+  async transitionStudioAnnouncement(id, action, body = {}) {
+    const data = await this.request(
+      `/api/admin/announcements/${encodeURIComponent(id)}/${action}`,
+      { method: 'POST', body: JSON.stringify(body) }
+    );
+    return data ? data.announcement : null;
+  },
+
+  async deleteStudioAnnouncement(id) {
+    return this.request(`/api/admin/announcements/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+  },
+
+  async previewAnnouncement(id) {
+    const data = await this.request(`/api/admin/announcements/${encodeURIComponent(id)}/preview`);
+    return data ? data.announcement : null;
+  },
+
+  // Media library (admin). Only the signing and the confirmation travel through
+  // here; the file itself goes from the browser straight to storage.
+  async getMediaStatus() {
+    return this.request('/api/admin/media/status');
+  },
+
+  async listMedia() {
+    const data = await this.request('/api/admin/media');
+    return data ? data.media || [] : [];
+  },
+
+  async createMediaUpload(details) {
+    return this.request('/api/admin/media/uploads', {
+      method: 'POST',
+      body: JSON.stringify(details)
+    });
+  },
+
+  async completeMediaUpload(id) {
+    const data = await this.request(`/api/admin/media/${encodeURIComponent(id)}/complete`, {
+      method: 'POST'
+    });
+    return data ? data.media : null;
+  },
+
+  async deleteMedia(id) {
+    return this.request(`/api/admin/media/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
   // Integrations APIs
