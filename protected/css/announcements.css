@@ -394,7 +394,10 @@
   overflow-wrap: anywhere;
 }
 
-.ann-md > * + * {
+/* A blank line between blocks is a visible gap. The :not() lifts this above the
+   blocks' own `margin: 0` below, which would otherwise win by coming later;
+   headings keep their larger gap. */
+.ann-md > * + :not(.ann-md-heading) {
   margin-top: 12px;
 }
 
@@ -525,7 +528,7 @@ h5.ann-md-heading {
   background: var(--warn-bg);
 }
 
-.ann-md-callout > * + * {
+.ann-md-callout > * + :not(.ann-md-heading) {
   margin-top: 8px;
 }
 
