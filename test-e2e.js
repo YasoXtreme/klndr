@@ -70,6 +70,9 @@ async function runTests() {
     });
     assert('Unauthenticated protected script is blocked', unauthJs.statusCode === 302);
 
+    const unauthAdmin = await makeRequest({ hostname: 'localhost', port: PORT, path: '/admin/accounts', method: 'GET' });
+    assert('Unauthenticated admin page redirects to /login', unauthAdmin.statusCode === 302 && unauthAdmin.headers.location === '/login');
+
     // 3. Login with invalid password
     const badLogin = await makeRequest({
       hostname: 'localhost',
@@ -363,6 +366,28 @@ async function runTests() {
 
     const studioForBeta = await api('GET', '/api/admin/announcements', betaToken);
     assert('The Studio API is admin-only', studioForBeta.statusCode === 403);
+
+    // The admin page: one shell for every /admin URL, its assets beside it, and
+    // both behind the admin guard.
+    const page = (path, bearer) => makeRequest({
+      hostname: 'localhost',
+      port: PORT,
+      path,
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${bearer}` }
+    });
+    const adminForBeta = await page('/admin', betaToken);
+    assert('A beta user is sent from /admin back to the app', adminForBeta.statusCode === 302 && adminForBeta.headers.location === '/');
+    const shellForBeta = await page('/admin/shell.js', betaToken);
+    assert('A beta user cannot fetch admin scripts', shellForBeta.statusCode === 302 && shellForBeta.headers.location === '/');
+    const adminDeepLink = await page('/admin/analytics/people', token);
+    assert('An admin deep link serves the admin page', adminDeepLink.statusCode === 200 && adminDeepLink.body.includes('adminContent'));
+    const adminScript = await page('/admin/shell.js', token);
+    assert('Admin scripts load for an admin', adminScript.statusCode === 200 && adminScript.body.includes('KlndrAdmin'));
+    const missingAsset = await page('/admin/nope.js', token);
+    assert('A missing admin asset is a 404, not the page', missingAsset.statusCode === 404);
+    const oldAnalytics = await page('/analytics', token);
+    assert('The old analytics address moves to /admin/analytics', oldAnalytics.statusCode === 302 && oldAnalytics.headers.location === '/admin/analytics');
 
     const mediaStatus = await api('GET', '/api/admin/media/status', token);
     assert('Media storage reports whether it is set up', mediaStatus.statusCode === 200 && typeof mediaStatus.json.configured === 'boolean');

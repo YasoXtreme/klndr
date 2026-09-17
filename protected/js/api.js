@@ -61,6 +61,13 @@ const API = {
     });
   },
 
+  // Takes their tasks, settings, activity and reactions with it.
+  async deleteUser(username) {
+    return this.request(`/api/admin/users/${encodeURIComponent(username)}`, {
+      method: 'DELETE'
+    });
+  },
+
   // Returns a server-generated temporary password, once. Nothing stores it in
   // readable form, so a lost response means resetting again.
   async resetUserPassword(username) {

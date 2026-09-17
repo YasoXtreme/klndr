@@ -161,7 +161,7 @@
     if (a.pinned) meta.appendChild(icon('keep'));
     const title = h('h3', 'st-card-title');
     const link = h('a', null, a.title || 'Untitled');
-    link.href = `#/edit/${a.id}`;
+    link.href = S.href(`/edit/${a.id}`);
     title.appendChild(link);
     body.append(meta, title, h('p', 'st-card-when', whenLine(a)));
     if (a.published_at && a.studio_status !== 'scheduled' && a.studio_status !== 'draft') {
@@ -209,7 +209,11 @@
   }
 
   function showList({ fresh = true } = {}) {
-    document.title = 'klndr · Announcement Studio';
+    KlndrAdmin.header({
+      title: 'Announcements',
+      subtitle: "What people find in klndr's What's new inbox, and how each post reaches them.",
+      actions: [button('New announcement', { icon: 'add', variant: 'primary', small: true, labelNarrow: false, onClick: () => go('/new') })]
+    });
     const mounted = [];
     state.view = { name: 'list', cleanup: () => mounted.splice(0).forEach((m) => m.destroy()) };
 
@@ -219,12 +223,10 @@
     }
 
     const view = h('section', 'st-view');
+    if (state.storage && !state.storage.configured) view.appendChild(S.storageNote());
+
+    // The filters sit with the list they filter: which status, and which words.
     const head = h('div', 'st-list-head');
-    const titles = h('div');
-    titles.append(
-      h('h2', 'st-heading', 'Announcements'),
-      h('p', 'st-subheading', "What people find in klndr's What's new inbox, and how each post reaches them.")
-    );
     const search = h('label', 'st-search');
     const input = h('input');
     input.type = 'search';
@@ -232,10 +234,6 @@
     input.value = state.search;
     input.setAttribute('aria-label', 'Search announcements');
     search.append(icon('search'), input);
-    head.append(titles, search);
-    view.appendChild(head);
-
-    if (state.storage && !state.storage.configured) view.appendChild(S.storageNote());
 
     const tabs = h('div', 'st-tabs');
     tabs.setAttribute('role', 'tablist');
@@ -252,7 +250,8 @@
       });
       tabs.appendChild(node);
     }
-    view.appendChild(tabs);
+    head.append(tabs, search);
+    view.appendChild(head);
 
     const grid = h('div', 'st-cards');
     view.appendChild(grid);
@@ -290,6 +289,7 @@
   }
 
   async function createAndEdit() {
+    S.loadingHeader();
     S.main().replaceChildren(h('p', 'an-loading', 'Starting a draft…'));
     try {
       const created = await API.createStudioAnnouncement({
@@ -310,8 +310,9 @@
         }
       });
       S.updateListEntry(created);
-      window.history.replaceState(null, '', `#/edit/${created.id}`);
-      S.route();
+      if (!S.isAt('/new')) return;
+      // Replaces /new in the history, so going back does not start another.
+      go(`/edit/${created.id}`, { replace: true });
     } catch (err) {
       S.main().replaceChildren(S.errorBox(err));
     }

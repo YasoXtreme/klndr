@@ -237,17 +237,6 @@
   }
 }
 
-/* A table cannot reflow, so it gets its own scroll rather than pushing the
-   layout wider than the screen. Applied on tablets too - it overflows there as
-   well - and set on the table itself so no markup has to change. */
-@media (max-width: 1023px) {
-  .admin-users-table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
-}
-
 @keyframes modalSheetUp {
   from { transform: translateY(14%); opacity: 0; }
   to { transform: none; opacity: 1; }

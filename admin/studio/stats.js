@@ -3,7 +3,7 @@
 
 (() => {
   const S = KlndrStudio;
-  const { Rules, h, icon, button, statusPill } = S;
+  const { Rules, h, button, statusPill } = S;
   const C = KlndrCharts;
 
   function card(title, subtitle, wide) {
@@ -123,6 +123,7 @@
   }
 
   async function openStats(id) {
+    S.loadingHeader();
     S.main().replaceChildren(h('p', 'an-loading', 'Counting…'));
     let data;
     try {
@@ -131,26 +132,24 @@
       S.main().replaceChildren(S.errorBox(err));
       return;
     }
-    if (!data || window.location.hash !== `#/stats/${id}`) return;
+    if (!data || !S.isAt(`/stats/${id}`)) return;
 
     const a = data.announcement;
     const s = data.stats;
     S.state.view = { name: 'stats', cleanup: null };
-    document.title = `${a.title || 'Untitled'} · Stats · Studio`;
+
+    KlndrAdmin.header({
+      back: { label: 'All announcements', href: S.href('/') },
+      lead: [statusPill(a.studio_status)],
+      title: a.title || 'Untitled',
+      actions: [
+        button('Edit', { icon: 'edit', small: true, onClick: () => S.go(`/edit/${a.id}`) }),
+        button('Preview in app', { icon: 'open_in_new', small: true, variant: 'ghost', onClick: () => S.previewInApp(a.id) })
+      ],
+      documentTitle: `${a.title || 'Untitled'} · Stats`
+    });
 
     const view = h('section', 'st-view');
-    const head = h('div', 'st-stats-head');
-    const back = h('a', 'ann-link-btn');
-    back.href = '#/';
-    back.append(icon('arrow_back'), h('span', 'st-hide-narrow', 'All announcements'));
-    head.append(
-      back,
-      h('h2', null, a.title || 'Untitled'),
-      statusPill(a.studio_status),
-      button('Edit', { icon: 'edit', small: true, onClick: () => S.go(`/edit/${a.id}`) }),
-      button('Preview in app', { icon: 'open_in_new', small: true, variant: 'ghost', onClick: () => S.previewInApp(a.id) })
-    );
-    view.appendChild(head);
 
     if (!a.published_at) {
       view.appendChild(S.note('info', 'hourglass_empty', 'Nothing to count yet - this has not gone out.'));

@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#f2ffec" />
 
     <!-- Stamps the pinned theme before the first paint. Must stay the first
-         script on the page, same as index.html, login.html and analytics.html. -->
+         script on the page, same as index.html and login.html. -->
     <script>
       (function () {
         try {
@@ -21,7 +21,7 @@
       })();
     </script>
 
-    <title>klndr · Announcement Studio</title>
+    <title>klndr admin</title>
     <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" />
     <link rel="icon" href="/assets/favicon-16.png" sizes="16x16" />
     <link rel="shortcut icon" href="/assets/favicon.ico" />
@@ -36,13 +36,13 @@
 
     <link rel="stylesheet" href="/public/css/theme.css" />
     <link rel="stylesheet" href="/public/css/common.css" />
-    <!-- The admin chrome - topbar, cards, tables, stat tiles - belongs to
-         analytics.css, and this page is its sibling, so it wears the same. -->
+    <!-- Cards, tables, stat tiles and charts, which every section uses. -->
     <link rel="stylesheet" href="/admin/analytics.css" />
-    <!-- The rules the app itself draws announcements with, so the preview on
-         this page is the real thing rather than a lookalike. -->
+    <!-- The rules the app itself draws announcements with, so the Studio's
+         preview is the real thing rather than a lookalike. -->
     <link rel="stylesheet" href="/protected/css/announcements.css" />
     <link rel="stylesheet" href="/admin/announcements.css" />
+    <link rel="stylesheet" href="/admin/admin.css" />
 
     <link
       rel="preload"
@@ -57,43 +57,60 @@
       />
     </noscript>
   </head>
-  <body class="st-page">
-    <header class="an-topbar">
-      <div class="an-topbar-left">
-        <a class="an-back" href="/" title="Back to klndr">
-          <span class="material-symbols-outlined">arrow_back</span>
-        </a>
-        <span class="klndr-lockup klndr-lockup-topbar" role="img" aria-label="klndr">
-          <span class="klndr-plate" aria-hidden="true"><span>k</span></span>
-          <span class="klndr-wordmark" aria-hidden="true">klndr</span>
-        </span>
-        <h1 class="an-sr-only">Announcement Studio</h1>
-        <nav class="an-admin-nav" aria-label="Admin tools">
-          <a class="an-admin-link" href="/analytics">
-            <span class="material-symbols-outlined" aria-hidden="true">insights</span>Analytics
-          </a>
-          <a class="an-admin-link is-current" href="/announcements" aria-current="page">
-            <span class="material-symbols-outlined" aria-hidden="true">campaign</span>Announcements
-          </a>
-        </nav>
-      </div>
-
-      <div class="an-topbar-right">
-        <button type="button" class="ann-btn ann-btn-primary" id="stNewButton">
-          <span class="material-symbols-outlined" aria-hidden="true">add</span>
-          <span class="st-hide-narrow">New announcement</span>
+  <body>
+    <!-- The frame every admin tool shares; admin/shell.js fills the sidebar
+         from the sections that register, and each section fills the header and
+         the content. The server sends this page for every URL under /admin. -->
+    <div class="adm-app">
+      <!-- Phones and tablets only: the sidebar becomes a drawer behind this. -->
+      <header class="adm-mobilebar" id="admMobilebar">
+        <button
+          type="button"
+          class="ann-icon-btn"
+          id="admMenuButton"
+          aria-controls="admSidebar"
+          aria-expanded="false"
+          aria-label="Admin menu"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">menu</span>
         </button>
-      </div>
-    </header>
+        <a class="adm-brand" href="/admin" data-adm-home aria-label="klndr admin home">
+          <span class="klndr-lockup" aria-hidden="true">
+            <span class="klndr-plate"><span>k</span></span>
+            <span class="klndr-wordmark">klndr</span>
+          </span>
+          <span class="adm-tag" aria-hidden="true">admin</span>
+        </a>
+      </header>
 
-    <!-- Every view - the list, the editor, a post's stats - is rendered into
-         this by admin/announcements.js, routed on location.hash. Privacy is
-         the endpoints' job, as on analytics: everything here is admin-only. -->
-    <main class="st-main" id="stMain" tabindex="-1">
-      <p class="an-loading">Opening the studio…</p>
-    </main>
+      <aside class="adm-sidebar" id="admSidebar" aria-label="Admin">
+        <a class="adm-brand" href="/admin" data-adm-home aria-label="klndr admin home">
+          <span class="klndr-lockup" aria-hidden="true">
+            <span class="klndr-plate"><span>k</span></span>
+            <span class="klndr-wordmark">klndr</span>
+          </span>
+          <span class="adm-tag" aria-hidden="true">admin</span>
+        </a>
+        <nav class="adm-nav" id="admNav" aria-label="Admin sections"></nav>
+        <div class="adm-sidebar-foot">
+          <p class="adm-whoami" id="admWhoami"></p>
+          <a class="adm-nav-link" href="/">
+            <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+            <span>Back to klndr</span>
+          </a>
+        </div>
+      </aside>
+      <div class="adm-scrim" id="admScrim" hidden></div>
 
-    <div class="st-toast" id="stToast" role="status" aria-live="polite" hidden></div>
+      <main class="adm-main" id="admMain">
+        <header class="adm-header" id="admHeader"></header>
+        <div class="adm-content" id="adminContent" tabindex="-1">
+          <p class="an-loading">Opening admin…</p>
+        </div>
+      </main>
+    </div>
+
+    <div class="adm-toast" id="admToast" role="status" aria-live="polite" hidden></div>
 
     <script src="/public/js/theme.js"></script>
     <script src="/protected/js/api.js"></script>
@@ -107,6 +124,12 @@
     <script src="/protected/js/motion/motion-player.js"></script>
     <script src="/protected/js/announcements/media-view.js"></script>
     <script src="/protected/js/announcements/reader.js"></script>
+
+    <script src="/admin/shell.js"></script>
+
+    <!-- The sections, in sidebar order. -->
+    <script src="/admin/analytics.js"></script>
+
     <script src="/admin/studio/core.js"></script>
     <script src="/admin/studio/uploads.js"></script>
     <script src="/admin/studio/list.js"></script>
@@ -116,5 +139,7 @@
     <script src="/admin/studio/preview.js"></script>
     <script src="/admin/studio/stats.js"></script>
     <script src="/admin/announcements.js"></script>
+
+    <script src="/admin/accounts.js"></script>
   </body>
 </html>

@@ -217,8 +217,9 @@ app.use(
   express.static(path.join(__dirname, "protected")),
 );
 
-// The admin page's own assets. They live in a sibling directory rather than
-// under protected/, and that is a security boundary rather than tidiness.
+// The admin page, and its own assets beside it. They live in a sibling
+// directory rather than under protected/, and that is a security boundary
+// rather than tidiness.
 //
 // Route ordering cannot protect a subdirectory of a statically-served root.
 // Express matches layers against the raw, unnormalized pathname, so a request
@@ -227,11 +228,20 @@ app.use(
 // resolves it right back down into the directory the guard was supposed to
 // cover. send() only refuses when the ".." escapes ABOVE the root, which is
 // exactly what reaching a sibling requires. Hence: sibling.
+//
+// Every admin tool is one page, admin/index.html, whose router reads the path,
+// so any /admin URL that is not a file gets that page. The link into it is
+// hidden for non-admins, but that is presentation - these guards are the
+// control, and every endpoint the page calls is guarded again on its own mount.
 app.use(
   "/admin",
   requirePageAuth,
   requirePageAdmin,
-  express.static(path.join(__dirname, "admin")),
+  express.static(path.join(__dirname, "admin"), { index: false, redirect: false }),
+  (req, res, next) => {
+    if (req.method !== "GET" || path.extname(req.path)) return next();
+    res.sendFile(path.join(__dirname, "admin", "index.html"));
+  },
 );
 
 // Root route: serves protected index.html only if authenticated
@@ -239,17 +249,10 @@ app.get("/", requirePageAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "protected", "index.html"));
 });
 
-// Admin analytics. The link into this page is hidden for non-admins, but that
-// is presentation - these two guards are the control.
-app.get("/analytics", requirePageAuth, requirePageAdmin, (req, res) => {
-  res.sendFile(path.join(__dirname, "admin", "analytics.html"));
-});
-
-// The announcement Studio, on the same terms as analytics: the page is guarded
-// here, and every endpoint it calls is guarded again on its own mount.
-app.get("/announcements", requirePageAuth, requirePageAdmin, (req, res) => {
-  res.sendFile(path.join(__dirname, "admin", "announcements.html"));
-});
+// Where the admin tools lived before /admin, so old links still land. The
+// guards on /admin decide who gets in.
+app.get("/analytics", (req, res) => res.redirect("/admin/analytics"));
+app.get("/announcements", (req, res) => res.redirect("/admin/announcements"));
 
 // ==========================================
 // 3. PROTECTED REST API ENDPOINTS

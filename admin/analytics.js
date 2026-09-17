@@ -1,8 +1,10 @@
-// Analytics page controller.
+// klndr admin - Analytics.
 //
-// Tabs fetch on first entry rather than on load, the same lazy-loader shape
-// KlndrApp.switchAccountTab uses for the account modal: five reports up front
-// would run five sets of aggregations for four tabs nobody has opened.
+// Five reports, each a page of this section in the admin sidebar. A report is
+// fetched the first time its page is opened rather than up front: five at once
+// would run five sets of aggregations for four pages nobody has looked at. What
+// has been fetched is kept for the range it was fetched for, so moving between
+// pages - or away to another section and back - does not ask again.
 //
 // The recurring job of this file is to render what is NOT known as carefully as
 // what is. klndr recorded nothing temporal before this feature shipped, so a
@@ -11,16 +13,18 @@
 
 (() => {
   const C = KlndrCharts;
+  const A = KlndrAdmin;
 
-  const state = { days: 90, cache: new Map(), loading: new Set() };
+  const state = { days: 90, cache: new Map(), loading: new Map(), path: "" };
 
-  const SECTIONS = {
-    panelOverview: { key: "overview", render: renderOverview },
-    panelPeople: { key: "users", render: renderPeople },
-    panelEngagement: { key: "engagement", render: renderEngagement },
-    panelTasks: { key: "tasks", render: renderTasks },
-    panelSystem: { key: "system", render: renderSystem },
-  };
+  // path is the page's URL under /admin/analytics; key is its report.
+  const PAGES = [
+    { path: "", label: "Overview", key: "overview", render: renderOverview },
+    { path: "/people", label: "People", key: "users", render: renderPeople },
+    { path: "/engagement", label: "Engagement", key: "engagement", render: renderEngagement },
+    { path: "/tasks", label: "Planning & tasks", key: "tasks", render: renderTasks },
+    { path: "/system", label: "System & health", key: "system", render: renderSystem },
+  ];
 
   // $dayOfWeek is 1 = Sunday through 7 = Saturday.
   const DOW = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -89,62 +93,79 @@
 
   // ---- loading ------------------------------------------------------------
 
-  async function show(panelId, { force = false } = {}) {
-    document.querySelectorAll(".an-tab").forEach((b) => {
-      b.classList.toggle("active", b.dataset.panel === panelId);
-      b.setAttribute("aria-selected", b.dataset.panel === panelId ? "true" : "false");
-    });
-    document.querySelectorAll(".an-panel").forEach((p) => {
-      p.hidden = p.id !== panelId;
-    });
+  // The range and refresh controls live in the page header. Built once, so the
+  // select keeps its value from one page to the next.
+  let controls = null;
 
-    const section = SECTIONS[panelId];
-    const panel = document.getElementById(panelId);
-    const cacheKey = `${section.key}:${state.days}`;
+  function headerControls() {
+    if (controls) return controls;
+    const label = h("label", "an-range-label", "Range");
+    label.htmlFor = "anRange";
+    const range = h("select", "an-range");
+    range.id = "anRange";
+    [["30", "30 days"], ["90", "90 days"], ["180", "6 months"], ["365", "1 year"]].forEach(([value, text]) => {
+      const option = h("option", null, text);
+      option.value = value;
+      range.appendChild(option);
+    });
+    range.value = String(state.days);
+    // Showing a page redraws the header these sit in, so focus is put back.
+    range.addEventListener("change", () => {
+      state.days = Number(range.value);
+      show(state.path);
+      range.focus();
+    });
+    const refresh = A.ui.iconButton("refresh", "Refresh", () => {
+      show(state.path, { force: true });
+      refresh.focus();
+    });
+    refresh.className = "an-refresh";
+    controls = [label, range, refresh];
+    return controls;
+  }
 
+  async function show(path, { force = false } = {}) {
+    const page = PAGES.find((p) => p.path === path) || PAGES[0];
+    state.path = page.path;
+    A.header({ eyebrow: "Analytics", title: page.label, actions: headerControls() });
+
+    // Detached as soon as anything else is drawn, which is how a report that
+    // arrives after you have moved on knows not to paint itself.
+    const panel = h("div", "an-report");
+    A.content().replaceChildren(panel);
+
+    const cacheKey = `${page.key}:${state.days}`;
     if (!force && state.cache.has(cacheKey)) {
-      paint(panel, section, state.cache.get(cacheKey));
+      paint(panel, page, state.cache.get(cacheKey));
       return;
     }
-    if (state.loading.has(cacheKey)) return;
-    state.loading.add(cacheKey);
 
     panel.replaceChildren(h("p", "an-loading", "Working it out…"));
+    let request = state.loading.get(cacheKey);
+    if (!request || force) {
+      request = API.getAnalytics(page.key, state.days);
+      state.loading.set(cacheKey, request);
+      request
+        .finally(() => {
+          if (state.loading.get(cacheKey) === request) state.loading.delete(cacheKey);
+        })
+        .catch(() => null);
+    }
+
     try {
-      const data = await API.getAnalytics(section.key, state.days);
+      const data = await request;
       if (!data) return; // request() already redirected on a 401
       state.cache.set(cacheKey, data);
-      paint(panel, section, data);
+      if (panel.isConnected) paint(panel, page, data);
     } catch (err) {
-      panel.replaceChildren(errorBox(err));
-    } finally {
-      state.loading.delete(cacheKey);
+      if (panel.isConnected) panel.replaceChildren(A.ui.errorBox(err));
     }
   }
 
-  function paint(panel, section, data) {
+  function paint(panel, page, data) {
     panel.replaceChildren();
-    section.render(panel, data);
+    page.render(panel, data);
     panel.appendChild(generatedNote(data.meta));
-  }
-
-  function errorBox(err) {
-    const box = h("div", "an-error");
-    // Being signed in as the wrong person is not the same as being signed out,
-    // and bouncing to /login would just bounce straight back.
-    box.appendChild(
-      h(
-        "p",
-        null,
-        err && err.status === 403
-          ? "This page is for admins. Your account does not have access."
-          : "Could not load this section.",
-      ),
-    );
-    if (err && err.message && err.status !== 403) {
-      box.appendChild(h("p", "an-error-detail", err.message));
-    }
-    return box;
   }
 
   function generatedNote(meta) {
@@ -378,7 +399,7 @@
       tr.appendChild(h("td", null, String(u.live_sessions)));
 
       tr.addEventListener("click", () => {
-        document.querySelectorAll(".an-table tbody tr").forEach((r) => r.classList.remove("is-selected"));
+        tbody.querySelectorAll("tr").forEach((r) => r.classList.remove("is-selected"));
         tr.classList.add("is-selected");
         renderPersonDetail(u);
       });
@@ -926,8 +947,8 @@
           })
         : C.emptyNote("No announcements yet."),
     );
-    const studio = h("a", "an-card-link", "Open the announcement studio");
-    studio.href = "/announcements";
+    const studio = h("a", "an-card-link", "Open announcements");
+    studio.href = "/admin/announcements";
     announcements.body.appendChild(studio);
     wrap.appendChild(announcements.box);
 
@@ -968,34 +989,13 @@
     panel.appendChild(wrap);
   }
 
-  // ---- boot ---------------------------------------------------------------
+  // ---- section ------------------------------------------------------------
 
-  function init() {
-    if (window.KlndrTheme && KlndrTheme.mount) KlndrTheme.mount();
-
-    document.querySelectorAll(".an-tab").forEach((btn) => {
-      btn.addEventListener("click", () => show(btn.dataset.panel));
-    });
-
-    const range = document.getElementById("anRange");
-    range.value = String(state.days);
-    range.addEventListener("change", () => {
-      state.days = Number(range.value);
-      const open = document.querySelector(".an-tab.active");
-      if (open) show(open.dataset.panel);
-    });
-
-    document.getElementById("anRefresh").addEventListener("click", () => {
-      const open = document.querySelector(".an-tab.active");
-      if (open) show(open.dataset.panel, { force: true });
-    });
-
-    show("panelOverview");
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+  A.section({
+    id: "analytics",
+    label: "Analytics",
+    icon: "insights",
+    pages: PAGES.map(({ path, label }) => ({ path, label })),
+    show: (path) => show(path),
+  });
 })();

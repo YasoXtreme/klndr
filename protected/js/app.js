@@ -362,12 +362,10 @@ class KlndrApp {
     if (usernameEl && this.user) {
       usernameEl.textContent = this.user.username;
     }
-    const adminTabBtn = document.getElementById('tabBtnAdmin');
-    if (adminTabBtn) {
-      // '' not 'block': the nav item is a flex row of icon and label, and an
-      // inline display would flatten it.
-      adminTabBtn.style.display = this.user.role === 'admin' ? '' : 'none';
-    }
+    // Every admin tool lives on /admin, and this is the only way in from the
+    // app. Hiding it is presentation; the page is guarded on the server.
+    const adminEntry = document.getElementById('userMenuAdmin');
+    if (adminEntry) adminEntry.hidden = this.user.role !== 'admin';
   }
 
   // Indexed off the end rather than off 6: the strip is only seven days long
@@ -1153,7 +1151,6 @@ class KlndrApp {
 
     // Sections that need data fetch it on the way in, not on every modal open.
     const loaders = {
-      tabBtnAdmin: () => this.loadAdminUsersList(),
       tabBtnIntegrations: () => this.loadIntegrationsList(),
       tabBtnCategories: () => this.loadCategoriesTab()
     };
@@ -1172,8 +1169,8 @@ class KlndrApp {
    *
    * It is a .context-menu, so closeAllModals() and Escape put it away like the
    * task menu, and at phone width the stylesheet makes it the same bottom
-   * sheet. The What's new and Studio entries belong to KlndrAnnouncements,
-   * which wires them itself.
+   * sheet. The What's new entry belongs to KlndrAnnouncements, which wires it
+   * itself; Admin is a plain link, shown to admins by updateUserUI().
    */
   initUserMenu() {
     const trigger = document.getElementById('userProfileTrigger');
@@ -1319,29 +1316,6 @@ class KlndrApp {
     if (logoutBtn) {
       logoutBtn.addEventListener('click', async () => {
         await API.logout();
-      });
-    }
-
-    // Admin Add Beta User Form
-    const adminCreateUserForm = document.getElementById('adminAddUserForm');
-    if (adminCreateUserForm) {
-      adminCreateUserForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('adminNewUsername').value.trim();
-        const password = document.getElementById('adminNewPassword').value;
-        const role = document.getElementById('adminNewRole').value;
-        const msgEl = document.getElementById('adminUserStatusMsg');
-
-        try {
-          await API.createBetaUser(username, password, role);
-          msgEl.textContent = `Created user "${username}" successfully`;
-          msgEl.className = 'status-msg success';
-          adminCreateUserForm.reset();
-          await this.loadAdminUsersList();
-        } catch (err) {
-          msgEl.textContent = err.message;
-          msgEl.className = 'status-msg error';
-        }
       });
     }
   }
@@ -1658,110 +1632,6 @@ class KlndrApp {
       logoutBtn.addEventListener('click', async () => {
         await API.logout();
       });
-    }
-  }
-
-  /**
-   * The one and only time this password is legible. Nothing stores it in
-   * recoverable form, so it stays on screen until the admin navigates away
-   * rather than auto-dismissing. Built with textContent, not innerHTML: the
-   * username is echoed back and has never been escaped anywhere.
-   */
-  showTempPassword(username, tempPassword) {
-    const anchor = document.getElementById('adminUserStatusMsg');
-    if (!anchor) return;
-    document.querySelectorAll('.admin-temp-password').forEach(el => el.remove());
-
-    const box = document.createElement('div');
-    box.className = 'admin-temp-password';
-
-    const code = document.createElement('code');
-    code.textContent = tempPassword;
-
-    const note = document.createElement('p');
-    note.textContent =
-      `Temporary password for ${username}. Hand it over directly — it will not ` +
-      `be shown again. They are signed out everywhere as of now, and must set ` +
-      `their own password at their next login.`;
-
-    box.append(code, note);
-    anchor.insertAdjacentElement('afterend', box);
-  }
-
-  async loadAdminUsersList() {
-    const listContainer = document.getElementById('adminUsersTableBody');
-    if (!listContainer) return;
-    listContainer.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading users...</td></tr>';
-
-    try {
-      const data = await API.request('/api/admin/users');
-      listContainer.innerHTML = '';
-
-      if (!data.users || data.users.length === 0) {
-        listContainer.innerHTML = '<tr><td colspan="4" style="text-align:center;">No users registered</td></tr>';
-        return;
-      }
-
-      data.users.forEach(u => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><strong>${u.username}</strong></td>
-          <td>
-            <span class="role-badge ${u.role}">${u.role}</span>
-            ${u.must_change_password ? '<span class="reset-pending-badge">reset pending</span>' : ''}
-          </td>
-          <td>${new Date(u.created_at * 1000).toLocaleDateString()}</td>
-          <td>
-            ${u.username !== this.user.username ? `
-              <div class="admin-user-actions">
-                <button type="button" class="btn-reset-user" data-username="${u.username}" title="Reset Password">
-                  <span class="material-symbols-outlined" style="font-size: 16px;">lock_reset</span>
-                </button>
-                <button type="button" class="btn-delete-user" data-username="${u.username}" title="Delete User">
-                  <span class="material-symbols-outlined" style="font-size: 16px;">delete</span>
-                </button>
-              </div>
-            ` : '<span style="color:var(--ink-faint);font-size:12px;">(You)</span>'}
-          </td>
-        `;
-        listContainer.appendChild(tr);
-      });
-
-      listContainer.querySelectorAll('.btn-reset-user').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const username = btn.dataset.username;
-          if (!confirm(`Reset the password for "${username}"?\n\nThis signs them out of every device immediately, and they must set a new password at their next login.`)) {
-            return;
-          }
-          const msgEl = document.getElementById('adminUserStatusMsg');
-          try {
-            const res = await API.resetUserPassword(username);
-            if (msgEl) {
-              msgEl.textContent = '';
-              msgEl.className = 'status-msg';
-            }
-            this.showTempPassword(res.username, res.tempPassword);
-            await this.loadAdminUsersList();
-          } catch (err) {
-            if (msgEl) {
-              msgEl.textContent = err.message;
-              msgEl.className = 'status-msg error';
-            }
-          }
-        });
-      });
-
-      listContainer.querySelectorAll('.btn-delete-user').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const username = btn.dataset.username;
-          if (confirm(`Are you sure you want to delete user "${username}"?`)) {
-            await API.request(`/api/admin/users/${username}`, { method: 'DELETE' });
-            await this.loadAdminUsersList();
-          }
-        });
-      });
-    } catch (err) {
-      listContainer.innerHTML = `<tr><td colspan="4" style="color:red;">${err.message}</td></tr>`;
     }
   }
 
