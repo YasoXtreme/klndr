@@ -1,19 +1,56 @@
 // The motion timeline decides what plays when: which clip is on screen, where its
-// clock stands, and how full the progress bar is. The player, the Studio and the
-// Remotion render all ask it, so its arithmetic is pinned down here.
+// clock stands, where the camera is between clips, and how full the progress bar
+// is. The player, the Studio and the Remotion render all ask it, so its
+// arithmetic is pinned down here.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
+const Core = require("../protected/js/motion/motion-core");
 const Scenes = require("../protected/js/motion/scenes");
 const Timeline = require("../protected/js/motion/motion-timeline");
 
 const FPS = Timeline.FPS;
 const OUTRO = Scenes.OUTRO;
+const { EARLY, MOVE, LAND } = Timeline;
 
 function introOf(id, props = {}) {
   return Scenes.timing(id, props).intro;
 }
+
+// A recording 2D context that keeps just the calls, for comparing and counting
+// what was drawn.
+function recorder() {
+  const calls = [];
+  const ctx = new Proxy({ globalAlpha: 1, font: "10px sans-serif" }, {
+    get(target, prop) {
+      if (prop === "calls") return calls;
+      if (prop === "measureText") return (text) => ({ width: String(text).length * 10 });
+      if (prop in target) return target[prop];
+      return (...args) => calls.push([prop, ...args.map((v) => (typeof v === "number" ? Math.round(v * 1000) / 1000 : v))]);
+    },
+    set(target, prop, value) {
+      target[prop] = value;
+      calls.push(["=", prop, typeof value === "number" ? Math.round(value * 1000) / 1000 : value]);
+      return true;
+    },
+  });
+  return ctx;
+}
+
+const PAINTS = new Set(["fill", "fillText", "stroke", "fillRect"]);
+const paintsOf = (ctx) => ctx.calls.filter(([call]) => PAINTS.has(call)).map(([call]) => call);
+const SIZE = { width: 1200, height: 600 };
+
+function drawn(plan, T) {
+  const ctx = recorder();
+  Timeline.render(ctx, plan, T, SIZE);
+  return ctx.calls;
+}
+
+// ==========================================
+// SHAPE
+// ==========================================
 
 test("a header saved before clips existed reads as one looping clip", () => {
   const scene = Timeline.normalize({ id: "stamp", props: { label: "v2", junk: true } });
@@ -54,10 +91,25 @@ test("normalizing is idempotent", () => {
   assert.equal(JSON.stringify(Timeline.normalize(once)), JSON.stringify(once));
 });
 
+test("describing the animation reads every clip in order", () => {
+  const scene = {
+    clips: [
+      { id: "stamp", props: { label: "v2", sublabel: "Out now" } },
+      { id: "ticker", props: { headline: "Everything is faster" } },
+    ],
+  };
+  assert.equal(Timeline.describe(scene), "v2: Out now, then Everything is faster");
+});
+
+// ==========================================
+// ONE CLIP
+// ==========================================
+
 test("a looping clip plans in, idle, out", () => {
   const intro = introOf("stamp");
   const plan = Timeline.plan({ loop: true, clips: [{ id: "stamp", hold: 2.5 }] });
   const [clip] = plan.clips;
+  assert.equal(plan.travels, false);
   assert.equal(clip.start, 0);
   assert.equal(clip.intro, intro);
   assert.equal(clip.hold, 2.5 * FPS);
@@ -69,18 +121,26 @@ test("a looping clip plans in, idle, out", () => {
   assert.equal(plan.still, intro);
 });
 
-test("a looping clip idles, leaves, and comes round again", () => {
-  const plan = Timeline.plan({ loop: true, clips: [{ id: "stamp", hold: 1 }] });
+test("a looping clip idles, leaves, and comes round again on an empty stage", () => {
+  const plan = Timeline.plan({ loop: true, clips: [{ id: "stamp", props: { background: "#3ba4f6" }, hold: 1 }] });
   const { outStart, end } = plan.clips[0];
 
-  assert.deepEqual(Timeline.at(plan, 0).layers[0].clock, { t: 0, exit: 0 });
-  assert.deepEqual(Timeline.at(plan, outStart - 1).layers[0].clock, { t: outStart - 1, exit: 0 });
-  assert.deepEqual(Timeline.at(plan, outStart).layers[0].clock, { t: outStart, exit: 0 });
-  assert.deepEqual(Timeline.at(plan, outStart + 1).layers[0].clock, { t: outStart + 1, exit: 1 });
+  assert.deepEqual(Timeline.at(plan, 0).clock, { t: 0, exit: 0 });
+  assert.deepEqual(Timeline.at(plan, outStart - 1).clock, { t: outStart - 1, exit: 0 });
+  assert.deepEqual(Timeline.at(plan, outStart).clock, { t: outStart, exit: 0 });
+  assert.deepEqual(Timeline.at(plan, outStart + 1).clock, { t: outStart + 1, exit: 1 });
 
-  // The frame after the last is the first again, on every pass.
-  assert.deepEqual(Timeline.at(plan, end).layers[0].clock, { t: 0, exit: 0 });
-  assert.deepEqual(Timeline.at(plan, end * 5 + 7).layers[0].clock, { t: 7, exit: 0 });
+  // The frame after the last is the first again, on every pass - and with
+  // nowhere to travel, no camera ever moves.
+  assert.deepEqual(Timeline.at(plan, end).clock, { t: 0, exit: 0 });
+  assert.deepEqual(Timeline.at(plan, end * 5 + 7).clock, { t: 7, exit: 0 });
+  for (let T = 0; T < end * 2; T += 3) assert.equal(Timeline.at(plan, T).camera, null);
+
+  // The last frame of the out, and the first of the next pass: only the ground.
+  assert.equal(Timeline.at(plan, end - 1).clock.exit, OUTRO - 1);
+  const ctx = recorder();
+  Timeline.render(ctx, plan, end, SIZE);
+  assert.deepEqual(paintsOf(ctx), ["fillRect", "stroke"]);
 
   assert.equal(Timeline.at(plan, 0).progress, 0);
   assert.equal(Timeline.at(plan, end - 1).progress, 1);
@@ -98,86 +158,164 @@ test("a clip that plays once fills the bar through its intro, then idles for goo
   assert.equal(half.settled, false);
 
   const later = Timeline.at(plan, 1e7);
-  assert.deepEqual(later.layers[0].clock, { t: 1e7, exit: 0 });
+  assert.deepEqual(later.clock, { t: 1e7, exit: 0 });
   assert.equal(later.position, intro);
   assert.equal(later.progress, 1);
   assert.equal(later.settled, true);
 });
 
-test("clips play one after another", () => {
-  const scene = {
-    loop: true,
-    clips: [
-      { id: "stamp", hold: 1 },
-      { id: "chat", hold: 0.5 },
-      { id: "ticker", hold: 2 },
-    ],
-  };
-  const plan = Timeline.plan(scene);
-  const [a, b, c] = plan.clips;
-  assert.equal(b.start, a.end);
-  assert.equal(c.start, b.end);
-  assert.equal(plan.cycle, c.end);
-
-  assert.equal(Timeline.at(plan, a.end - 1).layers[0].id, "stamp");
-  assert.deepEqual(Timeline.at(plan, a.end - 1).layers[0].clock, { t: a.end - 1, exit: OUTRO - 1 });
-  assert.equal(Timeline.at(plan, b.start).layers[0].id, "chat");
-  assert.deepEqual(Timeline.at(plan, b.start).layers[0].clock, { t: 0, exit: 0 });
-  assert.equal(Timeline.at(plan, plan.cycle).layers[0].id, "stamp");
-
-  const once = Timeline.plan({ ...scene, loop: false });
-  assert.equal(once.settle, once.clips[2].start + once.clips[2].intro);
-  assert.equal(Timeline.at(once, once.clips[1].end - 1).layers[0].clock.exit, OUTRO - 1);
-  assert.equal(Timeline.at(once, once.settle + 5000).layers[0].id, "ticker");
-  assert.equal(Timeline.at(once, once.settle + 5000).layers[0].clock.exit, 0);
-});
-
-// A recording 2D context that keeps just the calls, for counting what was drawn.
-function recorder() {
+test("rendering a frame paints the ground of the clip on screen", () => {
   const calls = [];
   const ctx = new Proxy({ globalAlpha: 1, font: "10px sans-serif" }, {
     get(target, prop) {
-      if (prop === "calls") return calls;
       if (prop === "measureText") return (text) => ({ width: String(text).length * 10 });
       if (prop in target) return target[prop];
       return (...args) => calls.push([prop, ...args]);
     },
     set(target, prop, value) {
       target[prop] = value;
+      if (prop === "fillStyle") calls.push(["fillStyle", value]);
       return true;
     },
   });
-  return ctx;
-}
+  const plan = Timeline.plan({ loop: true, clips: [{ id: "stamp", props: { background: "#3ba4f6" } }] });
+  const frame = Timeline.render(ctx, plan, 0, SIZE);
+  assert.equal(frame.layers.length, 1);
+  assert.deepEqual(calls.slice(0, 2), [["fillStyle", "#3ba4f6"], ["fillRect", 0, 0, 1200, 600]]);
+});
 
-const PAINTS = new Set(["fill", "fillText", "stroke", "fillRect"]);
+// ==========================================
+// A RUN OF CLIPS
+// ==========================================
 
-test("every hand-over between clips happens on an empty stage", () => {
-  const clips = [
-    { id: "stamp", props: { background: "#3ba4f6" }, hold: 1 },
-    { id: "chat", props: {}, hold: 0 },
-    { id: "ticker", props: {}, hold: 2.5 },
-    { id: "keycaps", props: {}, hold: 0.5 },
+const RUN = [
+  { id: "stamp", props: { background: "#3ba4f6" }, hold: 1 },
+  { id: "chat", props: {}, hold: 0 },
+  { id: "ticker", props: {}, hold: 2.5 },
+  { id: "keycaps", props: {}, hold: 0.5 },
+];
+
+test("clips hand over with one camera move, the next arriving while it travels", () => {
+  const plan = Timeline.plan({ loop: true, clips: RUN });
+  assert.equal(plan.travels, true);
+
+  plan.clips.forEach((clip, i) => {
+    // The camera sets off just before the out - but never before the clip has
+    // arrived, when there is no idle to take it from.
+    assert.equal(clip.leave, Math.max(clip.start + clip.intro, clip.outStart - EARLY), `clip ${i} leaves`);
+    const next = plan.clips[i + 1];
+    if (next) {
+      assert.equal(next.start, clip.leave + LAND, `clip ${i + 1} starts ${LAND} frames into the move`);
+      assert.equal(next.enter, clip.leave);
+    }
+  });
+  assert.equal(plan.clips[1].leave, plan.clips[1].outStart, "no idle, no head start");
+  assert.equal(plan.cycle, plan.clips[3].leave + LAND);
+
+  const [a, b] = plan.clips;
+  // Before the move: A alone, full-bleed.
+  const before = Timeline.at(plan, a.leave);
+  assert.equal(before.camera, null);
+  assert.deepEqual(before.layers.map((l) => [l.index, l.offset]), [[0, 0]]);
+
+  // In the move: A sliding off, B sliding on, clocks running on from where
+  // they were.
+  let travelled = 0;
+  for (let since = 1; since < MOVE; since++) {
+    const frame = Timeline.at(plan, a.leave + since);
+    assert.ok(frame.camera, `a camera at ${since}`);
+    assert.ok(frame.camera.travel > travelled, "the camera only ever goes forwards");
+    travelled = frame.camera.travel;
+    const [leaving, arriving] = frame.layers;
+    assert.equal(leaving.index, 0);
+    assert.equal(arriving.index, 1);
+    assert.equal(leaving.offset, -frame.camera.travel);
+    assert.equal(arriving.offset, 1 - frame.camera.travel);
+    assert.equal(leaving.clock.t, a.leave + since);
+    assert.equal(leaving.clock.exit, Math.max(0, a.leave + since - a.outStart));
+    assert.equal(arriving.clock.t, since - LAND);
+    assert.equal(frame.index, since < LAND ? 0 : 1, "the stage passes to B as it starts");
+  }
+
+  // Set down: B alone.
+  const after = Timeline.at(plan, a.leave + MOVE);
+  assert.equal(after.camera, null);
+  assert.deepEqual(after.layers.map((l) => [l.index, l.offset]), [[1, 0]]);
+  assert.deepEqual(after.clock, { t: MOVE - LAND, exit: 0 });
+  assert.equal(Timeline.at(plan, b.start + b.intro + 60).layers[0].shift, 0, "and at rest, long before its out");
+});
+
+test("the camera sets off and sets down without a jolt", () => {
+  const plan = Timeline.plan({ loop: true, clips: RUN });
+  const { leave } = plan.clips[2];
+  const step = 1e-3;
+  const edges = [
+    [Timeline.at(plan, leave + step), 0],
+    [Timeline.at(plan, leave + MOVE - step), 1],
   ];
+  for (const [frame, rest] of edges) {
+    assert.ok(Math.abs(frame.camera.travel - rest) < 1e-5, `travel ${frame.camera.travel} near ${rest}`);
+    assert.ok(frame.camera.lift < 1e-3, `lift ${frame.camera.lift}`);
+  }
+  // What the panels carry moves with them, never leaping ahead or behind.
+  let last = null;
+  for (let T = leave; T <= leave + MOVE + 30; T += 0.25) {
+    const layer = Timeline.at(plan, T).layers.find((l) => l.index === 3);
+    if (!layer) continue;
+    const x = layer.offset * 1260 + layer.shift;
+    if (last !== null) assert.ok(Math.abs(x - last) < 50, `jumped ${x - last}px at ${T}`);
+    last = x;
+  }
+  assert.ok(Math.abs(Timeline.at(plan, leave + MOVE - step).layers[1].shift - Timeline.at(plan, leave + MOVE).layers[0].shift) < 0.05);
+});
+
+test("once the animation has begun, something is always on screen", () => {
   for (const loop of [true, false]) {
-    const plan = Timeline.plan({ loop, clips });
-    const joins = plan.clips.slice(1).map((clip) => clip.start);
-    // Looping, the last clip hands back to the first as well.
-    if (loop) joins.push(plan.cycle);
+    const plan = Timeline.plan({ loop, clips: RUN });
+    const until = loop ? plan.cycle * 2 + 40 : plan.settle + 60;
+    let begun = false;
+    for (let T = 0; T <= until; T++) {
+      const frame = Timeline.at(plan, T);
+      const showing = frame.layers.some((layer) => {
+        if (Math.abs(layer.offset) > 0.9 || layer.clock.t < 0) return false;
+        const ctx = recorder();
+        Scenes.renderContent(ctx, layer.id, layer.clock, plan.clips[layer.index].props, { ...SIZE, flow: layer.flow });
+        return paintsOf(ctx).length > 0;
+      });
+      if (showing) begun = true;
+      else assert.ok(!begun, `${loop ? "loop" : "once"}: nothing on screen at frame ${T}`);
+    }
+    assert.ok(begun);
+  }
+});
 
-    for (const join of joins) {
-      const before = Timeline.at(plan, join - 1).layers[0];
-      const after = Timeline.at(plan, join).layers[0];
-      assert.equal(before.clock.exit, OUTRO - 1, `the frame before ${join} is the last of an out`);
-      assert.deepEqual(after.clock, { t: 0, exit: 0 }, `frame ${join} is the first of an in`);
-      assert.notEqual(before.index, after.index);
+test("the first pass opens on an empty stage, and every pass after comes in from the last clip", () => {
+  const plan = Timeline.plan({ loop: true, clips: RUN });
+  const ctx = recorder();
+  Timeline.render(ctx, plan, 0, SIZE);
+  assert.deepEqual(paintsOf(ctx), ["fillRect", "stroke"]);
+  for (let T = 0; T < MOVE; T++) assert.equal(Timeline.at(plan, T).camera, null, `no move into the first pass at ${T}`);
 
-      // The incoming clip's first frame paints its ground and nothing else: one
-      // fill of the canvas and one stroke of the grid.
-      const ctx = recorder();
-      Timeline.render(ctx, plan, join, { width: 1200, height: 600 });
-      const paints = ctx.calls.filter(([call]) => PAINTS.has(call)).map(([call]) => call);
-      assert.deepEqual(paints, ["fillRect", "stroke"], `${loop ? "loop" : "once"}: frame ${join} drew ${paints.join(", ")}`);
+  const wrap = Timeline.at(plan, plan.cycle + 3);
+  assert.ok(wrap.camera);
+  assert.deepEqual(wrap.layers.map((l) => l.index), [3, 0]);
+
+  // Every pass after the first draws the same, the move back included.
+  const last = plan.clips[3];
+  for (const T of [last.leave - 2, last.leave + 3, plan.cycle - 1, plan.cycle, plan.cycle + 5, plan.cycle + MOVE, plan.cycle + 200]) {
+    assert.deepEqual(drawn(plan, T + plan.cycle), drawn(plan, T + 2 * plan.cycle), `pass 2 and 3 differ at ${T}`);
+  }
+});
+
+test("between moves, a clip in a run draws exactly as it does on its own", () => {
+  for (const { id } of Scenes.list()) {
+    const clips = [{ id: "stamp", props: {}, hold: 0 }, { id, props: {}, hold: 3 }, { id: "chat", props: {}, hold: 0 }];
+    const plan = Timeline.plan({ loop: true, clips });
+    const clip = plan.clips[1];
+    for (const t of [clip.intro + 20, clip.intro + 45, clip.intro + 80]) {
+      const alone = recorder();
+      Scenes.render(alone, id, { t }, clip.props, { ...SIZE, theme: Core.readTheme("light") });
+      assert.deepEqual(drawn(plan, clip.start + t), alone.calls, `${id} at t=${t}`);
     }
   }
 });
@@ -185,15 +323,22 @@ test("every hand-over between clips happens on an empty stage", () => {
 test("a header that plays once never leaves its last clip, whatever came before", () => {
   const plan = Timeline.plan({ loop: false, clips: [{ id: "chat" }, { id: "stamp", hold: 0 }, { id: "flip-board" }] });
   const last = plan.clips[2];
+  assert.equal(Timeline.at(plan, last.start + 3).layers.length, 2, "it travels in like any other");
   for (const T of [last.start + last.intro, last.start + last.intro + 1000, 1e7]) {
     const frame = Timeline.at(plan, T);
-    assert.equal(frame.layers[0].id, "flip-board");
-    assert.equal(frame.layers[0].clock.exit, 0);
+    assert.equal(frame.index, 2);
+    assert.equal(frame.clock.exit, 0);
+    assert.equal(frame.camera, null);
+    assert.deepEqual(frame.layers.map((l) => l.id), ["flip-board"]);
     assert.equal(frame.progress, 1);
   }
   // The bar reaches the end exactly when the last clip has arrived.
   assert.ok(Timeline.at(plan, last.start + last.intro - 1).progress < 1);
 });
+
+// ==========================================
+// EDITING AND VIDEO
+// ==========================================
 
 test("editing a run of clips keeps the preview on a clip that still exists", () => {
   const three = Timeline.plan({ loop: true, clips: [{ id: "stamp" }, { id: "chat" }, { id: "ticker" }] });
@@ -201,12 +346,15 @@ test("editing a run of clips keeps the preview on a clip that still exists", () 
 
   // The ticker was removed: the preview lands on what is now the last clip.
   const two = Timeline.plan({ loop: true, clips: [{ id: "stamp" }, { id: "chat" }] });
-  const landed = Timeline.at(two, Timeline.reanchor(three, two, inTicker)).layers[0];
-  assert.equal(landed.index, 1);
+  assert.equal(Timeline.at(two, Timeline.reanchor(three, two, inTicker)).index, 1);
 
-  // Props changed in the clip that is playing: same clip, same moment.
+  // Props changed in the clip that is playing: same clip, same moment - and a
+  // camera caught mid-move is still exactly as far along.
   const edited = Timeline.plan({ loop: true, clips: [{ id: "stamp" }, { id: "chat" }, { id: "ticker", props: { headline: "New words" } }] });
   assert.equal(Timeline.reanchor(three, edited, inTicker), edited.clips[2].start + 10);
+  const moving = three.clips[2].start + 4;
+  const moved = Timeline.at(edited, Timeline.reanchor(three, edited, moving));
+  assert.equal(moved.camera.travel, Timeline.at(three, moving).camera.travel);
 });
 
 test("an edit keeps the preview where it was", () => {
@@ -243,37 +391,18 @@ test("an edit keeps the preview where it was", () => {
 test("a video runs one loop, or the way in and a tail of idle", () => {
   const loop = Timeline.plan({ loop: true, clips: [{ id: "stamp", hold: 2 }] });
   assert.equal(Timeline.videoLength(loop), loop.cycle);
+  assert.equal(Timeline.videoStart(loop), 0);
   const once = Timeline.plan({ loop: false, clips: [{ id: "stamp", hold: 2 }] });
   assert.equal(Timeline.videoLength(once, 3), once.settle + 3 * FPS);
   assert.equal(Timeline.videoLength(Timeline.plan(null)), 1);
 });
 
-test("describing the animation reads every clip in order", () => {
-  const scene = {
-    clips: [
-      { id: "stamp", props: { label: "v2", sublabel: "Out now" } },
-      { id: "ticker", props: { headline: "Everything is faster" } },
-    ],
-  };
-  assert.equal(Timeline.describe(scene), "v2: Out now, then Everything is faster");
-});
-
-test("rendering a frame paints the ground of the clip on screen", () => {
-  const calls = [];
-  const ctx = new Proxy({ globalAlpha: 1, font: "10px sans-serif" }, {
-    get(target, prop) {
-      if (prop === "measureText") return (text) => ({ width: String(text).length * 10 });
-      if (prop in target) return target[prop];
-      return (...args) => calls.push([prop, ...args]);
-    },
-    set(target, prop, value) {
-      target[prop] = value;
-      if (prop === "fillStyle") calls.push(["fillStyle", value]);
-      return true;
-    },
-  });
-  const plan = Timeline.plan({ loop: true, clips: [{ id: "stamp", props: { background: "#3ba4f6" } }] });
-  const frame = Timeline.render(ctx, plan, 0, { width: 1200, height: 600 });
-  assert.equal(frame.layers.length, 1);
-  assert.deepEqual(calls.slice(0, 2), [["fillStyle", "#3ba4f6"], ["fillRect", 0, 0, 1200, 600]]);
+test("a video of a looping run of clips repeats without a seam", () => {
+  const plan = Timeline.plan({ loop: true, clips: RUN });
+  const start = Timeline.videoStart(plan);
+  const length = Timeline.videoLength(plan);
+  assert.equal(start, plan.cycle);
+  // The frame after the file's last is its first again.
+  assert.deepEqual(drawn(plan, start + length), drawn(plan, start));
+  assert.equal(Timeline.videoStart(Timeline.plan({ loop: false, clips: RUN })), 0);
 });

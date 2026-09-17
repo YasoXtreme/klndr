@@ -369,15 +369,44 @@ const KlndrMotionCore = (() => {
     return `${Math.round(size)}px ${EMOJI_STACK}`;
   }
 
-  function roundRectPath(ctx, x, y, w, h, r) {
+  // `fresh` false adds the outline to the path already begun, instead of
+  // starting a new one.
+  function roundRectPath(ctx, x, y, w, h, r, fresh = true) {
     const radius = Math.max(0, Math.min(r, w / 2, h / 2));
-    ctx.beginPath();
+    if (fresh) ctx.beginPath();
     ctx.moveTo(x + radius, y);
     ctx.arcTo(x + w, y, x + w, y + h, radius);
     ctx.arcTo(x + w, y + h, x, y + h, radius);
     ctx.arcTo(x, y + h, x, y, radius);
     ctx.arcTo(x, y, x + w, y, radius);
     ctx.closePath();
+  }
+
+  /**
+   * The hard slab a shape casts: its outline, traced by `trace(fresh)`, drawn
+   * again `dx` and `dy` down and right in `color`, before the shape itself.
+   *
+   * Opaque, the shape hides the slab behind it. Fading, it cannot: the slab
+   * would show through as a grey smudge across the whole shape. So while the
+   * shape is translucent the slab is clipped to where it reaches past the
+   * shape - `bounds` must hold both - and the two fade out as one piece.
+   */
+  function slabUnder(ctx, trace, dx, dy, color, bounds) {
+    const fading = ctx.globalAlpha < 0.99;
+    if (fading) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(bounds.x, bounds.y, bounds.w, bounds.h);
+      trace(false);
+      ctx.clip('evenodd');
+    }
+    ctx.save();
+    ctx.translate(dx, dy);
+    trace(true);
+    ctx.restore();
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (fading) ctx.restore();
   }
 
   /**
@@ -388,9 +417,12 @@ const KlndrMotionCore = (() => {
     // A slab thinner than half a pixel hides behind the box's own line - a key
     // pressed all the way down has none.
     if (slab >= 0.5) {
-      roundRectPath(ctx, x + slab, y + slab, w, h, r);
-      ctx.fillStyle = slabColor || line;
-      ctx.fill();
+      slabUnder(ctx, (fresh) => roundRectPath(ctx, x, y, w, h, r, fresh), slab, slab, slabColor || line, {
+        x: x - 1,
+        y: y - 1,
+        w: w + slab + 2,
+        h: h + slab + 2
+      });
     }
     roundRectPath(ctx, x, y, w, h, r);
     ctx.fillStyle = fill;
@@ -462,6 +494,7 @@ const KlndrMotionCore = (() => {
     font,
     emojiFont,
     roundRectPath,
+    slabUnder,
     slabBox,
     wrapLines,
     fitText

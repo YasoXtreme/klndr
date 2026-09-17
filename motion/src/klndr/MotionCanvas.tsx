@@ -42,7 +42,10 @@ export const MotionCanvas: React.FC<Props> = ({ scene, theme }) => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, width, height);
     ctx.setTransform(width / stage.width, 0, 0, height / stage.height, 0, 0);
-    KlndrMotionTimeline.render(ctx, plan, frame, { width: stage.width, height: stage.height, theme: palette });
+    // A run of clips that loops is recorded from its second pass, so the file
+    // repeats without a seam; see KlndrMotionTimeline.videoStart.
+    const time = KlndrMotionTimeline.videoStart(plan) + frame;
+    KlndrMotionTimeline.render(ctx, plan, time, { width: stage.width, height: stage.height, theme: palette });
   }, [frame, width, height, plan, palette, fontEpoch]);
 
   return (

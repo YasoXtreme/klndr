@@ -178,7 +178,7 @@
           }));
         }
 
-        const clipIndex = KlndrMotionTimeline.at(plan, player.time).layers[0].index;
+        const clipIndex = KlndrMotionTimeline.at(plan, player.time).index;
         const at = `${player.position}/${span}/${player.settled}/${clipIndex}/${plan.clips.length}`;
         if (at !== shownAt) {
           shownAt = at;
@@ -340,8 +340,9 @@
   }
 
   /**
-   * Put the preview on one clip - at its start, to watch it come in, or once it
-   * has arrived, to see what is being edited - without playing or pausing it.
+   * Put the preview on one clip - where the camera sets off towards it, to watch
+   * it come in, or once it has arrived, to see what is being edited - without
+   * playing or pausing it. The first clip comes in from the very beginning.
    */
   function showClip(ed, index, where = 'arrived') {
     const player = ed.preview && ed.preview.player;
@@ -349,8 +350,12 @@
     const { plan } = player;
     const clip = plan.clips[index];
     if (!clip) return;
+    if (where === 'start' && index === 0) {
+      player.setTime(0);
+      return;
+    }
     const pass = plan.loop && plan.cycle > 0 && player.time >= plan.cycle ? plan.cycle : 0;
-    player.setTime(clip.start + (where === 'start' ? 0 : clip.intro) + pass);
+    player.setTime((where === 'start' ? clip.enter : clip.start + clip.intro) + pass);
   }
 
   function schedule(ed, { sceneOnly = false } = {}) {

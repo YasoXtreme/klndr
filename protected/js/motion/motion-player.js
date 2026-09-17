@@ -17,6 +17,11 @@
 const KlndrMotion = (() => {
   const Timeline = KlndrMotionTimeline;
   const FPS = KlndrScenes.FPS;
+  // Scenes are timed in frames at 30 a second, but drawn in between as well: a
+  // camera move or a scrolling row stepped at 30 a second visibly judders. A
+  // draw at most every hundredth of a second (in frames): every refresh of a 60
+  // or 90Hz screen, every other one of a 120Hz screen.
+  const DRAW_EVERY = 0.3;
 
   const reducedMotionQuery = window.matchMedia
     ? window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -146,8 +151,11 @@ const KlndrMotion = (() => {
         const cycleMs = (plan.cycle / FPS) * 1000;
         while (stamp - startedAt >= 2 * cycleMs) startedAt += cycleMs;
       }
-      time = Math.max(0, Math.floor(((stamp - startedAt) / 1000) * FPS));
-      draw();
+      const exact = Math.max(0, ((stamp - startedAt) / 1000) * FPS);
+      if (drawn === null || Math.abs(exact - drawn) >= DRAW_EVERY) {
+        time = exact;
+        draw();
+      }
       raf = requestAnimationFrame(tick);
     }
 
@@ -253,13 +261,13 @@ const KlndrMotion = (() => {
       get plan() {
         return plan;
       },
-      /** Frames since playback began, never wrapped. */
+      /** Frames since playback began, never wrapped - between whole frames while playing. */
       get time() {
         return time;
       },
-      /** Where on the bar playback is, as a frame from 0 to `length`. */
+      /** Where on the bar playback is, as a whole frame from 0 to `length`. */
       get position() {
-        return now().position;
+        return Math.floor(now().position);
       },
       /** The frames the bar spans: a whole loop, or the way in. */
       get length() {

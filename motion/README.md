@@ -19,7 +19,7 @@ Headless Shell (about 113 MB) into `node_modules`.
 | Studio folder | Compositions | What they are |
 | --- | --- | --- |
 | **Scenes** | `PopReveal`, `BlockShuffle`, `StickerBurst`, `Checklist`, `Stamp`, `Ticker`, `FlipBoard`, `Keycaps`, `Chat`, `PointClick` | The app's built-in motion scenes, drawn by the same code klndr plays live (`protected/js/motion/scenes.js` and `motion-timeline.js`). |
-| **Scenes** | `Reel` | Several scenes played one after another, the way a header with clips plays them. |
+| **Scenes** | `Reel` | Several scenes played one after another, the way a header with clips plays them: one camera move from each clip to the next. |
 | **Clips** | `FeatureSpotlight`, `WeekRecap` | Free-form React clips in `src/clips/`. Start a new clip by copying one. |
 
 You rarely need to render a scene for a header. The announcement studio's
@@ -45,6 +45,8 @@ save it as a file in `props/` and render it:
 ```bash
 npm run render -- Reel --props=props/my-reel.json
 ```
+
+A looping reel is recorded from its second pass, which opens partway through the camera move from the last clip back to the first. That way the file repeats without a seam. A reel that plays once opens on an empty stage, as the header does.
 
 `npm run compositions` lists every id.
 

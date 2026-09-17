@@ -84,21 +84,25 @@ const KlndrScenes = (() => {
   // ==========================================
 
   // The calendar's own grid, faintly, so a scene reads as klndr before anything
-  // has moved. `offsetX` slides the lattice without breaking it, for a camera
-  // that travels along the board.
-  function paintGround(ctx, env, color, offsetX = 0) {
+  // has moved. `area` paints another stretch of the same lattice - the board
+  // around a clip, seen by a camera travelling between clips - with its lines
+  // where the stage's own would carry on to.
+  const GRID = 60;
+
+  function paintGround(ctx, env, color, area) {
+    const { x = 0, y = 0, width = env.width, height = env.height } = area || {};
     ctx.fillStyle = color;
-    ctx.fillRect(0, 0, env.width, env.height);
+    ctx.fillRect(x, y, width, height);
     ctx.strokeStyle = M.alpha(env.theme.ink, 0.07);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    for (let x = 60 - (((offsetX % 60) + 60) % 60); x < env.width; x += 60) {
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, env.height);
+    for (let gx = (Math.floor(x / GRID) + 1) * GRID; gx < x + width; gx += GRID) {
+      ctx.moveTo(gx, y);
+      ctx.lineTo(gx, y + height);
     }
-    for (let y = 60; y < env.height; y += 60) {
-      ctx.moveTo(0, y);
-      ctx.lineTo(env.width, y);
+    for (let gy = (Math.floor(y / GRID) + 1) * GRID; gy < y + height; gy += GRID) {
+      ctx.moveTo(x, gy);
+      ctx.lineTo(x + width, gy);
     }
     ctx.stroke();
   }
@@ -156,8 +160,8 @@ const KlndrScenes = (() => {
     ctx.closePath();
   }
 
-  function sealPath(ctx, outer, inner, points) {
-    ctx.beginPath();
+  function sealPath(ctx, outer, inner, points, fresh = true) {
+    if (fresh) ctx.beginPath();
     for (let i = 0; i < points * 2; i++) {
       const r = i % 2 === 0 ? outer : inner;
       const a = (i / (points * 2)) * TAU - Math.PI / 2;
@@ -1003,13 +1007,9 @@ const KlndrScenes = (() => {
           scaleY: scale * (1 - impact * 0.16),
           alpha: M.progress(t, 4, 9) * (1 - lift)
         }, () => {
-          ctx.save();
-          ctx.translate(12, 12);
-          sealPath(ctx, 196, 176, 24);
-          ctx.fillStyle = theme.line;
-          ctx.fill();
-          ctx.restore();
-
+          M.slabUnder(ctx, (fresh) => sealPath(ctx, 196, 176, 24, fresh), 12, 12, theme.line, {
+            x: -200, y: -200, w: 414, h: 414
+          });
           sealPath(ctx, 196, 176, 24);
           ctx.fillStyle = p.color;
           ctx.fill();
@@ -1586,9 +1586,9 @@ const KlndrScenes = (() => {
   const TYPING_H = 64;
 
   // A speech bubble: round, but for the bottom corner its tail leaves from.
-  function bubblePath(ctx, x, y, w, h, tailRight) {
+  function bubblePath(ctx, x, y, w, h, tailRight, fresh = true) {
     const r = Math.min(26, h / 2);
-    ctx.beginPath();
+    if (fresh) ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.arcTo(x + w, y, x + w, y + h, r);
     ctx.arcTo(x + w, y + h, x, y + h, tailRight ? 4 : r);
@@ -1598,9 +1598,9 @@ const KlndrScenes = (() => {
   }
 
   function bubble(ctx, { x, y, w, h, tailRight, fill, line }) {
-    bubblePath(ctx, x + 6, y + 6, w, h, tailRight);
-    ctx.fillStyle = line;
-    ctx.fill();
+    M.slabUnder(ctx, (fresh) => bubblePath(ctx, x, y, w, h, tailRight, fresh), 6, 6, line, {
+      x: x - 1, y: y - 1, w: w + 8, h: h + 8
+    });
     bubblePath(ctx, x, y, w, h, tailRight);
     ctx.fillStyle = fill;
     ctx.fill();
@@ -1735,11 +1735,11 @@ const KlndrScenes = (() => {
 
   // A callout's box and the tail pointing down out of it as one outline, with
   // the tip of the tail at the origin.
-  function calloutPath(ctx, w, h, tail) {
+  function calloutPath(ctx, w, h, tail, fresh = true) {
     const x = -w / 2;
     const y = -tail - h;
     const r = Math.min(24, h / 2);
-    ctx.beginPath();
+    if (fresh) ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.arcTo(x + w, y, x + w, y + h, r);
     ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -1919,12 +1919,9 @@ const KlndrScenes = (() => {
               ctx.font = M.font(text.size);
               const w = Math.max(160, ...text.lines.map((line) => ctx.measureText(line).width)) + 70;
               const h = text.lines.length * text.size * 1.08 + 40;
-              ctx.save();
-              ctx.translate(8, 8);
-              calloutPath(ctx, w, h, tail);
-              ctx.fillStyle = theme.line;
-              ctx.fill();
-              ctx.restore();
+              M.slabUnder(ctx, (fresh) => calloutPath(ctx, w, h, tail, fresh), 8, 8, theme.line, {
+                x: -w / 2 - 1, y: -tail - h - 1, w: w + 10, h: h + tail + 10
+              });
               calloutPath(ctx, w, h, tail);
               ctx.fillStyle = theme.ink;
               ctx.fill();
@@ -2080,7 +2077,7 @@ const KlndrScenes = (() => {
     const scene = get(id);
     if (!scene) return;
     const full = envFor(env);
-    paintGround(ctx, full, scene.ground(props, full.theme), env.groundOffset || 0);
+    paintGround(ctx, full, scene.ground(props, full.theme));
     scene.render(ctx, clockFor(scene, props, clock), props, full);
   }
 

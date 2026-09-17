@@ -29,6 +29,8 @@ export type MotionScene = {
 
 export type MotionPlan = {
   loop: boolean;
+  /** Whether clips hand over with a camera move: more than one clip. */
+  travels: boolean;
   cycle: number;
   settle: number;
   length: number;
@@ -79,6 +81,7 @@ type TimelineApi = {
     frame: number,
     env: { width: number; height: number; theme: Theme; ambient?: number }
   ): unknown;
+  videoStart(plan: MotionPlan): number;
   videoLength(plan: MotionPlan, tailSeconds?: number): number;
 };
 

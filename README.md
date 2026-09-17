@@ -225,6 +225,7 @@ docs/                        Manual regression checklists
 - **Read state is per post, not a watermark.** A receipt per person per post records delivery, opening, dismissal, button click and reaction, stamped with the delivery version it belongs to. "Notify again" makes a post unread for everyone without erasing anyone's history. Posts from before receipts still honour the old `last_seen_announcement_id` watermark, read at request time; nothing was backfilled.
 - **Media bytes never pass through Express.** Vercel caps a function body at 4.5 MB. So the studio asks the server for presigned R2 URLs, with type, size and cache headers bound into the signature, and uploads straight to the bucket with a progress bar. The server then confirms the object with a HEAD request, and reads SVG and Lottie files to reject anything scriptable.
 - **One motion scene, two renderers.** A scene animates in, stays idle - still moving - for as long as it is asked to, then animates out. It is a pure function from its clock (frames since it began, and frames since its out began) to canvas drawing, so any length of idle joins its out without a jump. The app's player and the Remotion workspace in `motion/` run the same timeline and the same functions, so a rendered clip matches the in-app scene frame for frame, and a resting pose costs nothing to show under reduced motion.
+- **A run of clips is one camera move, not clips glued together.** Each clip is a panel on klndr's board, laid out left to right like days on the calendar. Just before a clip's out, the camera lifts its panel off the board and slides to the next one, which starts arriving while it is still sliding in; what the panels carry lags a touch as the camera sets off and runs on a touch as it stops. So the leaving clip is still on screen while the next one builds, and no moment is empty. The same move joins every pair of clips, the last back to the first included, and it is planned in `motion-timeline.js`, so the player, the scrubber and a Remotion render share it. Between moves, a clip draws exactly as it does on its own.
 
 ### Data model
 
@@ -443,7 +444,7 @@ new** button in the top bar, and each post also arrives the way it was sent.
 
 ### Writing a post
 
-- **Header.** Upload an image, an animated GIF, PNG or WebP, an SVG, an MP4 or WebM video, or a Lottie file: drop it, paste it, pick it, or reuse one from the library. Or choose a **motion scene** and edit its words and colours - or line up to six **clips**, each its own scene with its own words and colours, to play one after another: add, reorder by dragging, and remove them in a strip. Motion can **play once** - every clip plays through, then the last one stays in its idle state - or **loop**, back to the first clip after the last; each clip idles for as long as its slider says before it animates out. The story's progress bar fills on the way in, or once per loop, and the preview marks where clips hand over. Scenes are drawn live, follow the reader's theme and need no download. Framing covers aspect ratio, fit, focal point, background and alt text.
+- **Header.** Upload an image, an animated GIF, PNG or WebP, an SVG, an MP4 or WebM video, or a Lottie file: drop it, paste it, pick it, or reuse one from the library. Or choose a **motion scene** and edit its words and colours - or line up to six **clips**, each its own scene with its own words and colours, to play one after another: add, reorder by dragging, and remove them in a strip. Motion can **play once** - every clip plays through, then the last one stays in its idle state - or **loop**, back to the first clip after the last; each clip idles for as long as its slider says before it animates out. Clips hand over in one camera move along klndr's board, so a run plays as a single animation. The story's progress bar fills on the way in, or once per loop, and the preview marks where clips hand over. Scenes are drawn live, follow the reader's theme and need no download. Framing covers aspect ratio, fit, focal point, background and alt text.
 - **Body.** Markdown with a toolbar: headings, lists, checklists, callouts (`> [!TIP]`), code, keycaps (`[[Ctrl+Z]]`), links, and images pasted or dropped straight in.
 - **Button and reactions.** An optional button that opens a link or a klndr screen (categories, integrations, settings, account, analytics), and 🎉 ❤️ 🔥 👏 👀 reactions.
 - **Delivery.**
@@ -576,7 +577,8 @@ They cover:
 - Markdown escaping and the legacy renderer;
 - media validation and signed upload URLs;
 - the motion helpers, the scenes' determinism, and their in, idle and out: an empty stage at both ends after any idle, no jump into the out, and an intro that has really finished when it says so;
-- the motion timeline: clips, loop and play-once progress, and edits that keep the preview's place.
+- the motion timeline: clips, loop and play-once progress, and edits that keep the preview's place;
+- the camera move between clips: when it sets off and where the next clip starts, no jolt at either end, never an empty frame once the animation has begun, every pass after the first drawn the same, a clip between moves drawn exactly as on its own, and a looping video without a seam.
 
 `test-e2e.js` is a raw-`http` smoke test of the API: auth redirects, session
 handling, task CRUD and the announcement lifecycle. Start the server, then:

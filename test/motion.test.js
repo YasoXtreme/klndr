@@ -45,8 +45,8 @@ function recordingContext() {
 // "Arrived" is not "exactly still": a spring at rest is 1.0004, not 1, and asks
 // for a scale(1.0004) that a perfect 1 would skip. So two poses are compared
 // with a tolerance - two pixels, or 0.03 of a unit-sized value such as a scale
-// or an alpha - and a transform next to nothing, drawn on one side only, is
-// passed over.
+// or an alpha, though any translate is a move in pixels - and a transform next
+// to nothing, drawn on one side only, is passed over.
 function nearNothing([call, ...args]) {
   if (call === "scale") return Math.abs(args[0] - 1) <= 0.05 && Math.abs(args[1] - 1) <= 0.05;
   if (call === "rotate") return Math.abs(args[0]) <= 0.02;
@@ -64,9 +64,9 @@ function colour(value) {
   return rgba ? rgba[1].split(",").map(Number) : null;
 }
 
-function alike(x, y) {
+function alike(x, y, pixels = false) {
   if (typeof x === "number" && typeof y === "number") {
-    return Math.abs(x - y) <= (Math.abs(x) < 2 && Math.abs(y) < 2 ? 0.03 : 2);
+    return Math.abs(x - y) <= (!pixels && Math.abs(x) < 2 && Math.abs(y) < 2 ? 0.03 : 2);
   }
   const cx = colour(x);
   const cy = colour(y);
@@ -83,7 +83,7 @@ function assertSamePose(a, b, message) {
     const x = a[i];
     const y = b[j];
     if (x && y && sameCall(x, y)) {
-      const same = x.length === y.length && x.every((v, k) => alike(v, y[k]));
+      const same = x.length === y.length && x.every((v, k) => alike(v, y[k], x[0] === "translate"));
       assert.ok(same, `${message}: call ${i} ${JSON.stringify(x)} vs ${JSON.stringify(y)}`);
       i += 1;
       j += 1;
@@ -281,6 +281,21 @@ test("idle helpers start from rest", () => {
   assert.equal(Core.outOf({ exit: 0 }, 0, 10), 0);
   assert.equal(Core.outOf({ exit: 5 }, 0, 10), 0.5);
   assert.equal(Core.outOf({ exit: 50 }, 0, 10), 1);
+});
+
+// A box fading in or out would otherwise show its own slab through its fill, a
+// grey smudge across the whole box.
+test("a fading box keeps its slab from showing through it", () => {
+  const calls = (alpha) => {
+    const ctx = recordingContext();
+    ctx.globalAlpha = alpha;
+    Core.slabBox(ctx, { x: 0, y: 0, w: 100, h: 50, fill: "#ffffff", line: "#000000" });
+    return ctx.log.map(([call, arg]) => (call === "clip" ? `clip:${arg}` : call));
+  };
+  assert.ok(!calls(1).includes("clip:evenodd"), "an opaque box hides its slab by itself");
+  const fading = calls(0.5);
+  assert.ok(fading.includes("clip:evenodd"), "a fading box clips its slab to where it shows past the box");
+  assert.ok(fading.indexOf("clip:evenodd") < fading.indexOf("fill"));
 });
 
 test("interpolate clamps and walks multiple segments", () => {
