@@ -1,6 +1,6 @@
 // Klndr Motion Scenes
 //
-// The built-in animated headers: ten short scenes in klndr's own drawing style -
+// The built-in animated headers: fifteen short scenes in klndr's own drawing style -
 // flat fills, hard lines, offset slabs, ElmsSans Black - that an admin picks
 // from a gallery and fills in with their own words, emoji and colours.
 //
@@ -1964,10 +1964,1154 @@ const KlndrScenes = (() => {
   };
 
   // ==========================================
+  // SCENE: SWITCH ON
+  // ==========================================
+
+  const SWITCH_W = 680;
+  const SWITCH_H = 176;
+  const TRACK_W = 168;
+  const TRACK_H = 92;
+  const KNOB_R = 34;
+  const KNOB_TRAVEL = TRACK_W / 2 - TRACK_H / 2;
+  // The switch, on the stage.
+  const SWITCH_X = 600 + SWITCH_W / 2 - 48 - TRACK_W / 2;
+  const SWITCH_Y = 300;
+  const SWITCH_CLICK = 50;
+  const SWITCH_FLOOD = 56;
+  const SWITCH_POP = 68;
+  // Where the cursor waits once it has flipped the switch.
+  const SWITCH_REST = { x: 1000, y: 292 };
+  // Where what the switch turns on lands, for one to four things.
+  const SWITCH_SLOTS = [
+    [{ x: 600, y: 112, tilt: -4 }],
+    [{ x: 300, y: 116, tilt: -7 }, { x: 880, y: 486, tilt: 5 }],
+    [{ x: 290, y: 116, tilt: -7 }, { x: 910, y: 110, tilt: 6 }, { x: 420, y: 490, tilt: 4 }],
+    [{ x: 270, y: 118, tilt: -8 }, { x: 930, y: 110, tilt: 7 }, { x: 250, y: 486, tilt: 6 }, { x: 900, y: 492, tilt: -5 }]
+  ];
+  const SWITCH_SPARKS = [
+    [110, 300, 24, 0],
+    [1100, 240, 20, 0.35],
+    [660, 556, 18, 0.7]
+  ];
+
+  const switchOn = {
+    id: 'switch-on',
+    name: 'Switch on',
+    description: 'A cursor flips a big switch, colour floods out from it, and everything it turns on pops up.',
+    schema: [
+      { key: 'headline', type: 'text', label: 'Setting', max: 22, default: 'Focus mode' },
+      { key: 'items', type: 'list', label: 'What it turns on', max: 18, maxItems: 4, default: ['🔕 No pings', '🌿 Calm colours', '⏱️ Timer on', '🧠 Deep work'] },
+      { key: 'accent', type: 'color', label: 'Switch colour', default: '#9ae659' },
+      { key: 'background', type: 'color', label: 'Background', optional: true, default: '' }
+    ],
+    // The last thing to pop up has landed 30 frames after it set off.
+    intro: (p) => SWITCH_POP + 6 * (p.items.length - 1) + 30,
+    ground: (p, theme) => p.background || theme.ground,
+    describe: (p) => [p.headline ? `${p.headline}, switched on` : 'Switched on', p.items.join(', ')].join(': '),
+    render(ctx, clock, p, env) {
+      const { t, idle, ambient } = clock;
+      const theme = env.theme;
+      const flow = flowOf(env, DOWN);
+      const accent = M.taskFill(p.accent, theme);
+      const calm = M.rampIn(idle, 24) * ambient;
+      // Far enough from the switch to cover every corner of the canvas, and
+      // the edge of a panel the camera carries.
+      const scale = Math.min(env.width / WIDTH, env.height / BASE_HEIGHT);
+      const reach = Math.hypot(
+        env.width / 2 / scale + Math.abs(SWITCH_X - 600),
+        env.height / 2 / scale + Math.abs(SWITCH_Y - 300)
+      ) + 90;
+
+      // The flood: a ring of the switch's own colour, and a softer wash a beat
+      // behind it that stays. Each is a new ground, grid and all, so it is
+      // painted on the canvas rather than the stage.
+      const lead = M.progress(t, SWITCH_FLOOD, SWITCH_FLOOD + 20, Easing.out(Easing.cubic)) *
+        (1 - M.outOf(clock, 4, 15, Easing.in(Easing.cubic)));
+      const wash = M.progress(t, SWITCH_FLOOD + 4, SWITCH_FLOOD + 26, Easing.out(Easing.cubic)) *
+        (1 - M.outOf(clock, 1, 12, Easing.in(Easing.cubic)));
+      const floodColour = M.mix(p.accent, theme.ground, theme.name === 'dark' ? 0.42 : 0.6);
+      [[lead, accent], [wash, floodColour]].forEach(([amount, colour]) => {
+        if (amount <= EPS) return;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(
+          env.width / 2 + (SWITCH_X - 600) * scale,
+          env.height / 2 + (SWITCH_Y - 300) * scale,
+          reach * scale * amount,
+          0,
+          TAU
+        );
+        ctx.clip();
+        paintGround(ctx, env, colour);
+        ctx.restore();
+      });
+
+      onStage(ctx, env, () => {
+        const cardIn = M.spring({ frame: t, fps: FPS, delay: 2, config: { damping: 13, stiffness: 130 } });
+        const glide = M.progress(t, 12, SWITCH_CLICK - 2, Easing.inOut(Easing.cubic));
+        const press = M.progress(t, SWITCH_CLICK, SWITCH_CLICK + 3, Easing.out(Easing.quad)) *
+          (1 - M.progress(t, SWITCH_CLICK + 4, SWITCH_CLICK + 9, Easing.out(Easing.quad)));
+        const flip = M.spring({ frame: t, fps: FPS, delay: SWITCH_CLICK + 3, config: { damping: 11, stiffness: 210 } });
+        // Out: the switch goes back off, the colour drains back into it, and
+        // the card leaves last.
+        const unflip = M.outOf(clock, 0, 7, Easing.inOut(Easing.cubic));
+        const knob = flip * (1 - unflip);
+        const on = M.clamp(knob, 0, 1);
+        const go = M.outOf(clock, 8, OUTRO, Easing.in(Easing.cubic));
+        const flick = M.outOf(clock, 0, 10, Easing.in(Easing.cubic));
+
+        // Idle: the switch keeps sending ripples out across the colour.
+        const ripple = calm * (1 - M.outOf(clock, 0, 4));
+        if (ripple > EPS) {
+          ctx.save();
+          ctx.lineWidth = 8;
+          for (let k = 0; k < 2; k++) {
+            const q = M.beat(idle + k * 50, 100).local / 100;
+            ctx.strokeStyle = M.alpha(theme.surface, 0.5 * (1 - q) * ripple);
+            ctx.beginPath();
+            ctx.arc(SWITCH_X, SWITCH_Y, M.lerp(TRACK_W * 0.6, reach, Easing.out(Easing.quad)(q)), 0, TAU);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        const label = M.fitText(ctx, p.headline || ' ', { maxWidth: SWITCH_W - 96 - TRACK_W - 36, maxLines: 1, max: 54, min: 26 });
+        place(ctx, {
+          x: 600 + flow.x * 100 * go,
+          y: SWITCH_Y + (1 - cardIn) * 50 + M.wave(idle, 110) * 3 * calm + flow.y * 100 * go,
+          rotate: deg((1 - cardIn) * -5 + (flow.x < 0 ? -6 : 6) * go),
+          scaleX: (0.8 + 0.2 * cardIn) * M.lerp(1, 0.9, go),
+          alpha: M.clamp(cardIn * 1.5, 0, 1) * (1 - go)
+        }, () => {
+          const left = -SWITCH_W / 2;
+          M.slabBox(ctx, {
+            x: left, y: -SWITCH_H / 2, w: SWITCH_W, h: SWITCH_H,
+            r: 30, fill: theme.surface, line: theme.line, lineWidth: 5, slab: 12
+          });
+          ctx.font = M.font(label.size);
+          ctx.fillStyle = theme.ink;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label.lines[0] || '', left + 48, -18);
+
+          // Off, then On: the word turns over as the switch does.
+          place(ctx, { x: left + 48, y: 40, scaleY: Math.abs(Math.cos(on * Math.PI)) }, () => {
+            const lit = on >= 0.5;
+            ctx.beginPath();
+            ctx.arc(10, 0, 10, 0, TAU);
+            ctx.fillStyle = lit ? accent : theme.tray;
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = theme.line;
+            ctx.stroke();
+            ctx.font = M.font(28, 800);
+            ctx.fillStyle = lit ? theme.ink : theme.inkSoft;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(lit ? 'On' : 'Off', 32, 2);
+          });
+
+          place(ctx, { x: SWITCH_X - 600, y: 0 }, () => {
+            const ring = M.progress(t, SWITCH_CLICK + 3, SWITCH_CLICK + 20, Easing.out(Easing.quad));
+            if (ring > EPS && ring < 1 - EPS) {
+              ctx.save();
+              ctx.globalAlpha = ctx.globalAlpha * (1 - ring);
+              ctx.strokeStyle = theme.line;
+              ctx.lineWidth = 5;
+              M.roundRectPath(
+                ctx,
+                -TRACK_W / 2 - ring * 36, -TRACK_H / 2 - ring * 36,
+                TRACK_W + ring * 72, TRACK_H + ring * 72,
+                TRACK_H / 2 + ring * 36
+              );
+              ctx.stroke();
+              ctx.restore();
+            }
+
+            M.slabBox(ctx, {
+              x: -TRACK_W / 2, y: -TRACK_H / 2, w: TRACK_W, h: TRACK_H,
+              r: TRACK_H / 2, fill: M.mix(accent, theme.tray, on), line: theme.line, lineWidth: 5, slab: 6
+            });
+            // The knob squashes under the click and stretches as it runs across.
+            const stretch = Math.sin(Math.PI * on) * 0.3;
+            place(ctx, {
+              x: M.lerp(-KNOB_TRAVEL, KNOB_TRAVEL, knob),
+              y: 0,
+              scaleX: 1 + stretch + 0.12 * press,
+              scaleY: 1 - 0.12 * press - stretch * 0.25
+            }, () => {
+              ctx.beginPath();
+              ctx.arc(0, 0, KNOB_R, 0, TAU);
+              ctx.fillStyle = theme.surface;
+              ctx.fill();
+              ctx.lineWidth = 5;
+              ctx.strokeStyle = theme.line;
+              ctx.stroke();
+            });
+          });
+        });
+
+        // What the switch turns on shoots out of it and lands around the card.
+        const slots = SWITCH_SLOTS[Math.min(p.items.length, SWITCH_SLOTS.length) - 1];
+        p.items.forEach((item, i) => {
+          const slot = slots[i];
+          const at = SWITCH_POP + i * 6;
+          const pop = M.spring({ frame: t, fps: FPS, delay: at, config: { damping: 13, stiffness: 170 } });
+          const fling = M.outOf(clock, i * 1.5, 9 + i * 1.5, Easing.in(Easing.cubic));
+          let dx = slot.x - SWITCH_X;
+          let dy = slot.y - SWITCH_Y;
+          if (env.flow) {
+            const outward = Math.hypot(dx, dy) || 1;
+            dx = (dx / outward) * 0.4 + env.flow.x;
+            dy = (dy / outward) * 0.4 + env.flow.y;
+          }
+          const length = Math.hypot(dx, dy) || 1;
+          ctx.font = M.font(34);
+          const w = Math.max(100, ctx.measureText(item).width + 64);
+          const h = 76;
+          const x = M.lerp(SWITCH_X, slot.x, pop) + (dx / length) * 120 * fling;
+          const y = M.lerp(SWITCH_Y, slot.y, pop) + M.wave(idle, 80, i * 0.23) * 6 * calm + (dy / length) * 120 * fling;
+          const tilt = deg(slot.tilt * M.clamp(pop, 0, 1) + M.wave(idle, 120, i * 0.31) * 2 * calm + (dx < 0 ? -20 : 20) * fling);
+
+          // A ring goes out from it as it lands.
+          const ring = M.progress(t, at + 9, at + 24, Easing.out(Easing.quad));
+          if (ring > EPS && ring < 1 - EPS) {
+            place(ctx, { x, y, rotate: tilt, alpha: 1 - ring }, () => {
+              ctx.strokeStyle = theme.line;
+              ctx.lineWidth = 4;
+              M.roundRectPath(ctx, -w / 2 - ring * 28, -h / 2 - ring * 28, w + ring * 56, h + ring * 56, h / 2 + ring * 28);
+              ctx.stroke();
+            });
+          }
+
+          place(ctx, {
+            x,
+            y,
+            rotate: tilt,
+            scaleX: (0.3 + 0.7 * pop) * (1 - 0.4 * fling),
+            alpha: M.clamp(pop * 2, 0, 1) * (1 - fling)
+          }, () => {
+            M.slabBox(ctx, {
+              x: -w / 2, y: -h / 2, w, h,
+              r: h / 2, fill: theme.surface, line: theme.line, lineWidth: 4, slab: 7
+            });
+            ctx.font = M.font(34);
+            ctx.fillStyle = theme.ink;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(item, 0, 2);
+          });
+        });
+
+        const sparkle = M.spring({ frame: t, fps: FPS, delay: SWITCH_FLOOD + 10, config: { damping: 8, stiffness: 150 } }) *
+          (1 - M.outOf(clock, 0, 7));
+        SWITCH_SPARKS.forEach(([x, y, r, phase]) => {
+          place(ctx, {
+            x,
+            y,
+            rotate: t * 0.03 * ambient,
+            scaleX: sparkle * M.lerp(0.9, 0.75 + 0.25 * M.wave(t, 60, phase), ambient),
+            alpha: M.clamp(sparkle * 2, 0, 1)
+          }, () => {
+            sparklePath(ctx, r);
+            ctx.fillStyle = accent;
+            ctx.fill();
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = theme.line;
+            ctx.stroke();
+          });
+        });
+
+        // In along a curve to the knob, along with it as it flips, then aside to watch.
+        const clickX = SWITCH_X - KNOB_TRAVEL + 8;
+        const clickY = SWITCH_Y + 12;
+        const u = 1 - glide;
+        const inX = u * u * 1190 + 2 * u * glide * 1130 + glide * glide * clickX;
+        const inY = u * u * 720 + 2 * u * glide * 470 + glide * glide * clickY;
+        const ride = M.clamp(flip, 0, 1) * KNOB_TRAVEL * 2;
+        const aside = M.progress(t, SWITCH_CLICK + 14, SWITCH_CLICK + 32, Easing.inOut(Easing.cubic));
+        const hereX = M.lerp(inX + ride, SWITCH_REST.x, aside) + Math.sin((idle / 110) * TAU) * 6 * calm;
+        const hereY = M.lerp(inY, SWITCH_REST.y, aside) + Math.sin((idle / 55) * TAU) * 4 * calm;
+        const awayX = env.flow ? hereX + env.flow.x * 700 : 1190;
+        const awayY = env.flow ? hereY + env.flow.y * 700 : 700;
+        place(ctx, {
+          x: M.lerp(hereX, awayX, flick),
+          y: M.lerp(hereY, awayY, flick),
+          rotate: deg(M.lerp(-14, 0, glide)),
+          scaleX: 1 - 0.16 * press,
+          alpha: M.progress(t, 12, 17) * (1 - flick)
+        }, () => {
+          cursorPath(ctx, 2.6);
+          ctx.fillStyle = theme.ink;
+          ctx.fill();
+          ctx.lineWidth = 6;
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = theme.surface;
+          ctx.stroke();
+        });
+      });
+    }
+  };
+
+  // ==========================================
+  // SCENE: SAVE THE DATE
+  // ==========================================
+
+  const PAD_W = 300;
+  const PAD_H = 340;
+  const PAD_BIND = 76;
+  const PAD_TOP = -PAD_H / 2 + PAD_BIND;
+  // The pad is drawn at this size on the stage.
+  const PAD_SCALE = 1.2;
+  // The pages before the day tear off quicker and quicker, each lifting at its
+  // corner for PAGE_CURL frames before it lets go.
+  const PAGE_TEARS = [32, 42, 50, 56];
+  const PAGE_CURL = 4;
+  const DATE_LANDS = PAGE_TEARS[PAGE_TEARS.length - 1] + PAGE_CURL;
+  const MARKER_AT = DATE_LANDS + 4;
+
+  // What the pages before the day say: the days counting up to it, wrapping
+  // back through the month before, or nothing when the day is not a number.
+  function pagesBefore(day) {
+    if (!/^\d+$/.test(day)) return PAGE_TEARS.map(() => '');
+    const n = Number(day);
+    return PAGE_TEARS.map((_, k) => {
+      const d = n - PAGE_TEARS.length + k;
+      return String(d < 1 ? d + 30 : d);
+    });
+  }
+
+  function pageFace(ctx, { number, weekday, size, theme }) {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = M.font(size);
+    ctx.fillStyle = theme.ink;
+    ctx.fillText(number, 0, PAD_TOP + 104);
+    if (weekday) {
+      ctx.font = M.font(30, 800);
+      ctx.fillStyle = theme.inkSoft;
+      ctx.fillText(weekday, 0, PAD_H / 2 - 42);
+    } else {
+      M.roundRectPath(ctx, -45, PAD_H / 2 - 47, 90, 10, 5);
+      ctx.fillStyle = M.alpha(theme.ink, 0.14);
+      ctx.fill();
+    }
+  }
+
+  // One page. Still on the pad, its top is tucked under the binding.
+  function pageSheet(ctx, { number, size, theme, tucked }) {
+    const tuck = tucked ? 24 : 0;
+    M.roundRectPath(ctx, -PAD_W / 2, PAD_TOP - tuck, PAD_W, PAD_H / 2 - PAD_TOP + tuck, tucked ? 22 : 16);
+    ctx.fillStyle = theme.surface;
+    ctx.fill();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = theme.line;
+    ctx.stroke();
+    pageFace(ctx, { number, weekday: '', size, theme });
+  }
+
+  // A marker ring drawn by hand: a little more than once round, wider on the
+  // second pass. Returns roughly how long the stroke is.
+  function markerPath(ctx, rx, ry) {
+    const steps = 48;
+    const sweep = TAU * 1.12;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const a = -2.2 + (i / steps) * sweep;
+      const grow = 1 + 0.07 * (i / steps);
+      const x = Math.cos(a) * rx * grow;
+      const y = Math.sin(a) * ry * grow;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    return TAU * Math.sqrt((rx * rx + ry * ry) / 2) * 1.12 * 1.07 + 20;
+  }
+
+  const saveTheDate = {
+    id: 'save-the-date',
+    name: 'Save the date',
+    description: 'Pages tear off a desk calendar until your date lands, then a marker circles it.',
+    schema: [
+      { key: 'month', type: 'text', label: 'Month', max: 9, default: 'OCT' },
+      { key: 'day', type: 'text', label: 'Day', max: 3, default: '1' },
+      { key: 'weekday', type: 'text', label: 'Weekday', max: 12, default: 'Thursday' },
+      { key: 'headline', type: 'text', label: 'Headline', max: 30, default: 'Save the date' },
+      { key: 'detail', type: 'text', label: 'Detail', max: 32, default: 'Studio 2.0 goes live' },
+      { key: 'accent', type: 'color', label: 'Binding colour', default: '#fb923c' },
+      { key: 'background', type: 'color', label: 'Background', optional: true, default: '' }
+    ],
+    // The detail line on the card has settled by 100.
+    intro: (p) => (p.headline || p.detail ? 100 : MARKER_AT + 20),
+    ground: (p, theme) => p.background || theme.ground,
+    describe: (p) => [[p.headline, p.detail].filter(Boolean).join(', '), [p.weekday, p.day, p.month].filter(Boolean).join(' ')]
+      .filter(Boolean)
+      .join(': '),
+    render(ctx, clock, p, env) {
+      const { t, idle, ambient } = clock;
+      const theme = env.theme;
+      const flow = flowOf(env, DOWN);
+
+      onStage(ctx, env, () => {
+        const accent = M.taskFill(p.accent, theme);
+        const calm = M.rampIn(idle, 24) * ambient;
+        const hasCard = Boolean(p.headline || p.detail);
+        const padX = hasCard ? 320 : 600;
+        const padY = 300;
+        const numbers = pagesBefore(p.day);
+        const number = M.fitText(ctx, p.day || ' ', { maxWidth: 210, maxLines: 1, max: 150, min: 60 });
+        const month = M.fitText(ctx, p.month || ' ', { maxWidth: 230, maxLines: 1, max: 44, min: 20 });
+
+        const padIn = M.spring({ frame: t, fps: FPS, delay: 2, config: { damping: 12, stiffness: 110 } });
+        const unmark = M.outOf(clock, 0, 8, Easing.in(Easing.quad));
+        const cardOut = M.outOf(clock, 0, 12, Easing.in(Easing.cubic));
+        const drop = M.outOf(clock, 6, OUTRO, Easing.in(Easing.cubic));
+        // Every page that lets go gives the pad a little knock; the day lands with a thump.
+        const knock = PAGE_TEARS.reduce((sum, at) => {
+          const since = t - at - PAGE_CURL;
+          return since >= 0 ? sum + Math.exp(-since / 3) * Math.sin(since / 1.2) : sum;
+        }, 0);
+        const since = t - DATE_LANDS;
+        const thump = since >= 0 ? Math.exp(-since / 4) * Math.cos(since / 1.6) : 0;
+
+        place(ctx, {
+          x: padX + flow.x * 110 * drop,
+          y: M.lerp(-360, padY, padIn) + flow.y * 110 * drop,
+          rotate: deg(M.lerp(-10, -3, padIn) + knock * 1.4 + M.wave(idle, 140) * 1.2 * calm + (flow.x < 0 ? -8 : 8) * drop),
+          scaleX: PAD_SCALE * (1 + thump * 0.04),
+          scaleY: PAD_SCALE * (1 - thump * 0.05),
+          alpha: M.clamp(padIn * 3, 0, 1) * (1 - drop)
+        }, () => {
+          M.slabBox(ctx, {
+            x: -PAD_W / 2, y: -PAD_H / 2, w: PAD_W, h: PAD_H,
+            r: 24, fill: theme.surface, line: theme.line, lineWidth: 5, slab: 12
+          });
+
+          // The page on top, and whatever is under it - the next day, or the day.
+          const top = PAGE_TEARS.findIndex((at) => t < at + PAGE_CURL);
+          if (top < 0 || top === PAGE_TEARS.length - 1) {
+            pageFace(ctx, { number: p.day, weekday: p.weekday, size: number.size, theme });
+          } else {
+            pageFace(ctx, { number: numbers[top + 1], weekday: '', size: number.size, theme });
+          }
+          if (top >= 0) {
+            const curl = M.progress(t, PAGE_TEARS[top], PAGE_TEARS[top] + PAGE_CURL, Easing.in(Easing.quad));
+            ctx.save();
+            ctx.translate(-PAD_W / 2, PAD_TOP);
+            ctx.rotate(deg(8 * curl));
+            ctx.translate(PAD_W / 2, -PAD_TOP);
+            pageSheet(ctx, { number: numbers[top], size: number.size, theme, tucked: true });
+            ctx.restore();
+          }
+
+          ctx.save();
+          M.roundRectPath(ctx, -PAD_W / 2, -PAD_H / 2, PAD_W, PAD_H, 24);
+          ctx.clip();
+          ctx.fillStyle = accent;
+          ctx.fillRect(-PAD_W / 2, -PAD_H / 2, PAD_W, PAD_BIND);
+          ctx.restore();
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = theme.line;
+          ctx.beginPath();
+          ctx.moveTo(-PAD_W / 2, PAD_TOP);
+          ctx.lineTo(PAD_W / 2, PAD_TOP);
+          ctx.stroke();
+          M.roundRectPath(ctx, -PAD_W / 2, -PAD_H / 2, PAD_W, PAD_H, 24);
+          ctx.stroke();
+          ctx.font = M.font(month.size);
+          ctx.fillStyle = inkOn(accent, theme);
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(month.lines[0] || '', 0, -PAD_H / 2 + PAD_BIND / 2 + 4);
+          [-84, 84].forEach((x) => {
+            M.slabBox(ctx, {
+              x: x - 11, y: -PAD_H / 2 - 20, w: 22, h: 42,
+              r: 11, fill: theme.tray, line: theme.line, lineWidth: 4, slab: 0
+            });
+          });
+
+          const mark = M.progress(t, MARKER_AT, MARKER_AT + 18, Easing.inOut(Easing.quad)) * (1 - unmark);
+          place(ctx, {
+            x: 0,
+            y: PAD_TOP + 100,
+            rotate: deg(-8),
+            scaleX: 1 + 0.035 * M.swell(idle, 70) * calm,
+            alpha: mark > EPS ? 1 : 0
+          }, () => {
+            const length = markerPath(ctx, 118, 82);
+            ctx.setLineDash([length, length]);
+            ctx.lineDashOffset = length * (1 - mark);
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 10;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+            ctx.setLineDash([]);
+          });
+
+          // The pages that have let go fall away in front of the pad, carrying
+          // on from where their curl left them.
+          PAGE_TEARS.forEach((at, k) => {
+            const loose = t - at - PAGE_CURL;
+            const fade = 1 - M.progress(loose, 6, 18);
+            if (loose < 0 || fade <= EPS) return;
+            ctx.save();
+            ctx.globalAlpha = ctx.globalAlpha * fade;
+            ctx.translate(-PAD_W / 2 + loose * (k % 2 ? 5 : 3), PAD_TOP + loose * 3 + 0.9 * loose * loose);
+            ctx.rotate(deg(8 + loose * (3 + k)));
+            ctx.translate(PAD_W / 2, -PAD_TOP);
+            pageSheet(ctx, { number: numbers[k], size: number.size, theme, tucked: false });
+            ctx.restore();
+          });
+        });
+
+        if (hasCard) {
+          const cardIn = M.spring({ frame: t, fps: FPS, delay: MARKER_AT + 2, config: { damping: 12, stiffness: 130 } });
+          const detailIn = M.spring({ frame: t, fps: FPS, delay: MARKER_AT + 8, config: { damping: 12, stiffness: 140 } });
+          const headline = M.fitText(ctx, p.headline || ' ', { maxWidth: 430, maxLines: 2, max: 64, min: 32 });
+          const detail = M.fitText(ctx, p.detail || ' ', { maxWidth: 430, maxLines: 1, max: 36, min: 22, step: 2, weight: 800 });
+          const headH = p.headline ? headline.lines.length * headline.size * 1.06 : 0;
+          const detailH = p.detail ? detail.size * 1.2 : 0;
+          const cardW = 520;
+          const cardH = 88 + headH + detailH + (p.headline && p.detail ? 14 : 0);
+          place(ctx, {
+            x: 810 + (1 - cardIn) * 140 + flow.x * 80 * cardOut,
+            y: padY + M.wave(idle, 95) * 4 * calm + flow.y * 80 * cardOut,
+            rotate: deg(M.lerp(7, 2, cardIn)),
+            scaleX: 0.85 + 0.15 * cardIn,
+            alpha: M.clamp(cardIn * 1.6, 0, 1) * (1 - cardOut)
+          }, () => {
+            const left = -cardW / 2;
+            const top = -cardH / 2;
+            M.slabBox(ctx, {
+              x: left, y: top, w: cardW, h: cardH,
+              r: 26, fill: theme.surface, line: theme.line, lineWidth: 5, slab: 12
+            });
+            // A strip of the binding's colour down its left edge, like a diary tab.
+            ctx.save();
+            M.roundRectPath(ctx, left, top, cardW, cardH, 26);
+            ctx.clip();
+            ctx.fillStyle = accent;
+            ctx.fillRect(left, top, 20, cardH);
+            ctx.restore();
+            M.roundRectPath(ctx, left, top, cardW, cardH, 26);
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = theme.line;
+            ctx.stroke();
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            if (p.headline) {
+              ctx.font = M.font(headline.size);
+              ctx.fillStyle = theme.ink;
+              headline.lines.forEach((line, i) => {
+                ctx.fillText(line, left + 50, top + 44 + headline.size * (i * 1.06 + 0.53));
+              });
+            }
+            if (p.detail) {
+              place(ctx, {
+                x: left + 50,
+                y: top + cardH - 44 - detailH / 2 + (1 - detailIn) * 16,
+                alpha: M.clamp(detailIn * 1.6, 0, 1)
+              }, () => {
+                ctx.font = M.font(detail.size, 800);
+                ctx.fillStyle = theme.inkSoft;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(detail.lines[0] || '', 0, 2);
+              });
+            }
+          });
+        }
+      });
+    }
+  };
+
+  // ==========================================
+  // SCENE: MILESTONE
+  // ==========================================
+
+  // A chart climbing to its best bar yet, peeking out around the card.
+  const MILESTONE_BARS = [0.28, 0.4, 0.34, 0.5, 0.46, 0.62, 0.56, 0.72, 0.8, 0.76, 1];
+  const BAR_W = 70;
+  const BAR_MAX = 420;
+  const COUNT_FROM = 18;
+  const COUNT_TO = 60;
+  // Picks up speed, then glides in, so the count spends its time on numbers you can read.
+  const countEase = Easing.bezier(0.4, 0, 0.2, 1);
+  const MILESTONE_SPARKS = [
+    [150, 120, 36, 0],
+    [1050, 104, 32, 0.3],
+    [1004, 226, 26, 0.6],
+    [190, 360, 28, 0.8]
+  ];
+
+  /**
+   * `text` part of the way to the number in it: its digits counted up from 0,
+   * leading zeros and the separators between them left off, so "10,000" reads
+   * 0, 7, 480, 3,125 and then 10,000. Words around the number stay put.
+   */
+  function countedTo(text, fraction) {
+    const digits = text.replace(/\D/g, '');
+    if (!digits || fraction >= 1) return text;
+    const shown = String(Math.round(Number(digits) * Math.max(0, fraction))).padStart(digits.length, '0');
+    const chars = Array.from(text);
+    const lastDigit = chars.reduce((last, c, i) => (/\d/.test(c) ? i : last), -1);
+    let d = 0;
+    let started = false;
+    let seenDigit = false;
+    let out = '';
+    chars.forEach((c, i) => {
+      if (/\d/.test(c)) {
+        const digit = shown[d++];
+        seenDigit = true;
+        if (started || digit !== '0' || i === lastDigit) {
+          out += digit;
+          started = true;
+        }
+      } else if (!(seenDigit && !started && i < lastDigit)) {
+        out += c;
+      }
+    });
+    return out;
+  }
+
+  // A ribbon banner's two tails, cut into a V at the ends.
+  function ribbonTailPath(ctx, bw, side) {
+    const edge = side * (bw / 2);
+    ctx.beginPath();
+    ctx.moveTo(edge - side * 20, -18);
+    ctx.lineTo(edge + side * 56, -18);
+    ctx.lineTo(edge + side * 36, 19);
+    ctx.lineTo(edge + side * 56, 56);
+    ctx.lineTo(edge - side * 20, 56);
+    ctx.closePath();
+  }
+
+  const milestone = {
+    id: 'milestone',
+    name: 'Milestone',
+    description: 'A big number counts up over a climbing chart, then a ribbon unfurls across it.',
+    schema: [
+      { key: 'number', type: 'text', label: 'Number', max: 12, default: '10,000' },
+      { key: 'headline', type: 'text', label: 'Of what', max: 32, default: 'blocks planned in klndr' },
+      { key: 'banner', type: 'text', label: 'Ribbon', max: 16, default: 'Thank you!' },
+      { key: 'accent', type: 'color', label: 'Chart colour', default: '#3ba4f6' },
+      { key: 'background', type: 'color', label: 'Background', optional: true, default: '' }
+    ],
+    // The ribbon and the sparkles have settled by 90.
+    intro: 90,
+    ground: (p, theme) => p.background || theme.mint,
+    describe: (p) => [p.banner, [p.number, p.headline].filter(Boolean).join(' ')].filter(Boolean).join(' '),
+    render(ctx, clock, p, env) {
+      const { t, idle, ambient } = clock;
+      const theme = env.theme;
+      const flow = flowOf(env, DOWN);
+
+      onStage(ctx, env, () => {
+        const accent = M.taskFill(p.accent, theme);
+        const soft = M.mix(accent, theme.surface, 0.45);
+        const calm = M.rampIn(idle, 24) * ambient;
+        const n = MILESTONE_BARS.length;
+        const pitch = (1080 - BAR_W) / (n - 1);
+
+        MILESTONE_BARS.forEach((share, i) => {
+          const grow = M.spring({ frame: t, fps: FPS, delay: 4 + i * 3, config: { damping: 14, stiffness: 120 } });
+          const sink = M.outOf(clock, i * 0.8, 10 + i * 0.8, Easing.in(Easing.cubic));
+          const breathe = 1 + 0.05 * M.wave(idle, 90, -i * 0.09) * calm;
+          const h = BAR_MAX * share * grow * breathe * (1 - sink);
+          if (h <= 0.5) return;
+          const x = 60 + i * pitch;
+          const best = i === n - 1;
+          M.slabBox(ctx, {
+            x, y: 600 - h, w: BAR_W, h: h + 400,
+            r: 16, fill: best ? accent : soft, line: theme.line, lineWidth: 5, slab: 8
+          });
+        });
+
+        const cardIn = M.spring({ frame: t, fps: FPS, delay: 6, config: { damping: 12, stiffness: 130 } });
+        const go = M.outOf(clock, 6, OUTRO, Easing.in(Easing.cubic));
+        const roll = M.outOf(clock, 0, 8, Easing.in(Easing.cubic));
+        const count = countEase(M.progress(t, COUNT_FROM, COUNT_TO));
+        const since = t - COUNT_TO;
+        const land = since >= 0 ? Math.exp(-since / 5) * Math.sin(since / 2) : 0;
+
+        const number = M.fitText(ctx, p.number || ' ', { maxWidth: 600, maxLines: 1, max: 160, min: 60 });
+        const label = M.fitText(ctx, p.headline || ' ', { maxWidth: 600, maxLines: 1, max: 44, min: 24, step: 2, weight: 800 });
+        const labelH = p.headline ? label.size + 18 : 0;
+        const cardW = 720;
+        const cardH = 110 + number.size + labelH;
+
+        place(ctx, {
+          x: 600 + flow.x * 100 * go,
+          y: 300 + (1 - cardIn) * 60 + M.wave(idle, 100) * 4 * calm + flow.y * 100 * go,
+          rotate: deg(M.lerp(-6, -1.5, cardIn) + (flow.x < 0 ? -6 : 6) * go),
+          scaleX: (0.75 + 0.25 * cardIn) * M.lerp(1, 0.9, go),
+          alpha: M.clamp(cardIn * 1.5, 0, 1) * (1 - go)
+        }, () => {
+          M.slabBox(ctx, {
+            x: -cardW / 2, y: -cardH / 2, w: cardW, h: cardH,
+            r: 30, fill: theme.surface, line: theme.line, lineWidth: 5, slab: 12
+          });
+          const numberY = -cardH / 2 + 62 + number.size / 2;
+          place(ctx, { x: 0, y: numberY, scaleX: 1 + 0.12 * land, scaleY: 1 + 0.12 * land }, () => {
+            ctx.font = M.font(number.size);
+            ctx.fillStyle = theme.ink;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(countedTo(p.number, count), 0, number.size * 0.04);
+          });
+          if (p.headline) {
+            ctx.font = M.font(label.size, 800);
+            ctx.fillStyle = theme.inkSoft;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label.lines[0] || '', 0, numberY + number.size / 2 + 12 + label.size / 2);
+          }
+
+          if (p.banner) {
+            const unfurl = M.spring({ frame: t, fps: FPS, delay: COUNT_TO + 4, config: { damping: 10, stiffness: 160 } }) * (1 - roll);
+            ctx.font = M.font(40);
+            const bw = ctx.measureText(p.banner).width + 100;
+            place(ctx, {
+              x: 0,
+              y: -cardH / 2 - 4,
+              rotate: deg(-3 + M.wave(idle, 120) * 1.5 * calm),
+              scaleX: unfurl,
+              alpha: M.clamp(unfurl * 3, 0, 1)
+            }, () => {
+              const tails = M.mix(accent, theme.line, 0.7);
+              [-1, 1].forEach((side) => {
+                ribbonTailPath(ctx, bw, side);
+                ctx.fillStyle = tails;
+                ctx.fill();
+                ctx.lineWidth = 4;
+                ctx.lineJoin = 'round';
+                ctx.strokeStyle = theme.line;
+                ctx.stroke();
+              });
+              M.slabBox(ctx, {
+                x: -bw / 2, y: -38, w: bw, h: 76,
+                r: 12, fill: accent, line: theme.line, lineWidth: 5, slab: 6
+              });
+              ctx.font = M.font(40);
+              ctx.fillStyle = inkOn(accent, theme);
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(p.banner, 0, 2);
+            });
+          }
+        });
+
+        const sparkle = M.spring({ frame: t, fps: FPS, delay: COUNT_TO, config: { damping: 8, stiffness: 150 } }) *
+          (1 - M.outOf(clock, 0, 6));
+        MILESTONE_SPARKS.forEach(([x, y, r, phase]) => {
+          place(ctx, {
+            x,
+            y,
+            rotate: t * 0.025 * ambient,
+            scaleX: sparkle * M.lerp(0.9, 0.7 + 0.3 * M.wave(t, 55, phase), ambient),
+            alpha: M.clamp(sparkle * 2, 0, 1)
+          }, () => {
+            sparklePath(ctx, r);
+            ctx.fillStyle = accent;
+            ctx.fill();
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = theme.line;
+            ctx.stroke();
+          });
+        });
+      });
+    }
+  };
+
+  // ==========================================
+  // SCENE: HEADS UP
+  // ==========================================
+
+  // The sign hangs from a string off the top of the stage and swings about
+  // where the string is tied, SIGN_PIVOT_Y. Everything else is measured down
+  // from there.
+  const SIGN_PIVOT_Y = -104;
+  const SIGN_RING = 160;
+  const SIGN_TOP = 262;
+  const SIGN_W = 680;
+  const SIGN_H = 210;
+  const SIGN_LANDS = 16;
+  const TAPE_ANGLE = deg(-30);
+
+  function warningPath(ctx, size) {
+    const h = size * 0.87;
+    ctx.beginPath();
+    ctx.moveTo(0, -h * 0.6);
+    ctx.lineTo(size / 2, h * 0.4);
+    ctx.lineTo(-size / 2, h * 0.4);
+    ctx.closePath();
+  }
+
+  const headsUp = {
+    id: 'heads-up',
+    name: 'Heads up',
+    description: 'A warning sign drops in on a string and swings, with caution tape across the corners. For maintenance and changes.',
+    schema: [
+      { key: 'label', type: 'text', label: 'Sign', max: 12, default: 'Heads up' },
+      { key: 'headline', type: 'text', label: 'Message', max: 48, default: 'Short maintenance on Sunday, 2 to 3 am' },
+      { key: 'color', type: 'color', label: 'Sign colour', default: '#fde047' },
+      { key: 'background', type: 'color', label: 'Background', optional: true, default: '' }
+    ],
+    // The swing has died down and the message has risen by 62.
+    intro: 62,
+    ground: (p, theme) => p.background || theme.ground,
+    describe: (p) => [p.label, p.headline].filter(Boolean).join(': '),
+    render(ctx, clock, p, env) {
+      const { t, idle, ambient } = clock;
+      const theme = env.theme;
+      const flow = env.flow;
+      const colour = M.taskFill(p.color, theme);
+      const calm = M.rampIn(idle, 24) * ambient;
+
+      // Caution tape pulled across two corners of the whole canvas, behind the
+      // sign; in, it runs on from one end, and out, it runs off the other.
+      const W = env.width;
+      const H = env.height;
+      const s = M.clamp(H / BASE_HEIGHT, 0.6, 1.3);
+      const band = 60 * s;
+      const period = 80 * s;
+      const reach = Math.hypot(W, H);
+      [[0.08, 0.08], [0.92, 0.94]].forEach(([fx, fy], k) => {
+        const from = M.outOf(clock, k * 2, 10 + k * 2, Easing.in(Easing.cubic));
+        const to = M.progress(t, 2 + k * 5, 20 + k * 5, Easing.out(Easing.cubic));
+        if (to - from <= EPS) return;
+        const side = k === 0 ? 1 : -1;
+        const start = side * (-reach + 2 * reach * from);
+        const end = side * (-reach + 2 * reach * to);
+        const x0 = Math.min(start, end);
+        const x1 = Math.max(start, end);
+        ctx.save();
+        ctx.translate(W * fx, H * fy);
+        ctx.rotate(TAPE_ANGLE);
+        ctx.fillStyle = theme.line;
+        ctx.fillRect(x0 + 6 * s, -band / 2 + 6 * s, x1 - x0, band);
+        ctx.beginPath();
+        ctx.rect(x0, -band / 2, x1 - x0, band);
+        ctx.fillStyle = colour;
+        ctx.fill();
+        ctx.save();
+        ctx.clip();
+        const scroll = (t * 1.2 * ambient * side) % period;
+        ctx.beginPath();
+        for (let x = Math.floor((x0 - band) / period) * period + scroll; x < x1 + band; x += period) {
+          ctx.moveTo(x, -band / 2);
+          ctx.lineTo(x + period / 2, -band / 2);
+          ctx.lineTo(x + period / 2 - band, band / 2);
+          ctx.lineTo(x - band, band / 2);
+          ctx.closePath();
+        }
+        ctx.fillStyle = theme.onColorLine;
+        ctx.fill();
+        ctx.restore();
+        ctx.lineWidth = 4 * s;
+        ctx.strokeStyle = theme.line;
+        ctx.strokeRect(x0, -band / 2, x1 - x0, band);
+        ctx.restore();
+      });
+
+      onStage(ctx, env, () => {
+        const ink = inkOn(colour, theme);
+        const drop = M.spring({ frame: t, fps: FPS, delay: 8, config: { damping: 10, stiffness: 100 } });
+        const since = t - SIGN_LANDS;
+        const swing = since > 0 ? 7 * Math.exp(-since / 13) * Math.sin(since / 3.4) : 0;
+        const sway = M.wave(idle, 130) * 1.8 * calm;
+        // Out: yanked back up on its string, or swung away the way a run of
+        // clips is travelling.
+        const lift = M.outOf(clock, 4, OUTRO, Easing.in(Easing.cubic));
+        const sink = M.outOf(clock, 0, 10, Easing.in(Easing.cubic));
+        const away = flow
+          ? { x: flow.x * 900 * lift, y: flow.y * 900 * lift, turn: -(flow.x || 0) * 24 * lift }
+          : { x: 0, y: -640 * lift, turn: 0 };
+
+        place(ctx, {
+          x: 600 + away.x,
+          y: SIGN_PIVOT_Y - 560 * (1 - drop) + away.y,
+          rotate: deg(swing + sway + away.turn),
+          alpha: M.progress(t, 8, 11) * (1 - lift)
+        }, () => {
+          ctx.strokeStyle = theme.line;
+          ctx.lineWidth = 5;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(0, -700);
+          ctx.lineTo(0, SIGN_RING - 14);
+          ctx.stroke();
+
+          const grommetX = SIGN_W / 2 - 64;
+          const grommetY = SIGN_TOP + 30;
+          M.slabBox(ctx, {
+            x: -SIGN_W / 2, y: SIGN_TOP, w: SIGN_W, h: SIGN_H,
+            r: 28, fill: colour, line: theme.line, lineWidth: 6, slab: 12
+          });
+          M.roundRectPath(ctx, -SIGN_W / 2 + 16, SIGN_TOP + 16, SIGN_W - 32, SIGN_H - 32, 18);
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = ink;
+          ctx.stroke();
+
+          ctx.strokeStyle = theme.line;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(-grommetX, grommetY);
+          ctx.lineTo(0, SIGN_RING);
+          ctx.lineTo(grommetX, grommetY);
+          ctx.stroke();
+          [-grommetX, grommetX].forEach((x) => {
+            ctx.beginPath();
+            ctx.arc(x, grommetY, 11, 0, TAU);
+            ctx.fillStyle = theme.surface;
+            ctx.fill();
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = theme.line;
+            ctx.stroke();
+          });
+          ctx.beginPath();
+          ctx.arc(0, SIGN_RING, 14, 0, TAU);
+          ctx.lineWidth = 6;
+          ctx.strokeStyle = theme.line;
+          ctx.stroke();
+
+          // Idle: the warning blinks - a quick bump every two seconds.
+          const { local } = M.beat(idle, 60);
+          const blink = (local < 10 ? Math.sin((Math.PI * local) / 10) : 0) * calm;
+          const iconX = p.label ? -SIGN_W / 2 + 132 : 0;
+          const middle = SIGN_TOP + SIGN_H / 2;
+          place(ctx, { x: iconX, y: middle + 6, scaleX: 1 + 0.14 * blink }, () => {
+            warningPath(ctx, 124);
+            ctx.fillStyle = ink;
+            ctx.fill();
+            ctx.lineWidth = 14;
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = ink;
+            ctx.stroke();
+            ctx.font = M.font(72);
+            ctx.fillStyle = colour;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('!', 0, 8);
+          });
+
+          if (p.label) {
+            const label = M.fitText(ctx, p.label, { maxWidth: 400, maxLines: 1, max: 100, min: 40 });
+            ctx.font = M.font(label.size);
+            ctx.fillStyle = ink;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label.lines[0] || '', 100, middle + label.size * 0.04);
+          }
+        });
+
+        if (p.headline) {
+          const rise = M.spring({ frame: t, fps: FPS, delay: 36, config: { damping: 12, stiffness: 140 } });
+          const way = flow || DOWN;
+          const caption = M.fitText(ctx, p.headline, { maxWidth: 880, maxLines: 1, max: 44, min: 24, step: 2, weight: 800 });
+          ctx.font = M.font(caption.size, 800);
+          const w = ctx.measureText(caption.lines[0] || '').width + 84;
+          place(ctx, {
+            x: 600 + way.x * 80 * sink,
+            y: 492 + (1 - rise) * 60 + M.wave(idle, 90) * 3 * calm + way.y * 80 * sink,
+            rotate: deg(M.lerp(-4, -1, M.clamp(rise, 0, 1))),
+            scaleX: 0.85 + 0.15 * rise,
+            alpha: M.clamp(rise * 1.6, 0, 1) * (1 - sink)
+          }, () => {
+            M.slabBox(ctx, {
+              x: -w / 2, y: -44, w, h: 88,
+              r: 44, fill: theme.surface, line: theme.line, lineWidth: 5, slab: 8
+            });
+            ctx.font = M.font(caption.size, 800);
+            ctx.fillStyle = theme.ink;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(caption.lines[0] || '', 0, 2);
+          });
+        }
+      });
+    }
+  };
+
+  // ==========================================
+  // SCENE: FEEDBACK
+  // ==========================================
+
+  const STAR_OUTER = 64;
+  const STAR_INNER = 30;
+  const STAR_GAP = 150;
+  const STAR_FILL = 34;
+  const STAR_EVERY = 6;
+  // After the last star fills, a hop runs along the row.
+  const STAR_HOP = STAR_FILL + 4 * STAR_EVERY + 8;
+  // Idle reactions: one every FLOAT_EVERY frames, each rising for FLOAT_LIFE.
+  const FLOAT_EVERY = 18;
+  const FLOAT_LIFE = 84;
+
+  const feedback = {
+    id: 'feedback',
+    name: 'Feedback',
+    description: 'Five stars fill in one by one, a button pops up, and reactions float by. For asking what people think.',
+    schema: [
+      { key: 'headline', type: 'text', label: 'Question', max: 34, default: 'How is the new Studio?' },
+      { key: 'button', type: 'text', label: 'Button', max: 16, default: 'Tell us' },
+      { key: 'emojis', type: 'list', label: 'Reactions', max: 8, maxItems: 4, default: ['❤️', '🎉', '🔥', '👏'] },
+      { key: 'accent', type: 'color', label: 'Star colour', default: '#fde047' },
+      { key: 'background', type: 'color', label: 'Background', optional: true, default: '' }
+    ],
+    // The hop along the stars is over by 90; the button has settled by 98.
+    intro: (p) => (p.button ? 98 : 92),
+    ground: (p, theme) => p.background || theme.mint,
+    describe: (p) => [p.headline, p.button].filter(Boolean).join(' '),
+    render(ctx, clock, p, env) {
+      const { t, idle, ambient } = clock;
+      const theme = env.theme;
+      const flow = flowOf(env, DOWN);
+
+      onStage(ctx, env, () => {
+        const accent = M.taskFill(p.accent, theme);
+        const calm = M.rampIn(idle, 24) * ambient;
+
+        // Reactions rise up the gutters either side of the card, behind it.
+        const floating = calm * (1 - M.outOf(clock, 0, 6));
+        if (floating > EPS && p.emojis.length) {
+          const first = Math.max(0, Math.floor((idle - FLOAT_LIFE) / FLOAT_EVERY) + 1);
+          for (let k = first; k <= Math.floor(idle / FLOAT_EVERY); k++) {
+            const age = idle - k * FLOAT_EVERY;
+            if (age < 0 || age >= FLOAT_LIFE) continue;
+            const rand = M.random(`feedback-float:${k}`);
+            const side = k % 2 ? 1 : -1;
+            const x = 600 + side * (470 + rand() * 80) + Math.sin(age / 12 + rand() * TAU) * 14;
+            place(ctx, {
+              x,
+              y: 520 - age * 4.6,
+              rotate: deg(Math.sin(age / 15) * 12),
+              scaleX: 0.6 + 0.4 * M.progress(age, 0, 10, Easing.pop),
+              alpha: M.progress(age, 0, 8) * (1 - M.progress(age, FLOAT_LIFE - 24, FLOAT_LIFE)) * floating
+            }, () => {
+              ctx.font = M.emojiFont(64);
+              ctx.fillStyle = theme.ink;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(p.emojis[k % p.emojis.length], 0, 0);
+            });
+          }
+        }
+
+        const cardIn = M.spring({ frame: t, fps: FPS, delay: 2, config: { damping: 13, stiffness: 130 } });
+        const go = M.outOf(clock, 6, OUTRO, Easing.in(Easing.cubic));
+        const cardW = 860;
+        const cardH = p.button ? 390 : 300;
+        const question = M.fitText(ctx, p.headline || ' ', { maxWidth: 740, maxLines: 1, max: 56, min: 30 });
+        const starsY = p.button ? -8 : 36;
+
+        place(ctx, {
+          x: 600 + flow.x * 100 * go,
+          y: 300 + (1 - cardIn) * 50 + M.wave(idle, 110) * 3 * calm + flow.y * 100 * go,
+          rotate: deg((1 - cardIn) * 4 + (flow.x < 0 ? -6 : 6) * go),
+          scaleX: (0.85 + 0.15 * cardIn) * M.lerp(1, 0.9, go),
+          alpha: M.clamp(cardIn * 1.5, 0, 1) * (1 - go)
+        }, () => {
+          const top = -cardH / 2;
+          M.slabBox(ctx, {
+            x: -cardW / 2, y: top, w: cardW, h: cardH,
+            r: 30, fill: theme.surface, line: theme.line, lineWidth: 5, slab: 12
+          });
+          const askIn = M.spring({ frame: t, fps: FPS, delay: 8, config: { damping: 13, stiffness: 150 } });
+          place(ctx, { x: 0, y: top + 76 + (1 - askIn) * 20, alpha: M.clamp(askIn * 1.6, 0, 1) }, () => {
+            ctx.font = M.font(question.size);
+            ctx.fillStyle = theme.ink;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(question.lines[0] || '', 0, 2);
+          });
+
+          for (let i = 0; i < 5; i++) {
+            const x = (i - 2) * STAR_GAP;
+            const fillAt = STAR_FILL + i * STAR_EVERY;
+            const appear = M.spring({ frame: t, fps: FPS, delay: 12 + i * 3, config: { damping: 10, stiffness: 170 } });
+            const lit = M.progress(t, fillAt, fillAt + 3);
+            const bump = Math.sin(Math.PI * M.progress(t, fillAt, fillAt + 10));
+            const hop = Math.sin(Math.PI * M.progress(t, STAR_HOP + i * 3, STAR_HOP + i * 3 + 10));
+            // Idle: every four seconds a shimmer runs along the row.
+            const shimmerAt = M.beat(idle, 120).local - 60 - i * 4;
+            const shimmer = (shimmerAt > 0 && shimmerAt < 10 ? Math.sin((Math.PI * shimmerAt) / 10) : 0) * calm;
+            const gone = M.outOf(clock, 2 + i * 1.5, 11 + i * 1.5, Easing.back(1.5));
+
+            const spark = M.progress(t, fillAt + 2, fillAt + 14, Easing.out(Easing.quad));
+            if (spark > EPS && spark < 1 - EPS) {
+              ctx.save();
+              ctx.globalAlpha = ctx.globalAlpha * (1 - spark);
+              ctx.translate(x, starsY);
+              ctx.strokeStyle = theme.ink;
+              ctx.lineWidth = 5;
+              ctx.lineCap = 'round';
+              ctx.beginPath();
+              for (let k = 0; k < 5; k++) {
+                const a = ((k + 0.5) / 5) * TAU - Math.PI / 2;
+                ctx.moveTo(Math.cos(a) * (58 + spark * 16), Math.sin(a) * (58 + spark * 16));
+                ctx.lineTo(Math.cos(a) * (58 + spark * 38), Math.sin(a) * (58 + spark * 38));
+              }
+              ctx.stroke();
+              ctx.restore();
+            }
+
+            place(ctx, {
+              x,
+              y: starsY - 22 * hop - 10 * shimmer,
+              rotate: deg(shimmer * 10 - hop * 8),
+              scaleX: M.clamp(appear, 0, 1.2) * (1 + 0.3 * bump) * (1 - gone),
+              alpha: M.clamp(appear * 2, 0, 1) * (1 - M.clamp(gone, 0, 1))
+            }, () => {
+              M.slabUnder(ctx, (fresh) => sealPath(ctx, STAR_OUTER, STAR_INNER, 5, fresh), 6, 6, theme.line, {
+                x: -STAR_OUTER - 4, y: -STAR_OUTER - 4, w: STAR_OUTER * 2 + 14, h: STAR_OUTER * 2 + 14
+              });
+              sealPath(ctx, STAR_OUTER, STAR_INNER, 5);
+              ctx.fillStyle = M.mix(accent, theme.tray, lit);
+              ctx.fill();
+              ctx.lineWidth = 5;
+              ctx.lineJoin = 'round';
+              ctx.strokeStyle = theme.line;
+              ctx.stroke();
+            });
+          }
+
+          if (p.button) {
+            const pop = M.spring({ frame: t, fps: FPS, delay: STAR_HOP + 4, config: { damping: 10, stiffness: 160 } });
+            const unpop = M.outOf(clock, 0, 8, Easing.back(1.6));
+            const breathe = M.swell(idle, 90) * calm;
+            ctx.font = M.font(38);
+            const bw = Math.max(180, ctx.measureText(p.button).width + 96);
+            place(ctx, {
+              x: 0,
+              y: cardH / 2 - 78 - 3 * breathe,
+              scaleX: M.clamp(pop, 0, 1.3) * (1 - unpop),
+              alpha: M.clamp(pop * 2, 0, 1) * (1 - M.clamp(unpop, 0, 1))
+            }, () => {
+              M.slabBox(ctx, {
+                x: -bw / 2, y: -38, w: bw, h: 76,
+                r: 38, fill: theme.ink, line: theme.line, lineWidth: 4, slab: 7 + 3 * breathe, slabColor: accent
+              });
+              ctx.font = M.font(38);
+              ctx.fillStyle = theme.surface;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(p.button, 0, 2);
+            });
+          }
+        });
+      });
+    }
+  };
+
+  // ==========================================
   // REGISTRY
   // ==========================================
 
-  const SCENES = [popReveal, blockShuffle, stickerBurst, checklist, stamp, ticker, flipBoard, keycaps, chat, pointClick];
+  const SCENES = [
+    popReveal, blockShuffle, stickerBurst, checklist, stamp, ticker, flipBoard, keycaps, chat, pointClick,
+    switchOn, saveTheDate, milestone, headsUp, feedback
+  ];
   const byId = new Map(SCENES.map((scene) => [scene.id, scene]));
 
   function get(id) {

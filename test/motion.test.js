@@ -233,6 +233,34 @@ test("every scene says how long it takes to arrive and to leave", () => {
   assert.equal(Scenes.timing("nope", {}), null);
 });
 
+// Some scenes change their words as they play, and have to land on the admin's.
+test("scenes that count or switch land on the words they were given", () => {
+  const texts = (id, props, t) => {
+    const ctx = recordingContext();
+    const clean = Scenes.sanitizeProps(id, props);
+    Scenes.renderContent(ctx, id, { t, ambient: 0 }, clean, { width: 1200, height: 600, theme: Core.readTheme("light") });
+    return ctx.log.filter(([call]) => call === "fillText").map(([, text]) => text);
+  };
+
+  // A milestone counts up through well-formed numbers to its own.
+  const milestone = { number: "$12,500+" };
+  const counted = [20, 26, 32, 40, 50].map((t) => texts("milestone", milestone, t).find((text) => text.startsWith("$")));
+  const values = counted.map((text) => Number(text.replace(/\D/g, "")));
+  for (const text of counted) assert.match(text, /^\$\d{1,3}(,\d{3})*\+$/);
+  assert.ok(values.every((value, i) => i === 0 || value > values[i - 1]), `counts up: ${counted.join(" ")}`);
+  assert.ok(values.every((value) => value < 12500));
+  assert.ok(texts("milestone", milestone, Scenes.timing("milestone", milestone).intro).includes("$12,500+"));
+
+  // A switch reads Off until the cursor flips it.
+  assert.ok(texts("switch-on", {}, 40).includes("Off"));
+  assert.ok(texts("switch-on", {}, Scenes.timing("switch-on", {}).intro).includes("On"));
+
+  // A calendar tears through the days before its own, wrapping back a month.
+  assert.ok(texts("save-the-date", { day: "2" }, 20).includes("28"));
+  const date = texts("save-the-date", { day: "2", weekday: "Friday" }, Scenes.timing("save-the-date", {}).intro);
+  assert.ok(date.includes("2") && date.includes("Friday"));
+});
+
 test("scene props are cleaned to their schema", () => {
   const props = Scenes.sanitizeProps("sticker-burst", {
     headline: "   lots   of    space   ",

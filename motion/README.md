@@ -18,7 +18,7 @@ Headless Shell (about 113 MB) into `node_modules`.
 
 | Studio folder | Compositions | What they are |
 | --- | --- | --- |
-| **Scenes** | `PopReveal`, `BlockShuffle`, `StickerBurst`, `Checklist`, `Stamp`, `Ticker`, `FlipBoard`, `Keycaps`, `Chat`, `PointClick` | The app's built-in motion scenes, drawn by the same code klndr plays live (`protected/js/motion/scenes.js` and `motion-timeline.js`). |
+| **Scenes** | `PopReveal`, `BlockShuffle`, `StickerBurst`, `Checklist`, `Stamp`, `Ticker`, `FlipBoard`, `Keycaps`, `Chat`, `PointClick`, `SwitchOn`, `SaveTheDate`, `Milestone`, `HeadsUp`, `Feedback` | The app's built-in motion scenes, drawn by the same code klndr plays live (`protected/js/motion/scenes.js` and `motion-timeline.js`). |
 | **Scenes** | `Reel` | Several scenes played one after another, the way a header with clips plays them: one camera move from each clip to the next. |
 | **Clips** | `FeatureSpotlight`, `WeekRecap` | Free-form React clips in `src/clips/`. Start a new clip by copying one. |
 
