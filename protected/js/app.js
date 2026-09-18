@@ -712,41 +712,223 @@ class KlndrApp {
     }
   }
 
+  // How long the split takes, read from the stylesheet so the one place that
+  // number is written stays the one place it is written. The fallback only
+  // matters if the sheet has not parsed yet.
+  splitDurationMs() {
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue('--split-dur')
+      .trim();
+    if (raw.endsWith('ms')) return parseFloat(raw) || 400;
+    if (raw.endsWith('s')) return (parseFloat(raw) || 0.4) * 1000;
+    return 400;
+  }
+
+  get splitMode() {
+    if (this.isCalendarCollapsed) return 'tasks';
+    if (this.isTasksCollapsed) return 'calendar';
+    return 'split';
+  }
+
   /**
-   * The single place the calendar/tasks split is decided.
+   * The single place the calendar/tasks split is decided, and the only place
+   * allowed to touch the classes that describe it.
+   *
+   * Three modes, not two booleans. Two booleans mirrored onto three classes is
+   * what let the panes end up describing different states - one collapsed by
+   * max-width while the other was still tweening its own width, which is how
+   * the tasks pane came to look like it was growing rightwards off its own left
+   * edge instead of sweeping left into the room the calendar gave up.
+   *
+   * What the move actually is: ONE width transition on the sidebar. The
+   * calendar takes what is left, so the seam is a single continuous edge by
+   * construction. Everything else here exists to make sure nothing INSIDE
+   * either pane re-lays-out while that edge is moving:
+   *
+   *   - each pane's contents are pinned to the wider of its start and end
+   *     widths and anchored to the edge that is not moving, so the pane's own
+   *     overflow does the reveal and the cover;
+   *   - the incoming task list is built at its FINAL width, before the move
+   *     starts, and cross-fades with the outgoing one;
+   *   - the canvas lays out once, at the destination geometry, and its
+   *     ResizeObserver is held off until the pane lands.
    *
    * The desktop chevron and the phone tab bar are two ways INTO this, not two
-   * implementations of it - which is what keeps the phone layout from needing a
-   * state machine of its own. On a phone the collapsed pane is hidden outright
+   * implementations of it. On a phone the collapsed pane is hidden outright
    * rather than reduced to a rail; the stylesheet decides which, so this method
    * is the same on every size.
    */
-  setCalendarCollapsed(collapsed) {
+  setSplit(next) {
+    const layout = document.querySelector('.app-workspace-layout');
     const calPane = document.getElementById('calendarPane');
-    if (!calPane) return;
+    const sidePane = document.getElementById('tasks-sidebar-pane');
+    if (!layout || !calPane || !sidePane) return;
+    if (next === this.splitMode) return;
 
-    // Both panes collapsed would leave an empty workspace with no way back.
-    if (collapsed && this.isTasksCollapsed) {
-      this.isTasksCollapsed = false;
-      this.sidebarController.isCollapsed = false;
-      document.getElementById('tasks-sidebar-pane').classList.remove('is-collapsed');
-      const tasksCollapseIcon = document.getElementById('sidebarCollapseBtn')?.querySelector('.material-symbols-outlined');
-      if (tasksCollapseIcon) tasksCollapseIcon.textContent = 'chevron_right';
+    // A second toggle while the first is still flying: land the old one's
+    // bookkeeping now so nothing is left pinned, but measure from where the
+    // panes ACTUALLY are, below, so the width retargets instead of snapping.
+    this.endSplitTransition();
+
+    const wasFullView = this.sidebarController.isFullView;
+    const willBeFullView = next === 'tasks';
+    const outgoingList = this.sidebarController.listModeFor(wasFullView);
+    const incomingList = this.sidebarController.listModeFor(willBeFullView);
+
+    // A phone never shows both panes, so there is no seam to sweep and nothing
+    // to freeze against: the stylesheet passes the two panes across each other
+    // instead. It only earns that when the pane on screen actually changes -
+    // split and calendar are the same picture there.
+    const isPhone = document.body.dataset.layout === 'phone';
+    const shows = mode => (mode === 'tasks' ? 'tasks' : 'calendar');
+    const animate = !isPhone || shows(next) !== shows(this.splitMode);
+
+    if (animate) {
+      layout.classList.add('is-animating');
+      calPane.classList.add('is-animating');
+      sidePane.classList.add('is-animating');
     }
 
-    this.isCalendarCollapsed = collapsed;
-    calPane.classList.toggle('is-collapsed', collapsed);
+    if (!isPhone) {
+      // getBoundingClientRect, not the model: mid-flight this reports where the
+      // pane is right now, which is what a reversal has to start from.
+      const calStart = calPane.getBoundingClientRect().width;
+      const sideStart = sidePane.getBoundingClientRect().width;
+      const total = layout.clientWidth;
+      const styles = getComputedStyle(layout);
+      const rail = parseFloat(styles.getPropertyValue('--split-rail')) || 64;
+      const gap = parseFloat(styles.getPropertyValue('--split-gap')) || 16;
+      const rest = parseFloat(styles.getPropertyValue('--tasks-rest')) || 340;
 
-    const iconSpan = document.getElementById('btnCalendarCollapse')?.querySelector('.material-symbols-outlined');
-    if (iconSpan) {
-      iconSpan.textContent = collapsed ? 'chevron_right' : 'chevron_left';
+      const sideEnd = next === 'tasks' ? Math.max(0, total - rail - gap)
+                    : next === 'calendar' ? rail
+                    : rest;
+      const calEnd = Math.max(0, total - gap - sideEnd);
+
+      // Those are border-box widths; what gets pinned are children, which live
+      // in the content box. Measured rather than assumed, so the pane's border
+      // token can change without leaving a few pixels of reflow at the end of
+      // every expand.
+      const calInset = calPane.offsetWidth - calPane.clientWidth;
+      const sideInset = sidePane.offsetWidth - sidePane.clientWidth;
+
+      // Freeze both interiors at the wider of the two widths. Wider, so nothing
+      // is ever crushed: expanding lays the contents out for where they are
+      // going and reveals them, collapsing holds them where they are and covers
+      // them. Either way they do not move relative to their stationary edge.
+      const calFrozen = Math.round(Math.max(calStart, calEnd)) - calInset;
+      const sideFrozen = Math.round(Math.max(sideStart, sideEnd)) - sideInset;
+      calPane.style.setProperty('--cal-frozen-w', `${calFrozen}px`);
+      sidePane.style.setProperty('--tasks-frozen-w', `${sideFrozen}px`);
+
+      // Each shape gets the width it will live at, not the width the pane is
+      // at: the incoming kanban is laid out for its destination from its first
+      // frame, so no column ever resizes or re-wraps while the pane is moving.
+      const outgoingEl = this.sidebarController.bodyEl(outgoingList);
+      const incomingEl = this.sidebarController.bodyEl(incomingList);
+      if (outgoingEl) outgoingEl.style.width = `${Math.round(sideStart) - sideInset}px`;
+      if (incomingEl) incomingEl.style.width = `${Math.round(sideEnd) - sideInset}px`;
     }
 
-    // Toggle multi-column full view on task panel
-    this.sidebarController.setFullView(collapsed);
+    this.isCalendarCollapsed = next === 'tasks';
+    this.isTasksCollapsed = next === 'calendar';
+
+    calPane.classList.toggle('is-collapsed', this.isCalendarCollapsed);
+    const calIcon = document.getElementById('btnCalendarCollapse')
+      ?.querySelector('.material-symbols-outlined');
+    if (calIcon) calIcon.textContent = this.isCalendarCollapsed ? 'chevron_right' : 'chevron_left';
+
+    this.sidebarController.setCollapsed(this.isTasksCollapsed);
+    this.sidebarController.setFullView(willBeFullView);
+
+    // Built after the classes so it inherits the destination's styling, but
+    // before data-split starts the clock, so the build cost is not paid out of
+    // the animation's frames.
+    if (incomingList !== outgoingList) {
+      this.sidebarController.renderInto(incomingList);
+    }
+    this.sidebarController.setActiveBody(incomingList);
+
+    layout.dataset.split = next;
     this.syncMobileTabs();
-    // The canvas relayout is driven by the ResizeObserver, so it lands when
-    // the pane transition actually settles rather than on a guessed timer.
+
+    // One layout, at the destination geometry. resize() bails while the
+    // calendar is collapsed, so a collapse simply keeps the frame it had and
+    // lets the pane clip it.
+    if (this.canvasRenderer) {
+      this.canvasRenderer.resize();
+      this.canvasRenderer.suspendLayout();
+    }
+
+    this._splitActive = true;
+    this._splitToken = (this._splitToken || 0) + 1;
+    const token = this._splitToken;
+    const finish = (e) => {
+      // Children transition their own widths while pinned; only the pane's own
+      // arrival counts as the end of the move.
+      if (e && (e.target !== sidePane || e.propertyName !== 'width')) return;
+      if (token !== this._splitToken) return;
+      this.endSplitTransition();
+    };
+    this._splitOnEnd = finish;
+    sidePane.addEventListener('transitionend', finish);
+    // A pane that is display:none on a phone, or a width that did not actually
+    // change, never fires the event at all. The net is not the mechanism.
+    this._splitTimer = setTimeout(() => finish(), this.splitDurationMs() + 120);
+  }
+
+  /**
+   * Unpins everything the move froze. Idempotent, because it is reached three
+   * ways: the transition ending, the safety timer, and a second toggle
+   * arriving before either.
+   */
+  endSplitTransition() {
+    const layout = document.querySelector('.app-workspace-layout');
+    const calPane = document.getElementById('calendarPane');
+    const sidePane = document.getElementById('tasks-sidebar-pane');
+    if (!layout || !calPane || !sidePane) return;
+    // Tracked on the instance rather than read off .is-animating: a phone swap
+    // between two modes that look the same never adds the class, but it still
+    // suspended the canvas and still has to hand it back.
+    if (!this._splitActive) return;
+    this._splitActive = false;
+
+    clearTimeout(this._splitTimer);
+    if (this._splitOnEnd) sidePane.removeEventListener('transitionend', this._splitOnEnd);
+    this._splitOnEnd = null;
+
+    layout.classList.remove('is-animating');
+    calPane.classList.remove('is-animating');
+    sidePane.classList.remove('is-animating');
+    calPane.style.removeProperty('--cal-frozen-w');
+    sidePane.style.removeProperty('--tasks-frozen-w');
+
+    const shown = this.sidebarController.listMode;
+    ['kanban', 'list'].forEach(mode => {
+      const el = this.sidebarController.bodyEl(mode);
+      if (el) el.style.removeProperty('width');
+      // The shape that is no longer showing takes its task cards - and their
+      // pointer listeners - with it.
+      if (mode !== shown) this.sidebarController.clearBody(mode);
+    });
+
+    if (this.canvasRenderer) this.canvasRenderer.resumeLayout();
+  }
+
+  /**
+   * "Show the tasks full" / "give the calendar back". Not a symmetric toggle:
+   * un-collapsing the calendar must not also un-collapse a tasks rail the user
+   * put there deliberately, so it only acts when the tasks pane is the one
+   * filling the workspace.
+   */
+  setCalendarCollapsed(collapsed) {
+    if (collapsed) {
+      // Both panes collapsed would leave an empty workspace with no way back,
+      // and 'tasks' says the calendar is the collapsed one, so that is covered.
+      this.setSplit('tasks');
+      return;
+    }
+    if (this.splitMode === 'tasks') this.setSplit('split');
   }
 
   /**
@@ -952,20 +1134,11 @@ class KlndrApp {
     });
   }
 
-  // Mutual exclusion: Collapsing Tasks panel
+  // Mutual exclusion: collapsing the tasks panel is asking for the calendar to
+  // fill the workspace. setSplit owns both panes, so the old dance of clearing
+  // the other pane's classes by hand is gone.
   handleTasksPanelCollapse(tasksCollapsed) {
-    this.isTasksCollapsed = tasksCollapsed;
-
-    // If calendar was collapsed, uncollapse calendar first
-    if (this.isTasksCollapsed && this.isCalendarCollapsed) {
-      this.isCalendarCollapsed = false;
-      const calPane = document.getElementById('calendarPane');
-      calPane.classList.remove('is-collapsed');
-      const calIcon = document.getElementById('btnCalendarCollapse')?.querySelector('.material-symbols-outlined');
-      if (calIcon) calIcon.textContent = 'chevron_left';
-      this.sidebarController.setFullView(false);
-    }
-    // Relayout is handled by the ResizeObserver on the timeline scroll container.
+    this.setSplit(tasksCollapsed ? 'calendar' : 'split');
   }
 
   // In-list reordering mechanism

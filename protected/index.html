@@ -379,7 +379,7 @@
     </header>
 
     <!-- 2. Main Dual-Pane Workspace Layout -->
-    <main class="app-workspace-layout">
+    <main class="app-workspace-layout" data-split="split">
       <!-- LEFT PANE: CALENDAR TIMELINE -->
       <section class="calendar-pane" id="calendarPane">
         <div class="calendar-pane-header">
@@ -646,15 +646,19 @@
           </button>
         </div>
 
-        <!-- Task Cards Standard Scrollable List -->
-        <div class="sidebar-tasks-scroll" id="sidebarTasksList"></div>
+        <!-- The two shapes the task list can take, stacked so one can dissolve
+             into the other while the pane is still moving. Which one is showing
+             is the .is-active class, never display - see .sidebar-body. -->
+        <div class="sidebar-body" id="sidebarBody">
+          <!-- Task Cards Standard Scrollable List -->
+          <div class="sidebar-tasks-scroll is-active" id="sidebarTasksList"></div>
 
-        <!-- Multi-Column Category Kanban Container (Visible when Calendar is Collapsed) -->
-        <div
-          class="tasks-multicolumn-container"
-          id="tasksMulticolumnContainer"
-          style="display: none"
-        ></div>
+          <!-- Multi-Column Category Kanban Container (Visible when Calendar is Collapsed) -->
+          <div
+            class="tasks-multicolumn-container"
+            id="tasksMulticolumnContainer"
+          ></div>
+        </div>
 
         <!-- Simplified Inline Task Creation Bar -->
         <div class="sidebar-inline-create-container">

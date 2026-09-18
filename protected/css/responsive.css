@@ -5,9 +5,11 @@
    max-width or a pointer/hover query, so the desktop cascade is untouched by
    construction and this whole file can be unlinked to revert the mobile work.
 
-   Overriding app.css's collapse rules needs care: .calendar-pane.is-collapsed
-   and .tasks-sidebar-pane.is-collapsed are declared !important, so the rule is
-   to make the state unreachable rather than to escalate the war. */
+   Overriding app.css's split rules needs care, though no longer because of
+   !important - the collapse rules carry none any more. The split's destination
+   widths are ATTRIBUTE selectors (.app-workspace-layout[data-split='tasks'] ...)
+   and a media query adds no specificity of its own, so a bare .tasks-sidebar-pane
+   in here loses to them. Match the shape of the rule you are overriding. */
 
 /* ====================================================
    LAYOUT
@@ -36,8 +38,14 @@
     padding: 10px 12px 12px;
   }
 
+  /* The sidebar's resting width is the only number the split needs restating
+     per breakpoint - the full and rail destinations are computed from it and
+     from --split-rail/--split-gap. */
+  .app-workspace-layout {
+    --tasks-rest: 264px;
+  }
+
   .tasks-sidebar-pane {
-    width: 264px;
     /* The one place flex-shrink:0 IS right: with the header condensed both
        panes genuinely fit, so the sidebar should hold its width rather than
        shrink toward the calendar. */
@@ -97,22 +105,89 @@
   }
 
   /* One pane at a time. The collapsed pane is GONE rather than a 64px rail -
-     a rail is a desktop affordance and there is no room to spend on it.
-     `display` is not among the properties those .is-collapsed rules declare
-     !important, so this wins without escalating the war. */
+     a rail is a desktop affordance and there is no room to spend on it. */
   .calendar-pane.is-collapsed {
     display: none;
   }
 
   .tasks-sidebar-pane {
     display: none;
+    /* There is no seam to animate here - the panes never share the screen - so
+       the desktop width transition is off and the pane simply fills. */
+    transition: none;
   }
 
-  /* .is-full-view is set by setCalendarCollapsed() through the existing
-     setFullView() call, so the pane that is showing is already the one flexed
-     to fill. On a phone it stays a flat list - see TasksSidebar.usesKanban. */
+  /* [data-split] carries no value on purpose: it is here to match the
+     specificity of the desktop destination rules, which are attribute
+     selectors too. A media query adds none of its own, so a plain
+     .tasks-sidebar-pane would lose to them and land the pane a rail's width
+     short of the screen. */
+  .app-workspace-layout[data-split] .tasks-sidebar-pane {
+    width: 100%;
+  }
+
+  /* .is-full-view is set through setSplit(), so the pane that is showing is
+     already the one flexed to fill. On a phone it stays a flat list - see
+     TasksSidebar.listMode. */
   .tasks-sidebar-pane.is-full-view {
     display: flex;
+  }
+
+  /* ---- The swap, while it is in flight ----
+     Same clock and same curve as the desktop split, different mechanism: with
+     only one pane on screen there is no edge to sweep, so the two pass each
+     other instead. Both are stacked for the duration and the display swap
+     resumes on landing.
+
+     Which way they travel is read off the destination alone - only one of the
+     two panes is on a phone's screen at a time, so "tasks" or "not tasks" is
+     the whole question. app.js only adds .is-animating here when that answer
+     actually changes. */
+  .app-workspace-layout.is-animating .calendar-pane,
+  .app-workspace-layout.is-animating .tasks-sidebar-pane {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    width: auto;
+  }
+
+  /* Heading for the tasks: the calendar leaves to the left, tasks arrive from
+     the right. Leaving is a transition (the pane has a current value to move
+     from); arriving is a keyframe, because a pane that was display:none until
+     this frame has no previous value to interpolate. */
+  .app-workspace-layout.is-animating[data-split='tasks'] .calendar-pane {
+    opacity: 0;
+    transform: translateX(-24px);
+    transition:
+      opacity var(--split-fade-out) var(--split-ease),
+      transform var(--split-dur) var(--split-ease);
+  }
+
+  .app-workspace-layout.is-animating[data-split='tasks'] .tasks-sidebar-pane {
+    animation: split-pane-in-right var(--split-dur) var(--split-ease) both;
+  }
+
+  /* And the mirror, coming back. */
+  .app-workspace-layout.is-animating:not([data-split='tasks']) .tasks-sidebar-pane {
+    opacity: 0;
+    transform: translateX(24px);
+    transition:
+      opacity var(--split-fade-out) var(--split-ease),
+      transform var(--split-dur) var(--split-ease);
+  }
+
+  .app-workspace-layout.is-animating:not([data-split='tasks']) .calendar-pane {
+    animation: split-pane-in-left var(--split-dur) var(--split-ease) both;
+  }
+
+  @keyframes split-pane-in-right {
+    from { opacity: 0; transform: translateX(24px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  @keyframes split-pane-in-left {
+    from { opacity: 0; transform: translateX(-24px); }
+    to   { opacity: 1; transform: none; }
   }
 
   /* The header wants ~700px in one row, so give it two: date navigation on top,
@@ -154,7 +229,7 @@
   }
 
   /* A kanban column is 280px against a 375px screen. The flat list says more at
-     the same width; this is the belt to usesKanban's braces. */
+     the same width; this is the belt to listMode's braces. */
   .task-category-column {
     min-width: 100%;
     width: 100%;
