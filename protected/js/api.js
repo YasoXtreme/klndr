@@ -54,10 +54,12 @@ const API = {
     return res;
   },
 
-  async createBetaUser(username, password, role = 'user') {
+  // Like a reset, the response carries a server-generated temporary password,
+  // once.
+  async createBetaUser(username, role = 'user') {
     return this.request('/api/admin/create-user', {
       method: 'POST',
-      body: JSON.stringify({ username, password, role })
+      body: JSON.stringify({ username, role })
     });
   },
 

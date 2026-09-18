@@ -134,19 +134,24 @@ async function getAllUsers() {
   return (await users.find({}).toArray()).map(withoutPassword);
 }
 
-async function createUser(username, password, role = "user") {
+// A new account starts exactly where an admin reset leaves one: holding a
+// server-generated temporary password, returned once, that must be replaced at
+// first login. The admin never picks it, so it is never a reused password.
+async function createUser(username, role = "user") {
   const { users } = await collections();
   const cleanUsername = username.toLowerCase().trim();
   if (await users.findOne({ username: cleanUsername })) {
     throw new Error("User already exists");
   }
 
+  const tempPassword = generateTempPassword();
   const newUser = {
     id: "usr_" + crypto.randomBytes(6).toString("hex"),
     username: cleanUsername,
-    password_hash: bcrypt.hashSync(password, 10),
+    password_hash: bcrypt.hashSync(tempPassword, 10),
     role,
     created_at: Math.floor(Date.now() / 1000),
+    must_change_password: true,
   };
   try {
     await users.insertOne(newUser);
@@ -154,7 +159,7 @@ async function createUser(username, password, role = "user") {
     if (error.code === 11000) throw new Error("User already exists");
     throw error;
   }
-  return withoutPassword(newUser);
+  return { user: withoutPassword(newUser), tempPassword };
 }
 
 async function changeUsername(userId, newUsername) {

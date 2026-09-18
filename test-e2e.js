@@ -191,10 +191,11 @@ async function runTests() {
       }
     }, {
       username: testBetaUser,
-      password: 'password2026',
       role: 'user'
     });
     assert('Admin can create beta users', adminCreateUser.statusCode === 201 && adminCreateUser.json.user.username === testBetaUser);
+    assert('New user gets a generated temporary password', typeof adminCreateUser.json.tempPassword === 'string' && adminCreateUser.json.tempPassword.length >= 12);
+    assert('New user must change password at first login', adminCreateUser.json.user.must_change_password === true);
 
     // 11. Admin list users
     const adminListUsers = await makeRequest({
@@ -284,6 +285,17 @@ async function runTests() {
       }, { username, password });
       return res.json && res.json.token;
     };
+    // A new account holds a server-generated temporary password and is locked
+    // out of everything else until it picks its own, so do that first.
+    const signInNew = async (username, tempPassword) => {
+      const bearer = await signIn(username, tempPassword);
+      if (bearer) {
+        await api('POST', '/api/auth/change-password', bearer, {
+          currentPassword: tempPassword, newPassword: 'password2026', confirmPassword: 'password2026'
+        });
+      }
+      return bearer;
+    };
     const feedOf = (res) => (res.json && res.json.announcements) || [];
     const editable = (doc) => ({
       title: doc.title, summary: doc.summary, body: doc.body, body_format: doc.body_format,
@@ -299,7 +311,7 @@ async function runTests() {
       return { res, doc };
     };
 
-    const betaToken = await signIn(testBetaUser, 'password2026');
+    const betaToken = await signInNew(testBetaUser, adminCreateUser.json.tempPassword);
     assert('Beta user can sign in', Boolean(betaToken));
 
     const { res: draftRes, doc: story } = await draft({ title: 'E2E story', body: 'Hello **there**', kind: 'feature', delivery: 'story' });
@@ -323,8 +335,8 @@ async function runTests() {
     // announcement ever posted. Created a second later, so it joined strictly after.
     await new Promise((resolve) => setTimeout(resolve, 1100));
     const newcomer = 'newcomer_' + Math.floor(Math.random() * 10000);
-    await api('POST', '/api/admin/create-user', token, { username: newcomer, password: 'password2026', role: 'user' });
-    const newcomerToken = await signIn(newcomer, 'password2026');
+    const newcomerRes = await api('POST', '/api/admin/create-user', token, { username: newcomer, role: 'user' });
+    const newcomerToken = await signInNew(newcomer, newcomerRes.json.tempPassword);
     const newcomerFeed = feedOf(await api('GET', '/api/announcements/feed', newcomerToken));
     const newcomerStory = newcomerFeed.find((a) => a.id === story.id);
     assert('A new account sees earlier posts as history, not news', Boolean(newcomerStory) && newcomerStory.unread === false && newcomerStory.read === true);

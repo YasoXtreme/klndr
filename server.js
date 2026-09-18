@@ -156,16 +156,20 @@ app.post(
   requireApiAuth,
   requireAdmin,
   async (req, res) => {
-    const { username, password, role } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: "Username and password required" });
+    const { username, role } = req.body;
+    if (!username) {
+      return res.status(400).json({ error: "Username required" });
     }
 
+    // Same contract as reset-password: the server generates the temporary
+    // password and it is returned exactly once.
     try {
-      const newUser = await db.createUser(username, password, role || "user");
-      res
-        .status(201)
-        .json({ message: "User created successfully", user: newUser });
+      const result = await db.createUser(username, role || "user");
+      res.status(201).json({
+        message: "User created. The password is shown once.",
+        user: result.user,
+        tempPassword: result.tempPassword,
+      });
     } catch (err) {
       res.status(400).json({ error: err.message });
     }

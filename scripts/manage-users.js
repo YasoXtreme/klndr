@@ -10,14 +10,14 @@ function printHelp() {
   Klndr Beta Account Manager CLI
 ======================================================
 Usage:
-  node scripts/manage-users.js add <username> <password> [role]
+  node scripts/manage-users.js add <username> [role]
   node scripts/manage-users.js list
   node scripts/manage-users.js delete <username>
   node scripts/manage-users.js reset <username>
 
 Examples:
-  node scripts/manage-users.js add john securePass123
-  node scripts/manage-users.js add sara physicsPro2026 admin
+  node scripts/manage-users.js add john
+  node scripts/manage-users.js add sara admin
   node scripts/manage-users.js list
   node scripts/manage-users.js reset john
 ======================================================
@@ -36,26 +36,28 @@ async function main() {
   switch (command.toLowerCase()) {
     case "add": {
       const username = args[1];
-      const password = args[2];
-      const role = args[3] || "user";
+      const role = args[2] || "user";
 
-      if (!username || !password) {
-        console.error("Error: username and password are required.");
-        console.log(
-          "Usage: node scripts/manage-users.js add <username> <password> [role]",
-        );
+      if (!username) {
+        console.error("Error: username is required.");
+        console.log("Usage: node scripts/manage-users.js add <username> [role]");
         process.exit(1);
       }
 
       try {
-        const user = await db.createUser(username, password, role);
+        const { user, tempPassword } = await db.createUser(username, role);
         console.log(`\n✓ Successfully created Klndr beta user:`);
         console.log(`  ID:       ${user.id}`);
         console.log(`  Username: ${user.username}`);
         console.log(`  Role:     ${user.role}`);
         console.log(
-          `  Created:  ${new Date(user.created_at * 1000).toLocaleString()}\n`,
+          `  Created:  ${new Date(user.created_at * 1000).toLocaleString()}`,
         );
+        console.log(`\n  Temporary password:  ${tempPassword}\n`);
+        console.log("  Hand this over directly. It is not stored in readable");
+        console.log("  form and will not be shown again. They must choose");
+        console.log("  their own password at their first login.");
+        console.log("");
       } catch (err) {
         console.error(`\n✗ Failed to create user: ${err.message}\n`);
         process.exit(1);

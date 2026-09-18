@@ -84,7 +84,7 @@ local work never touches production data.
 | --- | --- |
 | `npm start` | Run the server |
 | `npm run dev` | Run with `node --watch` |
-| `npm run add-user -- <username> <password> [role]` | Create an account (`role` is `user` or `admin`) |
+| `npm run add-user -- <username> [role]` | Create an account with a one-shot temporary password (`role` is `user` or `admin`) |
 | `npm run list-users` | List accounts |
 | `npm run delete-user -- <username>` | Delete an account |
 | `npm run reset-password -- <username>` | Issue a one-shot temporary password |
@@ -94,8 +94,9 @@ local work never touches production data.
 | `npm run r2:cors [-- <origin> ...]` | Write the bucket CORS policy that browser uploads need |
 | `npm run vendor` | Refresh the vendored browser libraries (lottie-web light, fflate) from `node_modules` |
 
-`reset-password` prints the temporary password once, signs out every session for
-that account, and forces a password change at next login. No klndr account
+`add-user` and `reset-password` both print a generated temporary password once
+and force a password change at next login; `reset-password` also signs out
+every session for that account. Admins never choose a password for anyone. No klndr account
 carries an email address, so this is deliberately an out-of-band,
 admin-mediated path — hand the password over directly.
 
@@ -369,7 +370,7 @@ signed read URL.
 | Method | Path | Description |
 | --- | --- | --- |
 | `GET` | `/api/admin/users` | List accounts |
-| `POST` | `/api/admin/create-user` | Create an account |
+| `POST` | `/api/admin/create-user` | Create an account; its temporary password is returned exactly once |
 | `DELETE` | `/api/admin/users/:username` | Delete an account |
 | `POST` | `/api/admin/users/:username/reset-password` | Issue a temporary password, returned exactly once |
 | `GET` | `/api/admin/analytics/overview` | Instance totals, active accounts, signup and task-creation trends |

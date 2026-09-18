@@ -39,8 +39,8 @@
     const role = h('span', `role-badge is-${user.role === 'admin' ? 'admin' : 'user'}`, ROLES[user.role] || user.role);
     tags.appendChild(role);
     if (user.must_change_password) {
-      const pending = h('span', 'an-badge is-warn', 'Reset pending');
-      pending.title = 'They have to choose a new password the next time they sign in.';
+      const pending = h('span', 'an-badge is-warn', 'Temp password');
+      pending.title = 'They are still on a temporary password, and have to choose their own the next time they sign in.';
       tags.appendChild(pending);
     }
     cell.appendChild(tags);
@@ -140,11 +140,6 @@
     username.spellcheck = false;
     username.placeholder = 'e.g. jane';
 
-    const password = h('input', 'st-input');
-    password.type = 'password';
-    password.required = true;
-    password.autocomplete = 'new-password';
-
     const role = h('select', 'st-select');
     for (const [value, label] of Object.entries({ user: ROLES.user, admin: ROLES.admin })) {
       const option = h('option', null, label);
@@ -155,8 +150,7 @@
     const fields = h('div', 'st-fields');
     fields.append(
       problem,
-      field('Username', username, 'admNewUsername', 'Saved in lowercase.'),
-      field('Password', password, 'admNewPassword', 'Hand it over yourself. They can change it under Account & settings.'),
+      field('Username', username, 'admNewUsername', 'Saved in lowercase. A temporary password is generated for them, and they choose their own at first sign-in.'),
       field('Role', role, 'admNewRole')
     );
 
@@ -171,10 +165,14 @@
         submit.disabled = true;
         problem.hidden = true;
         try {
-          const res = await API.createBetaUser(username.value.trim(), password.value, role.value);
+          const res = await API.createBetaUser(username.value.trim(), role.value);
           if (!res) return;
           modal.close('ok');
-          toast(`Added ${res.user.username}.`, 'success');
+          showTemporaryPassword(
+            res.user.username,
+            res.tempPassword,
+            'Hand it over directly - it will not be shown again. They must set their own password at their first sign-in.'
+          );
           refresh();
         } catch (err) {
           problem.textContent = err.message;
@@ -204,8 +202,9 @@
   }
 
   // Nothing stores this in a readable form, so it stays up until it is
-  // dismissed rather than timing out like a toast.
-  function showTemporaryPassword(username, secret) {
+  // dismissed rather than timing out like a toast. Shared by new accounts and
+  // resets, which differ only in what the note says.
+  function showTemporaryPassword(username, secret, text) {
     const code = h('code', 'adm-secret', secret);
     const copy = button('Copy', {
       icon: 'content_copy',
@@ -226,7 +225,7 @@
     const done = button('Done', { variant: 'primary', onClick: () => modal.close() });
     modal = dialog({
       title: `Temporary password for ${username}`,
-      text: 'Hand it over directly - it will not be shown again. They are signed out everywhere as of now, and must set their own password at their next sign-in.',
+      text: text || 'Hand it over directly - it will not be shown again. They are signed out everywhere as of now, and must set their own password at their next sign-in.',
       content: secretRow,
       actions: [done]
     });
