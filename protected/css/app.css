@@ -286,17 +286,43 @@ body {
 /* ====================================================
    2. MAIN DUAL-PANE WORKSPACE
    ==================================================== */
+/* ----------------------------------------------------
+   THE SPLIT
+
+   Exactly ONE property in this layout animates: the sidebar's width. The
+   calendar is flex:1 1 0 in every state, so its width is DERIVED from whatever
+   the sidebar is doing this frame. Two panes animating their own widths can
+   disagree about where the seam is - and used to, badly: the old rule put
+   width/min-width/max-width AND flex on .is-collapsed behind `transition: all`,
+   where max-width:none -> 64px is not interpolable and clamped the box on frame
+   zero. The calendar snapped shut while the sidebar tweened, which is why the
+   expansion read as happening in the wrong direction.
+
+   Because the sidebar is the LAST item in a fixed-width row, its right edge is
+   stationary and its left edge sweeps; the calendar's left edge is stationary
+   and its right edge sweeps. The "tasks expand leftwards, calendar retreats
+   from its right" reading is not animated in - it falls out of the layout.
+
+   data-split on the layout is the authority. .is-collapsed and .is-full-view
+   survive as derived markers only, because drag-controller.js, timeline-canvas.js,
+   app.js and the phone rules in responsive.css all read them.
+   ---------------------------------------------------- */
 .app-workspace-layout {
+  /* The sidebar's resting width, and the only per-breakpoint number in the
+     split. The full and rail destinations are computed from --split-rail and
+     --split-gap, so a breakpoint only ever has to restate this one. */
+  --tasks-rest: 340px;
   flex: 1;
   display: flex;
-  gap: 16px;
+  gap: var(--split-gap);
   min-height: 0;
   position: relative;
 }
 
 /* LEFT PANE: CALENDAR TIMELINE */
 .calendar-pane {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   background: var(--surface-1);
   border: var(--border-container);
   border-radius: var(--radius-lg);
@@ -305,27 +331,40 @@ body {
   position: relative;
   overflow: hidden;
 box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
-  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.calendar-pane.is-collapsed {
-  flex: 0 0 64px !important;
-  width: 64px !important;
-  min-width: 64px !important;
-  max-width: 64px !important;
+/* The calendar's chrome leaves on the shared clock instead of vanishing. These
+   used to be `display: none !important`, which is discrete by definition: the
+   interior was simply gone on frame zero and only an empty 64px box animated. */
+.calendar-pane .calendar-title,
+.calendar-pane .calendar-header-center,
+.calendar-pane .calendar-header-right,
+.calendar-pane .timeline-viewport {
+  transition: opacity var(--split-fade-in) var(--split-ease) var(--split-fade-in-delay);
 }
 
 .calendar-pane.is-collapsed .calendar-title,
 .calendar-pane.is-collapsed .calendar-header-center,
 .calendar-pane.is-collapsed .calendar-header-right,
 .calendar-pane.is-collapsed .timeline-viewport {
-  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--split-fade-out) var(--split-ease);
 }
 
-.calendar-pane.is-collapsed .calendar-pane-header {
-  justify-content: center;
-  padding: 0;
+/* visibility, never display: the canvases keep their backing store across a
+   collapse, so expanding does not have to rebuild them from nothing. The delay
+   holds it visible for the length of its own fade-out. */
+.calendar-pane.is-collapsed .timeline-viewport {
+  visibility: hidden;
+  transition:
+    opacity var(--split-fade-out) var(--split-ease),
+    visibility 0s linear var(--split-fade-out);
 }
+
+/* A --control-sm (32px) button inside the header's existing 16px padding lands
+   at 16..48 in a 64px rail - already centred. The old rule re-centred it with
+   justify-content/padding, which was one more instant reflow for no gain. */
 
 .calendar-pane-header {
   height: 52px;
@@ -337,6 +376,33 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
   background: var(--surface-1);
   user-select: none;
   flex-shrink: 0;
+  /* The faded-out groups still take part in layout (visibility, not display),
+     so in a 64px rail the row overflows. Clipping it is the point. */
+  overflow: hidden;
+}
+
+/* ---- Frozen for the duration of a split ----
+   While the pane is moving, nothing inside it may re-lay-out. Both the header
+   and the viewport are pinned to the WIDER of the pane's start and end widths
+   and left-anchored, so the pane's overflow:hidden does the reveal-and-cover
+   and the contents never move relative to the stationary left edge.
+
+   The header matters as much as the canvas: it wants ~700px in a no-wrap row,
+   and unpinned it re-wraps on every single frame.
+
+   Width only: this is a COLUMN flex container, so `flex` here is the height and
+   pinning it would collapse the viewport. An explicit cross-axis width already
+   defeats align-items:stretch, which is what left-anchors these. */
+.calendar-pane.is-animating .calendar-pane-header,
+.calendar-pane.is-animating .timeline-viewport {
+  width: var(--cal-frozen-w);
+  max-width: none;
+}
+
+.calendar-pane.is-animating,
+.tasks-sidebar-pane.is-animating {
+  will-change: width;
+  contain: layout paint;
 }
 
 .calendar-header-left {
@@ -1072,45 +1138,82 @@ body.is-seam-dragging * {
 /* ====================================================
    4. RIGHT PANE: TASKS SIDEBAR DRAWER & MULTI-COLUMN FULL VIEW
    ==================================================== */
+/* The one animated property in the workspace. The flex shorthand is left alone
+   on purpose - see the note at the top of responsive.css about what
+   flex-shrink:0 here did to the calendar. With the widths below there is never
+   a deficit to shrink, so the safety valve costs nothing. */
 .tasks-sidebar-pane {
-  width: 340px;
+  width: var(--tasks-rest);
+  min-width: 0;
   background: var(--surface-1);
   border: var(--border-container);
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--split-dur) var(--split-ease);
 box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
 }
 
-/* Collapsed State */
-.tasks-sidebar-pane.is-collapsed {
-  flex: 0 0 64px !important;
-  width: 64px !important;
-  min-width: 64px !important;
-  max-width: 64px !important;
+/* The two destinations. The calendar is never given a width - it takes what is
+   left, which is exactly --split-rail in the first case and everything else in
+   the second. */
+.app-workspace-layout[data-split='tasks'] .tasks-sidebar-pane {
+  width: calc(100% - var(--split-rail) - var(--split-gap));
+}
+
+.app-workspace-layout[data-split='calendar'] .tasks-sidebar-pane {
+  width: var(--split-rail);
+}
+
+.tasks-sidebar-pane .sidebar-header-title,
+.tasks-sidebar-pane .sidebar-actions-group .btn-sidebar-icon:not(#sidebarCollapseBtn),
+.tasks-sidebar-pane .sidebar-search-bar,
+.tasks-sidebar-pane .sidebar-filter-bar,
+.tasks-sidebar-pane .sidebar-inline-create-container {
+  transition: opacity var(--split-fade-in) var(--split-ease) var(--split-fade-in-delay);
 }
 
 .tasks-sidebar-pane.is-collapsed .sidebar-header-title,
 .tasks-sidebar-pane.is-collapsed .sidebar-actions-group .btn-sidebar-icon:not(#sidebarCollapseBtn),
 .tasks-sidebar-pane.is-collapsed .sidebar-search-bar,
 .tasks-sidebar-pane.is-collapsed .sidebar-filter-bar,
-.tasks-sidebar-pane.is-collapsed .sidebar-tasks-scroll,
-.tasks-sidebar-pane.is-collapsed .tasks-multicolumn-container,
 .tasks-sidebar-pane.is-collapsed .sidebar-inline-create-container {
-  display: none !important;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--split-fade-out) var(--split-ease);
 }
 
-.tasks-sidebar-pane.is-collapsed .sidebar-header {
-  justify-content: center;
-  padding: 0;
+/* .sidebar-body handles the task list itself - it cross-fades rather than
+   fading flat, so it has its own rules further down. */
+.tasks-sidebar-pane.is-collapsed .sidebar-body {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity var(--split-fade-out) var(--split-ease),
+    visibility 0s linear var(--split-fade-out);
 }
 
-/* Expanded Full View when Calendar is Collapsed */
-.tasks-sidebar-pane.is-full-view {
-  flex: 1 !important;
-  width: 100% !important;
+/* The rail's way back out.
+ *
+ * Unlike the calendar, whose collapse button is the FIRST thing in its header,
+ * this one is the LAST - so with space-between and a title that is invisible
+ * but still occupies its 69px, the actions group was pushed a clear 170px past
+ * the 64px rail's right edge and clipped away entirely. A rail with no way to
+ * leave it.
+ *
+ * Anchoring the row to the right puts the button flush against the pane's
+ * stationary edge, which is where it already sits while the pane is moving, so
+ * nothing shifts when the freeze is lifted. The title and the other icons
+ * overflow leftwards and are clipped - they are at opacity 0 by then.
+ *
+ * :not(.is-animating) because during the move the header is pinned wide and
+ * already right-anchored; re-justifying it mid-flight would slide the title
+ * across while it is still visible.
+ */
+.tasks-sidebar-pane.is-collapsed:not(.is-animating) .sidebar-header {
+  justify-content: flex-end;
 }
 
 .sidebar-header {
@@ -1122,6 +1225,19 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
   border-bottom: var(--border-control);
   user-select: none;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* Frozen for the duration of a split - the mirror of the calendar's rule, with
+   the anchor on the other side. The sidebar's RIGHT edge is the stationary one,
+   so its body is pinned right and the left edge sweeps out from under it. */
+.tasks-sidebar-pane.is-animating .sidebar-header,
+.tasks-sidebar-pane.is-animating .sidebar-search-bar,
+.tasks-sidebar-pane.is-animating .sidebar-filter-bar,
+.tasks-sidebar-pane.is-animating .sidebar-inline-create-container {
+  width: var(--tasks-frozen-w);
+  max-width: none;
+  align-self: flex-end;
 }
 
 .sidebar-header-title {
@@ -1192,8 +1308,54 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
 
 
 /* Standard Single-Column Task List */
-.sidebar-tasks-scroll {
+/* ----------------------------------------------------
+   THE LIST/KANBAN CROSS-FADE
+
+   The flat list and the kanban board are siblings stacked in the same box, not
+   two states of one box. They used to be swapped with style.display inside the
+   same tick that started the pane transition, which meant every task card was
+   destroyed and rebuilt at the OLD width before a single frame was painted -
+   and if that rebuild overran the frame budget the first paint already showed
+   the end state and the transition was skipped outright. Same click, different
+   result depending on how many tasks you had.
+
+   Stacked and absolutely positioned, they can both exist at once: the incoming
+   one is built at its FINAL width and dissolves in while the outgoing one
+   fades. Both are pinned to right:0, the sidebar's stationary edge, so neither
+   drifts while the pane sweeps.
+   ---------------------------------------------------- */
+.sidebar-body {
+  position: relative;
   flex: 1;
+  min-height: 0;
+  transition: opacity var(--split-fade-in) var(--split-ease) var(--split-fade-in-delay);
+}
+
+.sidebar-body > .sidebar-tasks-scroll,
+.sidebar-body > .tasks-multicolumn-container {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 100%;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--split-fade-out) var(--split-ease),
+    visibility 0s linear var(--split-fade-out);
+}
+
+.sidebar-body > .is-active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity var(--split-fade-in) var(--split-ease) var(--split-fade-in-delay),
+    visibility 0s;
+}
+
+.sidebar-tasks-scroll {
   overflow-y: auto;
   padding: 16px 14px;
   display: flex;
@@ -1203,17 +1365,30 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
 
 /* Multi-Column View Container (active when calendar collapsed) */
 .tasks-multicolumn-container {
-  flex: 1;
   display: flex;
+  /* `safe` matters: plain `center` with overflowing content pushes the first
+     column past the scroll origin where nothing can reach it. safe falls back
+     to start-alignment the moment the track stops fitting. */
+  justify-content: safe center;
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--surface-1);
 }
 
+/* Columns SHARE the board rather than sitting at a fixed width in it. A rigid
+   280px meant a board with fewer categories than it had room for ended in a
+   strip of dead surface on the right, which reads as the board failing to
+   finish rather than as a board with space in it.
+
+   grow 1 / shrink 0 / basis 280px: under-filled they widen to take the whole
+   width between them, over-filled they hold 280 and the container scrolls. The
+   cap stops one or two categories becoming absurdly wide columns - past that
+   the track is narrower than the board, so it is centred instead of left with
+   the gap hanging off one end. */
 .task-category-column {
+  flex: 1 0 280px;
   min-width: 280px;
-  width: 280px;
-  flex-shrink: 0;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
   border-right: var(--border-control);

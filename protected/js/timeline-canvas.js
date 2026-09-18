@@ -118,6 +118,7 @@ class TimelineCanvas {
     // Observe the VIEWPORT, not the scroll container: the scroll container's own
     // content box shrinks when a scrollbar appears, which would feed our own
     // relayout back into the observer and oscillate.
+    this._layoutSuspended = false;
     this._resizeObserver = new ResizeObserver(() => this.requestLayout());
     this._resizeObserver.observe(this.viewport);
 
@@ -253,8 +254,12 @@ class TimelineCanvas {
    * makes it self-correcting - the height that eventually gets measured is the
    * one the browser stopped at, however long that takes, and a real change (a
    * rotation, a pane collapse) still lands a settle-time later.
+   *
+   * Suspended outright while the workspace split is in flight - see below.
    */
   requestLayout() {
+    if (this._layoutSuspended) return;
+
     if (!TimelineCanvas.usesCoarsePointer()) {
       if (this._layoutRafId) return;
       this._layoutRafId = requestAnimationFrame(() => {
@@ -275,6 +280,37 @@ class TimelineCanvas {
       this.resize();
     };
     this._layoutTimer = setTimeout(settle, TimelineCanvas.LAYOUT_SETTLE_MS);
+  }
+
+  /**
+   * Held while the workspace split is in flight.
+   *
+   * The observer above fires on every frame of a pane transition, and on a fine
+   * pointer requestLayout() only coalesces WITHIN a frame - layoutKey() reads
+   * viewport.clientWidth, so an animating pane mints a new key each time and
+   * each one pays for three canvas reallocations plus a full rebuild of every
+   * block card. Roughly thirteen of them across one collapse, each at a
+   * different width, with every card walking its own size-class ladder on the
+   * way. That churn is most of what "everything jumps around" was.
+   *
+   * The app instead pins the viewport to its final geometry, lays out ONCE, and
+   * holds the observer off until the pane has landed.
+   */
+  suspendLayout() {
+    this._layoutSuspended = true;
+    if (this._layoutRafId) {
+      cancelAnimationFrame(this._layoutRafId);
+      this._layoutRafId = null;
+    }
+    clearTimeout(this._layoutTimer);
+  }
+
+  resumeLayout() {
+    if (!this._layoutSuspended) return;
+    this._layoutSuspended = false;
+    // Usually a no-op: the pinned width the pane landed on is the width it was
+    // laid out for, so layoutKey() still matches and resize() is skipped.
+    this.requestLayout();
   }
 
   // True when the days do not all fit across the cross axis, so that axis is
@@ -581,6 +617,13 @@ class TimelineCanvas {
   // ==========================================
 
   resize() {
+    // render() has always bailed when collapsed; resize() did not, so a collapse
+    // ran a full relayout against a hidden, zero-width viewport - clamped to 1px
+    // by the Math.max guards below - and then had the app rebuild every block
+    // card at that degenerate geometry, invisibly. The expand rebuilt them all
+    // again. Nothing downstream can use the result, so don't compute it.
+    if (this.isCollapsed()) return;
+
     this.dpr = TimelineCanvas.effectiveDpr();
     this._lastLayoutKey = this.layoutKey();
 

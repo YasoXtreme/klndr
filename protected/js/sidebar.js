@@ -69,10 +69,16 @@ class TasksSidebar {
     return [...owned, ...orphans.map(name => ({ id: null, name, color: null, icon: null }))];
   }
 
+  /**
+   * Records which shape the pane is in. It deliberately does NOT render: during
+   * a split the app builds the incoming list at its final width BEFORE the pane
+   * starts moving, and owns the cross-fade timing from there. Rendering here
+   * would put the rebuild back in the same tick as the class toggle, which is
+   * what used to make the whole transition skip on a busy board.
+   */
   setFullView(isFull) {
     this.isFullView = isFull;
     this.container.classList.toggle('is-full-view', isFull);
-    this.render();
   }
 
   /**
@@ -81,8 +87,38 @@ class TasksSidebar {
    * but 280px columns on a 375px screen are a board you can only ever see one
    * column of. The flat list says more at the same width.
    */
-  get usesKanban() {
-    return this.isFullView && document.body.dataset.layout !== 'phone';
+  get listMode() {
+    return this.listModeFor(this.isFullView);
+  }
+
+  // The same question asked of a state this pane is not in yet - the split
+  // orchestrator uses it to build the incoming shape before anything changes.
+  listModeFor(isFull) {
+    return (isFull && document.body.dataset.layout !== 'phone') ? 'kanban' : 'list';
+  }
+
+  bodyEl(mode) {
+    return document.getElementById(
+      mode === 'kanban' ? 'tasksMulticolumnContainer' : 'sidebarTasksList'
+    );
+  }
+
+  // Visibility is a class, never `display`: the two shapes are stacked in the
+  // same box so one can dissolve into the other, and a display swap cannot be
+  // cross-faded.
+  setActiveBody(mode) {
+    ['kanban', 'list'].forEach(candidate => {
+      const el = this.bodyEl(candidate);
+      if (el) el.classList.toggle('is-active', candidate === mode);
+    });
+  }
+
+  // Dropping the shape that is no longer showing, once the cross-fade is over.
+  // Task cards carry their own pointer listeners, so leaving a stale set of
+  // them alive is a leak that also doubles up on the next drag.
+  clearBody(mode) {
+    const el = this.bodyEl(mode);
+    if (el) el.innerHTML = '';
   }
 
   initControls() {
@@ -305,20 +341,30 @@ class TasksSidebar {
     if (createBox) KlndrTheme.paint(createBox, draft.color);
   }
 
+  /**
+   * Asks for the collapse; it does not perform it. The app owns the split -
+   * the classes, the frozen widths and the cross-fade all have to be applied in
+   * one order by one place, and this used to toggle .is-collapsed itself and
+   * then let the app toggle the other pane, which is how the two panes ended up
+   * able to disagree about the state they were in.
+   */
   toggleCollapse() {
-    this.isCollapsed = !this.isCollapsed;
-    this.container.classList.toggle('is-collapsed', this.isCollapsed);
-
-    const collapseBtn = document.getElementById('sidebarCollapseBtn');
-    if (collapseBtn) {
-      const iconSpan = collapseBtn.querySelector('.material-symbols-outlined');
-      if (iconSpan) {
-        iconSpan.textContent = this.isCollapsed ? 'chevron_left' : 'chevron_right';
-      }
-    }
-
     if (this.onToggleCollapse) {
-      this.onToggleCollapse(this.isCollapsed);
+      this.onToggleCollapse(!this.isCollapsed);
+    }
+  }
+
+  // Called by the app once the split has been decided, so the chevron always
+  // points at what the button will actually do next.
+  setCollapsed(collapsed) {
+    this.isCollapsed = collapsed;
+    this.container.classList.toggle('is-collapsed', collapsed);
+
+    const iconSpan = document
+      .getElementById('sidebarCollapseBtn')
+      ?.querySelector('.material-symbols-outlined');
+    if (iconSpan) {
+      iconSpan.textContent = collapsed ? 'chevron_left' : 'chevron_right';
     }
   }
 
@@ -611,6 +657,17 @@ class TasksSidebar {
   }
 
   render() {
+    const mode = this.listMode;
+    this.renderInto(mode);
+    this.setActiveBody(mode);
+  }
+
+  /**
+   * Fills one of the two shapes. Split apart from render() so the orchestrator
+   * can build the INCOMING shape at its final width while the outgoing one is
+   * still the visible, active one.
+   */
+  renderInto(mode = this.listMode) {
     const listEl = document.getElementById('sidebarTasksList');
     const multicolumnEl = document.getElementById('tasksMulticolumnContainer');
     if (!listEl) return;
@@ -629,10 +686,8 @@ class TasksSidebar {
     // ==========================================
     // MULTI-COLUMN KANBAN VIEW (When Calendar is Collapsed)
     // ==========================================
-    if (this.usesKanban) {
-      listEl.style.display = 'none';
+    if (mode === 'kanban') {
       if (!multicolumnEl) return;
-      multicolumnEl.style.display = 'flex';
       multicolumnEl.innerHTML = '';
 
       const columns = this.categoryColumns.map(category => ({
@@ -717,8 +772,6 @@ class TasksSidebar {
     // ==========================================
     // STANDARD SINGLE-COLUMN SIDEBAR VIEW
     // ==========================================
-    if (multicolumnEl) multicolumnEl.style.display = 'none';
-    listEl.style.display = 'flex';
     listEl.innerHTML = '';
 
     if (sortedTasks.length === 0) {

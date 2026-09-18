@@ -57,6 +57,32 @@
 
   --dur-fast: 0.12s;
 
+  /* ---- The workspace split ----
+     One duration and one curve for the whole calendar/tasks transition. Every
+     part of that move - the pane width, the chrome fading out, the task list
+     dissolving into the kanban - reads from these, because a transition whose
+     pieces run on different clocks is exactly what "everything jumps around"
+     means.
+
+     The curve starts from REST. That is the whole point of it: a move that
+     opens at full speed is read as a jump no matter how long it then takes, and
+     a jump is the complaint this is answering. Measured against the sidebar's
+     width, it covers 3% of the distance in the first tenth, 23% by a quarter,
+     80% by halfway, and spends the rest landing. A snappier curve - the iOS-ish
+     cubic-bezier(0.32, 0.72, 0, 1) - is 78% done at a quarter, which on a
+     surface this size looks like the pane teleports and then creeps.
+
+     The rail and the gap are here and not in app.css because the JS orchestrator
+     computes the destination widths from them, and a second copy of 64 would be
+     a second thing to keep in sync. */
+  --split-dur: 400ms;
+  --split-ease: cubic-bezier(0.45, 0.05, 0.15, 1);
+  --split-fade-out: 160ms;       /* outgoing content leaves first, no delay */
+  --split-fade-in: 220ms;
+  --split-fade-in-delay: 170ms;  /* incoming arrives as the width settles */
+  --split-rail: 64px;
+  --split-gap: 16px;
+
   /* ---- The composite borders ----
      Written out so a rule says which TIER it belongs to rather than restating
      a width and a colour that can drift apart. */
@@ -223,6 +249,16 @@ html, body {
   .klndr-lockup-animated .klndr-wordmark,
   .klndr-lockup-animated .klndr-tagline {
     animation: none;
+  }
+
+  /* Near-zero rather than zero: the split's JS orchestrator unpins the frozen
+     content on transitionend, and a 0s transition never fires one. 1ms still
+     reads as instant and still lands the event. */
+  :root {
+    --split-dur: 1ms;
+    --split-fade-out: 1ms;
+    --split-fade-in: 1ms;
+    --split-fade-in-delay: 0ms;
   }
 }
 
