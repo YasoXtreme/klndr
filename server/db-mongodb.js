@@ -299,8 +299,15 @@ async function createSession(userId) {
   return token;
 }
 
+// A token is only ever a string. cookie-parser turns any cookie starting "j:"
+// into parsed JSON, so without this check `klndr_session=j:{"$ne":null}` would
+// reach the query below as an operator and match somebody else's session.
+function isToken(token) {
+  return typeof token === "string" && token.length > 0;
+}
+
 async function validateSession(token) {
-  if (!token) return null;
+  if (!isToken(token)) return null;
   const { sessions } = await collections();
   const session = await sessions.findOne({ _id: token });
   const expiresAt =
@@ -315,7 +322,7 @@ async function validateSession(token) {
 }
 
 async function destroySession(token) {
-  if (!token) return;
+  if (!isToken(token)) return;
   const { sessions } = await collections();
   await sessions.deleteOne({ _id: token });
 }

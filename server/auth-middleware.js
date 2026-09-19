@@ -6,9 +6,14 @@ const { recordActivity } = require("./activity");
 // router importing each other.
 
 // Cookie first, Bearer as a fallback for the desktop wrapper and for scripts.
+//
+// Only ever a string. cookie-parser parses any cookie that starts "j:" as JSON,
+// so a forged `klndr_session=j:{"$ne":null}` arrives here as an object - and
+// used as a query value, that object matched somebody else's session.
 function getSessionToken(req) {
-  if (req.cookies && req.cookies.klndr_session) {
-    return req.cookies.klndr_session;
+  const cookie = req.cookies && req.cookies.klndr_session;
+  if (typeof cookie === "string" && cookie) {
+    return cookie;
   }
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {

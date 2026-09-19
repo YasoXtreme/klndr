@@ -106,6 +106,15 @@ async function runTests() {
     });
     assert('Get current user session returns the admin', meRes.statusCode === 200 && meRes.json.user.username === ADMIN_USERNAME);
 
+    // cookie-parser turns a "j:" cookie into parsed JSON. With a live session
+    // in the database (the one just created), a forged operator must not match
+    // it, on the API or on a page.
+    const forged = { 'Cookie': `klndr_session=${encodeURIComponent('j:{"$ne":null}')}` };
+    const forgedMe = await makeRequest({ hostname: 'localhost', port: PORT, path: '/api/auth/me', method: 'GET', headers: forged });
+    assert('A forged JSON session cookie is not a session (API)', forgedMe.statusCode === 401);
+    const forgedPage = await makeRequest({ hostname: 'localhost', port: PORT, path: '/', method: 'GET', headers: forged });
+    assert('A forged JSON session cookie is not a session (page)', forgedPage.statusCode === 302 && forgedPage.headers.location === '/login');
+
     // 6. Create Task
     const createdTaskRes = await makeRequest({
       hostname: 'localhost',
