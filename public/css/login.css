@@ -60,8 +60,15 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Clips the ligature name the icon is written as, while its font is still
+     on the way (login.html), to the box the glyph will fill. */
+  overflow: hidden;
   animation: wave 2.2s infinite ease-in-out;
   transform-origin: 70% 70%;
+}
+
+.icons-pending .waving-hand .material-symbols-outlined {
+  visibility: hidden;
 }
 
 @keyframes wave {

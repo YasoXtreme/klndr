@@ -410,6 +410,39 @@ async function runTests() {
     const oldAnalytics = await page('/analytics', token);
     assert('The old analytics address moves to /admin/analytics', oldAnalytics.statusCode === 302 && oldAnalytics.headers.location === '/admin/analytics');
 
+    // Caching (server/pages.js). Pages are always revalidated; the files they
+    // name carry a hash and are cached for a year; the guards do not move.
+    const appPage = await page('/', token);
+    assert('The app page is revalidated, privately', appPage.statusCode === 200 && appPage.headers['cache-control'] === 'private, no-cache' && Boolean(appPage.headers.etag));
+    assert('The session lookup reports its cost', /\bauth;dur=/.test(appPage.headers['server-timing'] || ''));
+    const unchanged = await makeRequest({
+      hostname: 'localhost', port: PORT, path: '/', method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}`, 'If-None-Match': appPage.headers.etag }
+    });
+    assert('An unchanged app page is a 304', unchanged.statusCode === 304);
+
+    const appJs = (appPage.body.match(/src="(\/protected\/js\/app\.js\?v=[0-9a-f]{10})"/) || [])[1];
+    const themeCss = (appPage.body.match(/href="(\/public\/css\/theme\.css\?v=[0-9a-f]{10})"/) || [])[1];
+    assert('The app page names its files by hash', Boolean(appJs && themeCss));
+    if (appJs && themeCss) {
+      const script = await page(appJs, token);
+      assert('A versioned app script is cached a year, privately', script.statusCode === 200 && script.headers['cache-control'] === 'private, max-age=31536000, immutable');
+      const scriptUnauth = await makeRequest({ hostname: 'localhost', port: PORT, path: appJs, method: 'GET' });
+      assert('A versioned app script is still behind the login', scriptUnauth.statusCode === 302 && scriptUnauth.headers.location === '/login');
+      const stale = await page('/protected/js/app.js?v=0123456789', token);
+      assert('A stale hash is served but never cached', stale.statusCode === 200 && stale.headers['cache-control'] === 'private, no-cache');
+      const sheet = await makeRequest({ hostname: 'localhost', port: PORT, path: themeCss, method: 'GET' });
+      assert('A versioned public stylesheet is cached a year, anywhere', sheet.statusCode === 200 && /^public, max-age=31536000, immutable/.test(sheet.headers['cache-control'] || ''));
+    }
+
+    const adminPage = await page('/admin', token);
+    const shellJs = (adminPage.body.match(/src="(\/admin\/shell\.js\?v=[0-9a-f]{10})"/) || [])[1];
+    assert('The admin page names its files by hash', Boolean(shellJs));
+    if (shellJs) {
+      const shellForBetaVersioned = await page(shellJs, betaToken);
+      assert('A beta user cannot fetch a versioned admin script either', shellForBetaVersioned.statusCode === 302 && shellForBetaVersioned.headers.location === '/');
+    }
+
     const mediaStatus = await api('GET', '/api/admin/media/status', token);
     assert('Media storage reports whether it is set up', mediaStatus.statusCode === 200 && typeof mediaStatus.json.configured === 'boolean');
     if (mediaStatus.json && mediaStatus.json.configured) {

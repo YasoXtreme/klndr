@@ -20,6 +20,24 @@
         if (t === 'dark' || t === 'light')
           document.documentElement.setAttribute('data-theme', t);
       } catch (e) {}
+
+      // The icon font loads without holding up the first paint (below), and
+      // the page's one icon, the waving hand, stays invisible in its fixed box
+      // until the font has landed - before that it would read as the words
+      // "waving_hand". Three seconds at most, so a blocked font never hides it.
+      document.documentElement.classList.add('icons-pending');
+      function klndrIconsReady() {
+        document.documentElement.classList.remove('icons-pending');
+      }
+      // Runs on the stylesheet's own load, so the font face it declares exists
+      // by then; any earlier and document.fonts would answer straight away.
+      function klndrIconSheetApplied() {
+        if (!document.fonts || !document.fonts.load) return klndrIconsReady();
+        document.fonts
+          .load('38px "Material Symbols Outlined"')
+          .then(klndrIconsReady, klndrIconsReady);
+      }
+      setTimeout(klndrIconsReady, 3000);
     </script>
     <title>klndr | Log In</title>
     <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png" />
@@ -36,10 +54,24 @@
       type="font/ttf"
       crossorigin
     />
+    <!-- Opened while the page's own files load, so the icon font is not two
+         round trips behind them. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Third party, so never allowed to block the first paint: a slow or
+         blocked Google Fonts used to leave this page blank. -->
     <link
-      rel="stylesheet"
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      onload="this.onload = klndrIconSheetApplied; this.rel = 'stylesheet'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      />
+    </noscript>
     <link rel="stylesheet" href="/public/css/theme.css" />
     <link rel="stylesheet" href="/public/css/common.css" />
     <link rel="stylesheet" href="/public/css/login.css" />
@@ -153,13 +185,17 @@
             localStorage.setItem("klndr_user", JSON.stringify(data.user));
           }
 
-          // Read once by the app on the very next load, then cleared. It is
-          // what separates "just signed in", which earns the full logo
-          // entrance, from every refresh after, which does not.
+          // Read once by the app's boot overlay on the very next load, then
+          // cleared (public/js/boot.js). It is what separates "just signed
+          // in", which earns the kit's full entrance, tagline and all, from
+          // every refresh after, which gets the quick one.
           try {
-            sessionStorage.setItem("klndr_boot_hero", "1");
+            sessionStorage.setItem(
+              "klndr:boot",
+              JSON.stringify({ v: 1, kind: "hero", to: "/", at: Date.now() })
+            );
           } catch (storageErr) {
-            // Storage blocked. The app still loads, it just skips the entrance.
+            // Storage blocked. The app still loads, with the quick entrance.
           }
 
           window.location.href = "/";

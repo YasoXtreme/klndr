@@ -354,6 +354,9 @@ const KlndrStudio = (() => {
       if (tab) {
         tab.opener = null;
         tab.location.href = url;
+      } else if (window.KlndrBoot) {
+        // This tab is going to the app, so the logo carries it over.
+        KlndrBoot.leave(url, { variant: 'app' });
       } else {
         window.location.href = url;
       }

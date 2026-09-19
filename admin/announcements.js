@@ -39,6 +39,8 @@
       S.state.me = KlndrAdmin.me;
       if (ready) refreshPeople();
     },
+    // Settles once the view has been handed its data - what the boot overlay
+    // waits on when the Studio is the first page opened.
     show(subpath) {
       if (!ready) {
         ready = load().catch((err) => {
@@ -48,7 +50,7 @@
         KlndrAdmin.header({ title: 'Announcements' });
         S.main().replaceChildren(S.h('p', 'an-loading', 'Opening announcements…'));
       }
-      ready.then(
+      return ready.then(
         () => {
           if (KlndrAdmin.isAt('announcements', subpath)) S.route(subpath);
         },

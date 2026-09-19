@@ -25,6 +25,10 @@
     <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" />
     <link rel="icon" href="/assets/favicon-16.png" sizes="16x16" />
     <link rel="shortcut icon" href="/assets/favicon.ico" />
+    <!-- Opened while the page's own files load, so the icon font is not two
+         round trips behind them. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
     <link
       rel="preload"
@@ -33,6 +37,11 @@
       href="/assets/ElmsSans.ttf"
       crossorigin
     />
+
+    <!-- The boot overlay's styles, written in here by server/pages.js from
+         public/css/boot.css: the loading screen cannot wait on a file of its
+         own. -->
+    <!-- klndr:boot.css -->
 
     <link rel="stylesheet" href="/public/css/theme.css" />
     <link rel="stylesheet" href="/public/css/common.css" />
@@ -57,7 +66,13 @@
       />
     </noscript>
   </head>
-  <body>
+  <body data-boot="admin">
+    <!-- The boot overlay: server/pages.js writes public/js/boot.js in here,
+         and it puts the klndr logo up, admin tag and all, before anything
+         else is parsed. admin/shell.js calls KlndrBoot.ready() once the first
+         page has drawn, and the logo flies into whichever of the two brands
+         below (data-boot-brand) is on screen. -->
+    <!-- klndr:boot.js -->
     <!-- The frame every admin tool shares; admin/shell.js fills the sidebar
          from the sections that register, and each section fills the header and
          the content. The server sends this page for every URL under /admin. -->
@@ -74,7 +89,7 @@
         >
           <span class="material-symbols-outlined" aria-hidden="true">menu</span>
         </button>
-        <a class="adm-brand" href="/admin" data-adm-home aria-label="klndr admin home">
+        <a class="adm-brand" href="/admin" data-adm-home data-boot-brand aria-label="klndr admin home">
           <span class="klndr-lockup" aria-hidden="true">
             <span class="klndr-plate"><span>k</span></span>
             <span class="klndr-wordmark">klndr</span>
@@ -84,7 +99,7 @@
       </header>
 
       <aside class="adm-sidebar" id="admSidebar" aria-label="Admin">
-        <a class="adm-brand" href="/admin" data-adm-home aria-label="klndr admin home">
+        <a class="adm-brand" href="/admin" data-adm-home data-boot-brand aria-label="klndr admin home">
           <span class="klndr-lockup" aria-hidden="true">
             <span class="klndr-plate"><span>k</span></span>
             <span class="klndr-wordmark">klndr</span>
@@ -94,7 +109,7 @@
         <nav class="adm-nav" id="admNav" aria-label="Admin sections"></nav>
         <div class="adm-sidebar-foot">
           <p class="adm-whoami" id="admWhoami"></p>
-          <a class="adm-nav-link" href="/">
+          <a class="adm-nav-link" href="/" data-boot-leave="app">
             <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
             <span>Back to klndr</span>
           </a>

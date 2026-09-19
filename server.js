@@ -3,6 +3,7 @@ const path = require("path");
 const cookieParser = require("cookie-parser");
 const db = require("./server/db");
 const categories = require("./server/categories");
+const pages = require("./server/pages");
 const {
   getSessionToken,
   requireApiAuth,
@@ -13,6 +14,30 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Marks the first request an instance serves, so a slow load can be told
+// apart from a cold one in the browser's timing panel.
+let servedAny = false;
+app.use((req, res, next) => {
+  if (!servedAny) {
+    servedAny = true;
+    res.append("Server-Timing", 'cold;desc="first request on this instance"');
+  }
+  next();
+});
+
+// A local-only stand-in for a slow server, for working on the loading states:
+// KLNDR_DELAY_MS=3000 npm run dev. Delays API calls and pages, never the files
+// they load, and is ignored outright on Vercel.
+const DEV_DELAY_MS = process.env.VERCEL
+  ? 0
+  : Number(process.env.KLNDR_DELAY_MS) || 0;
+if (DEV_DELAY_MS > 0) {
+  app.use((req, res, next) => {
+    if (path.extname(req.path)) return next();
+    setTimeout(next, DEV_DELAY_MS);
+  });
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -27,28 +52,44 @@ app.use(
 // 1. PUBLIC ROUTES (Login & Public Assets)
 // ==========================================
 
-// Serve public static assets (fonts, brand marks, login css/js)
-app.use("/public", express.static(path.join(__dirname, "public")));
-app.use("/assets", express.static(path.join(__dirname, "public", "assets")));
+// Serve public static assets (fonts, brand marks, login css/js). How long each
+// may be cached is decided in server/pages.js.
+app.use(
+  "/public",
+  express.static(path.join(__dirname, "public"), pages.staticOptions("public")),
+);
+app.use(
+  "/assets",
+  express.static(
+    path.join(__dirname, "public", "assets"),
+    pages.staticOptions("assets"),
+  ),
+);
 
 // Both pages point at the icons explicitly, so this is only ever hit by
 // clients that probe the conventional path instead of reading the markup.
 app.get("/favicon.ico", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "assets", "favicon.ico"));
+  res.sendFile(path.join(__dirname, "public", "assets", "favicon.ico"), {
+    maxAge: "7d",
+  });
 });
 
 // Login page route
-app.get("/login", async (req, res) => {
-  const token = getSessionToken(req);
-  const user = await db.validateSession(token);
+app.get("/login", async (req, res, next) => {
+  let user;
+  try {
+    user = await db.validateSession(getSessionToken(req));
+  } catch (err) {
+    return next(err);
+  }
   if (user) {
     return res.redirect("/");
   }
-  res.sendFile(path.join(__dirname, "public", "login.html"));
+  pages.page("login")(req, res, next);
 });
 
 // Auth API Endpoints
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", async (req, res, next) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res
@@ -56,18 +97,28 @@ app.post("/api/auth/login", async (req, res) => {
       .json({ error: "Username and password are required" });
   }
 
-  const user = await db.getUserByUsername(username);
+  let user;
+  try {
+    user = await db.getUserByUsername(username);
+  } catch (err) {
+    return next(err);
+  }
   if (!user || !db.verifyPassword(user, password)) {
     return res.status(401).json({ error: "Invalid username or password" });
   }
 
-  const token = await db.createSession(user.id);
+  let token;
+  try {
+    token = await db.createSession(user.id);
 
-  // The only place a login is observed. Deliberately does not touch
-  // last_seen_at: leaving that stale is what makes the next API call open the
-  // day's activity window, so a login always registers as activity without
-  // this handler having to know how that works.
-  await db.recordLogin(user.id);
+    // The only place a login is observed. Deliberately does not touch
+    // last_seen_at: leaving that stale is what makes the next API call open the
+    // day's activity window, so a login always registers as activity without
+    // this handler having to know how that works.
+    await db.recordLogin(user.id);
+  } catch (err) {
+    return next(err);
+  }
 
   // Set secure HTTP-only cookie (30 days)
   res.cookie("klndr_session", token, {
@@ -85,18 +136,26 @@ app.post("/api/auth/login", async (req, res) => {
   });
 });
 
-app.post("/api/auth/logout", async (req, res) => {
+app.post("/api/auth/logout", async (req, res, next) => {
   const token = getSessionToken(req);
   if (token) {
-    await db.destroySession(token);
+    try {
+      await db.destroySession(token);
+    } catch (err) {
+      return next(err);
+    }
   }
   res.clearCookie("klndr_session");
   res.json({ message: "Logged out successfully" });
 });
 
-app.get("/api/auth/me", async (req, res) => {
-  const token = getSessionToken(req);
-  const user = await db.validateSession(token);
+app.get("/api/auth/me", async (req, res, next) => {
+  let user;
+  try {
+    user = await db.validateSession(getSessionToken(req));
+  } catch (err) {
+    return next(err);
+  }
   if (!user) {
     return res.status(401).json({ user: null });
   }
@@ -214,11 +273,15 @@ app.post(
 // 2. PROTECTED STATIC ASSETS & APP CODE
 // ==========================================
 
-// Guard protected CSS and JS
+// Guard protected CSS and JS. Cached privately, in the browser that got past
+// the guard, and only for as long as server/pages.js allows.
 app.use(
   "/protected",
   requirePageAuth,
-  express.static(path.join(__dirname, "protected")),
+  express.static(
+    path.join(__dirname, "protected"),
+    pages.staticOptions("protected"),
+  ),
 );
 
 // The admin page, and its own assets beside it. They live in a sibling
@@ -241,17 +304,18 @@ app.use(
   "/admin",
   requirePageAuth,
   requirePageAdmin,
-  express.static(path.join(__dirname, "admin"), { index: false, redirect: false }),
+  express.static(
+    path.join(__dirname, "admin"),
+    pages.staticOptions("admin", { index: false, redirect: false }),
+  ),
   (req, res, next) => {
     if (req.method !== "GET" || path.extname(req.path)) return next();
-    res.sendFile(path.join(__dirname, "admin", "index.html"));
+    pages.page("admin")(req, res, next);
   },
 );
 
 // Root route: serves protected index.html only if authenticated
-app.get("/", requirePageAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, "protected", "index.html"));
-});
+app.get("/", requirePageAuth, pages.page("app"));
 
 // Where the admin tools lived before /admin, so old links still land. The
 // guards on /admin decide who gets in.
@@ -410,12 +474,38 @@ app.use(
   require("./server/routes/analytics"),
 );
 
-// Catch-all 404 handler
+// Catch-all 404 handler. A path with a file extension is a missing file, not
+// a page, and gets a plain 404: redirecting it to /login would hand a script
+// tag an HTML page (redirect() also replaces the 404 with a 302).
 app.use((req, res) => {
+  if (path.extname(req.path)) {
+    return res.status(404).type("text").send("Not found");
+  }
   if (req.accepts("html")) {
-    return res.status(404).redirect("/login");
+    return res.redirect("/login");
   }
   res.status(404).json({ error: "Endpoint not found" });
+});
+
+// Last. Express 4 only gets here through next(err), which the auth guards and
+// the pages now use: before, a database error inside an async handler left
+// the request open until the function timed out, which looked exactly like
+// the app freezing.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const fromDatabase = Boolean(err && typeof err.name === "string" && err.name.startsWith("Mongo"));
+  const status = err.status || err.statusCode || (fromDatabase ? 503 : 500);
+  if (status >= 500) console.error(`${req.method} ${req.originalUrl} failed:`, err);
+  if (res.headersSent) return res.end();
+
+  const message = fromDatabase
+    ? "klndr can't reach its database right now. Try again in a moment."
+    : status >= 500
+      ? "Something went wrong on klndr's side."
+      : err.message || "Bad request";
+  res.status(status).set("Cache-Control", "no-store");
+  if (req.path.startsWith("/api/")) return res.json({ error: message });
+  res.type("text").send(message);
 });
 
 if (require.main === module) {
