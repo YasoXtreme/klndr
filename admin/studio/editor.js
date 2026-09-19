@@ -556,13 +556,22 @@
     renderEditor(ed);
   }
 
-  window.addEventListener('beforeunload', (event) => {
+  function unsaved() {
     const ed = state.editor;
-    if (!ed || ed.deleted || !(isDirty(ed) || ed.saving)) return;
-    save(ed);
+    return Boolean(ed && !ed.deleted && (isDirty(ed) || ed.saving));
+  }
+
+  window.addEventListener('beforeunload', (event) => {
+    if (!unsaved()) return;
+    save(state.editor);
     event.preventDefault();
     event.returnValue = '';
   });
+
+  // With a draft unsaved, leaving is the browser's question to ask, not
+  // something to play an animation over: an overlay raised for a trip the
+  // person then cancels would have nowhere to go.
+  if (window.KlndrBoot && KlndrBoot.guard) KlndrBoot.guard(unsaved);
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && state.editor) save(state.editor);

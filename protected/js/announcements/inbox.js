@@ -364,7 +364,9 @@ class KlndrAnnouncements {
         if (app.user && app.user.role === 'admin') {
           // Leaving for another page is not a preview ending: nothing to close.
           if (this.preview) this.previewEnding = true;
-          window.location.href = '/admin/analytics';
+          // The logo carries you over, the same as the Admin menu entry.
+          if (window.KlndrBoot) KlndrBoot.leave('/admin/analytics', { variant: 'admin' });
+          else window.location.href = '/admin/analytics';
         }
         return undefined;
       default:

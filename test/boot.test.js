@@ -15,10 +15,11 @@ const SOURCE = fs.readFileSync(path.join(__dirname, "..", "public", "js", "boot.
 // Just enough of a browser for boot.js to start in: the browser half runs
 // top to bottom the moment the page parses it, so a mistake there - a constant
 // used before its line - blanks a page without a single test noticing.
-function runInPage(variant, { breakCreate = false } = {}) {
+function runInPage(variant, { breakCreate = false, handoff = null } = {}) {
   const classes = new Set();
   const inserted = [];
   const errors = [];
+  const listeners = [];
   const element = () => {
     const children = new Map();
     const el = {
@@ -51,36 +52,66 @@ function runInPage(variant, { breakCreate = false } = {}) {
     getElementById: () => null,
     querySelector: () => null,
     querySelectorAll: () => [],
+    addEventListener: (type) => listeners.push(type),
+    fonts: null,
   };
   const window = {
     matchMedia: () => ({ matches: false }),
     location: { pathname: variant === "admin" ? "/admin" : "/", reload() {} },
+    addEventListener: (type) => listeners.push(type),
   };
   const context = vm.createContext({
     window,
     document,
-    sessionStorage: { getItem: () => null, removeItem() {} },
-    performance: { now: () => 0 },
+    sessionStorage: {
+      getItem: (key) => (key === "klndr:boot" && handoff ? JSON.stringify(handoff) : null),
+      removeItem() {},
+    },
+    performance: { now: () => 0, timeOrigin: 0, getEntriesByType: () => [] },
     setTimeout: () => 0,
     clearTimeout() {},
     console: { error: (...args) => errors.push(args) },
   });
   vm.runInContext(SOURCE, context);
-  return { window, classes, inserted, errors };
+  return { window, classes, inserted, errors, listeners };
 }
 
 test("the overlay starts on both pages, and is in front before the page hides", () => {
   for (const variant of ["app", "admin"]) {
     const { window, classes, inserted, errors } = runInPage(variant);
     assert.deepEqual(errors, [], `${variant} logged an error`);
-    assert.equal(typeof window.KlndrBoot.ready, "function", variant);
-    assert.equal(typeof window.KlndrBoot.fail, "function", variant);
+    for (const name of ["ready", "fail", "leave", "guard"]) {
+      assert.equal(typeof window.KlndrBoot[name], "function", `${variant}.${name}`);
+    }
     assert.equal(inserted.length, 1, variant);
     assert.equal(inserted[0].id, "klndrBoot", variant);
     assert.ok(classes.has("kb-busy"), `${variant} hides the page behind the overlay`);
     assert.equal(inserted[0].innerHTML.includes("kb-face-shield"), variant === "admin", variant);
     assert.equal(inserted[0].innerHTML.includes("kb-tag-in"), variant === "admin", variant);
   }
+});
+
+test("a page carried in from another one starts without a fuss", () => {
+  const handoff = {
+    v: 1,
+    kind: "leave",
+    to: "/admin",
+    variant: "admin",
+    fromAdmin: false,
+    at: Date.now(),
+    rects: {
+      plate: { left: 18, top: 18, width: 32, height: 32 },
+      word: { left: 58, top: 24, width: 53, height: 20 },
+      tag: null,
+    },
+  };
+  const { window, inserted, errors, listeners } = runInPage("admin", { handoff });
+  assert.deepEqual(errors, []);
+  assert.equal(inserted.length, 1);
+  assert.equal(typeof window.KlndrBoot.leave, "function");
+  // A link click and a return from the back/forward cache are both watched for.
+  assert.ok(listeners.includes("click"), "click");
+  assert.ok(listeners.includes("pageshow"), "pageshow");
 });
 
 test("an overlay that cannot start leaves the page showing", () => {
@@ -117,6 +148,47 @@ test("the idle press waits until the entrance is over", () => {
   }
 });
 
+test("the trip to admin turns the plate over after the rise; the trip back drops the tag", () => {
+  const toAdmin = Boot.leaveTimeline("admin", false);
+  assert.equal(toAdmin.flipDelay, toAdmin.rise, "the plate turns once the logo is up");
+  assert.ok(toAdmin.tagDelay > toAdmin.flipDelay, "the tag follows the turn");
+  assert.equal(toAdmin.retract, 0);
+  assert.equal(toAdmin.end, Math.max(toAdmin.flipDelay + toAdmin.flip, toAdmin.tagDelay + toAdmin.tag));
+
+  const toApp = Boot.leaveTimeline("app", true);
+  assert.equal(toApp.flip, 0, "nothing to turn over");
+  assert.ok(toApp.retract > 0 && toApp.retract < toApp.rise, "the tag goes while the logo rises");
+  assert.equal(toApp.end, toApp.rise);
+
+  // Between two pages of the same kind there is only the rise.
+  assert.equal(Boot.leaveTimeline("app", false).end, Boot.TIMING.rise);
+});
+
+test("an arriving page plays only what is left of the trip", () => {
+  const end = Boot.leaveTimeline("admin", false).end;
+  const left = (offset) => Boot.schedule("leave", "admin", false, { fromAdmin: false, offset }).settle;
+  assert.equal(left(0), end, "nothing of it had played");
+  assert.equal(left(200), end - 200);
+  assert.equal(left(end + 500), 0, "the trip was over before the page came");
+  assert.equal(
+    Boot.schedule("leave", "admin", true, { fromAdmin: false, offset: 0 }).settle,
+    Boot.TIMING.reduced
+  );
+  // The press waits for the trip to land, however much of it is left.
+  assert.ok(Boot.schedule("leave", "admin", false, { fromAdmin: false, offset: 100 }).idleDelay > left(100));
+});
+
+test("the trip resumes from the frame the last page stopped on, not from now", () => {
+  const at = 10_000; // the click
+  // The old page drew until this page's response started: 150ms of the trip.
+  assert.equal(Boot.resumeOffset(at, 10_020, 130), 150);
+  // No timing to go on: fall back to when this navigation began.
+  assert.equal(Boot.resumeOffset(at, 10_090, 0), 90);
+  // Clocks disagreeing, or a handoff kept far too long, cannot rewind it.
+  assert.equal(Boot.resumeOffset(at, 9_000, 0), 0);
+  assert.equal(Boot.resumeOffset(at, 10_000, 99_000), 10_000);
+});
+
 test("a handoff counts only for the page it was addressed to, while it is fresh", () => {
   const now = 1_000_000;
   const hero = (fields) => JSON.stringify({ v: 1, kind: "hero", to: "/", at: now - 500, ...fields });
@@ -129,6 +201,36 @@ test("a handoff counts only for the page it was addressed to, while it is fresh"
   assert.equal(Boot.parseHandoff(hero({ v: 2 }), false, at("/")), null, "unknown version");
   assert.equal(Boot.parseHandoff("{not json", false, at("/")), null, "garbage");
   assert.equal(Boot.parseHandoff(null, false, at("/")), null, "nothing");
+});
+
+test("a leave handoff carries the brand it lifted off, or nothing at all", () => {
+  const now = 1_000_000;
+  const rects = {
+    plate: { left: 22, top: 23, width: 32, height: 32 },
+    word: { left: 61.65, top: 28.75, width: 52.63, height: 20.49 },
+    tag: { left: 120, top: 24, width: 54, height: 20 },
+  };
+  const write = (fields) =>
+    JSON.stringify({ v: 1, kind: "leave", to: "/admin", variant: "admin", fromAdmin: true, at: now - 300, rects, ...fields });
+  const at = (pathname) => ({ now, pathname });
+
+  const carried = Boot.parseHandoff(write(), false, at("/admin/analytics"));
+  assert.equal(carried.kind, "leave");
+  assert.equal(carried.fromAdmin, true);
+  assert.deepEqual(carried.rects, rects);
+
+  // Nothing to lift off from: the logo grows where it stands instead.
+  assert.equal(Boot.parseHandoff(write({ rects: null }), false, at("/admin")).rects, null);
+  assert.equal(Boot.parseHandoff(write({ rects: { plate: rects.plate } }), false, at("/admin")).rects, null);
+  assert.equal(
+    Boot.parseHandoff(write({ rects: { plate: rects.plate, word: { left: 0, top: 0, width: 0, height: 0 } } }), false, at("/admin")).rects,
+    null
+  );
+  // An optional part missing is just that part missing.
+  assert.equal(Boot.parseHandoff(write({ rects: { plate: rects.plate, word: rects.word } }), false, at("/admin")).rects.tag, null);
+
+  assert.equal(Boot.parseHandoff(write(), false, at("/")), null, "another page");
+  assert.equal(Boot.parseHandoff(write({ at: now - 30_000 }), false, at("/admin")), null, "stale");
 });
 
 test("the old login page's flag still earns the entrance on the app page", () => {
