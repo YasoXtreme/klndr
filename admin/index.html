@@ -25,6 +25,10 @@
     <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" />
     <link rel="icon" href="/assets/favicon-16.png" sizes="16x16" />
     <link rel="shortcut icon" href="/assets/favicon.ico" />
+    <!-- Opened while the page's own files load, so the icon font is not two
+         round trips behind them. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
     <link
       rel="preload"

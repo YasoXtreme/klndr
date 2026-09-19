@@ -29,10 +29,32 @@ function getSessionToken(req) {
 // directly rather than passing through here, so they stay reachable too.
 const PASSWORD_CHANGE_EXEMPT = new Set(["/api/auth/change-password"]);
 
+/**
+ * The session lookup both guards share. Its cost goes out as Server-Timing,
+ * because it runs in front of every page, file and API call there is, and is
+ * the first thing to check when any of them is slow.
+ *
+ * Throws on a database error. Both callers hand that to next(err): Express 4
+ * does not catch a rejected async middleware, and an uncaught one here used
+ * to leave the request open until the function timed out.
+ */
+async function lookUpSession(req, res) {
+  const started = process.hrtime.bigint();
+  const user = await db.validateSession(getSessionToken(req));
+  const ms = Number(process.hrtime.bigint() - started) / 1e6;
+  res.append("Server-Timing", `auth;dur=${ms.toFixed(1)}`);
+  return user;
+}
+
 // For XHR endpoints: a failure is JSON the client can act on.
 async function requireApiAuth(req, res, next) {
   const token = getSessionToken(req);
-  const user = await db.validateSession(token);
+  let user;
+  try {
+    user = await lookUpSession(req, res);
+  } catch (err) {
+    return next(err);
+  }
   if (!user) {
     return res.status(401).json({ error: "Unauthorized: Please log in" });
   }
@@ -77,7 +99,12 @@ async function requireApiAuth(req, res, next) {
 // browser is following a redirect and would render raw JSON on failure.
 async function requirePageAuth(req, res, next) {
   const token = getSessionToken(req);
-  const user = await db.validateSession(token);
+  let user;
+  try {
+    user = await lookUpSession(req, res);
+  } catch (err) {
+    return next(err);
+  }
   if (!user) {
     return res.redirect("/login");
   }

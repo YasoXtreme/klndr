@@ -11,92 +11,138 @@ if (!mongoUri) {
   );
 }
 
-let clientPromise;
-let database;
+// The only thing a request waits for is the connection.
+//
+// Index checks and the first-run seed used to sit in front of it as well, so on
+// a cold instance the first query of every page load waited behind fifteen
+// createIndex round trips. They now run beside the connection, and only the
+// writes that lean on a unique index wait for them (indexedCollections below).
+//
+// Each promise is kept while it is pending or good and dropped when it fails,
+// so the next caller tries again. A kept rejection used to break the instance
+// for good: after one failed connect, every request on it hung.
 
-async function getDatabase() {
-  if (!clientPromise) {
+let connecting = null;
+
+function connect() {
+  if (!connecting) {
     const client = new MongoClient(mongoUri);
-    clientPromise = client.connect();
+    connecting = client.connect().then(
+      () => client.db(databaseName),
+      (err) => {
+        connecting = null;
+        client.close().catch(() => {});
+        throw err;
+      },
+    );
   }
-  if (!database) {
-    const client = await clientPromise;
-    database = client.db(databaseName);
-    await Promise.all([
-      database
-        .collection("users")
-        .createIndex({ username: 1 }, { unique: true }),
-      database
-        .collection("sessions")
-        .createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 }),
-      database.collection("tasks").createIndex({ user_id: 1 }),
-      // Imported tasks are looked up by where they came from on every sync.
-      // Sparse because every task predating integrations lacks these fields
-      // and would otherwise pile up under the same (null, null) key.
-      database
-        .collection("tasks")
-        .createIndex({ user_id: 1, source_app: 1, source_id: 1 }, { sparse: true }),
-      database
-        .collection("settings")
-        .createIndex({ user_id: 1 }, { unique: true }),
-      database
-        .collection("announcements")
-        .createIndex({ id: 1 }, { unique: true }),
-      // Receipts are read one person at a time (their feed) and one post at a
-      // time (its Studio stats), and neither is a prefix of the other.
-      database
-        .collection("announcement_receipts")
-        .createIndex({ user_id: 1 }),
-      database
-        .collection("announcement_receipts")
-        .createIndex({ announcement_id: 1 }),
-      database.collection("media").createIndex({ id: 1 }, { unique: true }),
-      database
-        .collection("media")
-        .createIndex({ status: 1, created_at: -1 }),
-      // One connection per person per provider.
-      database
-        .collection("integrations")
-        .createIndex({ user_id: 1, provider: 1 }, { unique: true }),
-      // Analytics reads these two ways round and neither is a prefix of the
-      // other: instance-wide over a date range, and one person over all time.
-      // The first is a covered scan - the projection is exactly the key - so
-      // DAU over a year never reads a document off disk.
-      database
-        .collection("activity_daily")
-        .createIndex({ day_ts: 1, user_id: 1 }),
-      database
-        .collection("activity_daily")
-        .createIndex({ user_id: 1, day_ts: 1 }),
-      // Sparse for the same reason as the source_* index above: every task
-      // written before these fields existed lacks them, and would otherwise
-      // pile up under one null key. Sparseness is also what makes the
-      // "when did instrumentation start" probe a one-document index hit.
-      database.collection("tasks").createIndex({ created_at: 1 }, { sparse: true }),
-      database
-        .collection("tasks")
-        .createIndex({ completed_at: 1 }, { sparse: true }),
-    ]);
-  }
-  return database;
+  return connecting;
 }
 
-const ready = getDatabase().then(async (db) => {
-  if ((await db.collection("users").countDocuments()) === 0) {
-    const password_hash = bcrypt.hashSync("password123", 10);
-    await db.collection("users").insertOne({
-      id: "usr_" + crypto.randomBytes(6).toString("hex"),
-      username: "yassen",
-      password_hash,
-      role: "admin",
-      created_at: Math.floor(Date.now() / 1000),
+// [collection, keys, options]
+const INDEXES = [
+  ["users", { username: 1 }, { unique: true }],
+  // Every session lookup joins a session to its account on this.
+  ["users", { id: 1 }],
+  ["sessions", { expires_at: 1 }, { expireAfterSeconds: 0 }],
+  ["tasks", { user_id: 1 }],
+  // Imported tasks are looked up by where they came from on every sync.
+  // Sparse because every task predating integrations lacks these fields
+  // and would otherwise pile up under the same (null, null) key.
+  ["tasks", { user_id: 1, source_app: 1, source_id: 1 }, { sparse: true }],
+  ["settings", { user_id: 1 }, { unique: true }],
+  ["announcements", { id: 1 }, { unique: true }],
+  // Receipts are read one person at a time (their feed) and one post at a
+  // time (its Studio stats), and neither is a prefix of the other.
+  ["announcement_receipts", { user_id: 1 }],
+  ["announcement_receipts", { announcement_id: 1 }],
+  ["media", { id: 1 }, { unique: true }],
+  ["media", { status: 1, created_at: -1 }],
+  // One connection per person per provider.
+  ["integrations", { user_id: 1, provider: 1 }, { unique: true }],
+  // Analytics reads these two ways round and neither is a prefix of the
+  // other: instance-wide over a date range, and one person over all time.
+  // The first is a covered scan - the projection is exactly the key - so
+  // DAU over a year never reads a document off disk.
+  ["activity_daily", { day_ts: 1, user_id: 1 }],
+  ["activity_daily", { user_id: 1, day_ts: 1 }],
+  // Sparse for the same reason as the source_* index above: every task
+  // written before these fields existed lacks them, and would otherwise
+  // pile up under one null key. Sparseness is also what makes the
+  // "when did instrumentation start" probe a one-document index hit.
+  ["tasks", { created_at: 1 }, { sparse: true }],
+  ["tasks", { completed_at: 1 }, { sparse: true }],
+];
+
+// Yields once after connecting, so the request that woke the instance takes
+// the first pooled connection instead of queueing behind this housekeeping.
+const afterRequests = () => new Promise((resolve) => setImmediate(resolve));
+
+let indexing = null;
+
+// One at a time on purpose: the checks hold a single pooled connection and
+// never crowd out a request's own queries. On an established database every
+// one of them is a no-op.
+function ensureIndexes() {
+  if (!indexing) {
+    indexing = (async () => {
+      const db = await connect();
+      await afterRequests();
+      for (const [name, keys, options] of INDEXES) {
+        await db.collection(name).createIndex(keys, options);
+      }
+    })().catch((err) => {
+      indexing = null;
+      throw err;
     });
   }
+  return indexing;
+}
+
+let seeding = null;
+
+// A fresh database gets the admin account the README describes. Anything else
+// costs one read, once per instance.
+function ensureSeeded() {
+  if (!seeding) {
+    seeding = (async () => {
+      const db = await connect();
+      await afterRequests();
+      const users = db.collection("users");
+      if (await users.findOne({}, { projection: { _id: 1 } })) return;
+      // Behind the unique username index, so two instances starting on the
+      // same empty database cannot both seed.
+      await ensureIndexes();
+      try {
+        await users.insertOne({
+          id: "usr_" + crypto.randomBytes(6).toString("hex"),
+          username: "yassen",
+          password_hash: bcrypt.hashSync("password123", 10),
+          role: "admin",
+          created_at: Math.floor(Date.now() / 1000),
+        });
+      } catch (err) {
+        if (err.code !== 11000) throw err;
+      }
+    })().catch((err) => {
+      seeding = null;
+      throw err;
+    });
+  }
+  return seeding;
+}
+
+// Started now, so both are normally done long before anything needs them.
+// scripts/manage-users.js waits on this before touching accounts. Caught here
+// so a failure is a log line rather than an unhandled rejection, which on
+// Vercel ends the process.
+const ready = Promise.all([ensureIndexes(), ensureSeeded()]).then(() => {});
+ready.catch((err) => {
+  console.error("Database setup failed, and is retried on next use:", err.message);
 });
 
 async function collections() {
-  await ready;
-  const db = await getDatabase();
+  const db = await connect();
   return {
     users: db.collection("users"),
     sessions: db.collection("sessions"),
@@ -111,6 +157,16 @@ async function collections() {
   };
 }
 
+// For the writes that stay correct only because a unique index backs them:
+// usernames, one settings document per person, one connection per provider,
+// post and media ids. On an established database the indexes exist and this
+// costs nothing after the first call; on a fresh one it holds the write until
+// they do.
+async function indexedCollections() {
+  await ensureIndexes();
+  return collections();
+}
+
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 function withoutPassword(user) {
@@ -119,7 +175,10 @@ function withoutPassword(user) {
   return safeUser;
 }
 
+// Sign-in goes through here, so on a fresh database it waits for the seeded
+// admin to exist.
 async function getUserByUsername(username) {
+  await ensureSeeded();
   const { users } = await collections();
   return users.findOne({ username: username.toLowerCase().trim() });
 }
@@ -138,7 +197,7 @@ async function getAllUsers() {
 // server-generated temporary password, returned once, that must be replaced at
 // first login. The admin never picks it, so it is never a reused password.
 async function createUser(username, role = "user") {
-  const { users } = await collections();
+  const { users } = await indexedCollections();
   const cleanUsername = username.toLowerCase().trim();
   if (await users.findOne({ username: cleanUsername })) {
     throw new Error("User already exists");
@@ -163,7 +222,7 @@ async function createUser(username, role = "user") {
 }
 
 async function changeUsername(userId, newUsername) {
-  const { users } = await collections();
+  const { users } = await indexedCollections();
   const cleanUsername = newUsername.toLowerCase().trim();
   if (!cleanUsername) throw new Error("Username cannot be empty");
   if (await users.findOne({ username: cleanUsername, id: { $ne: userId } })) {
@@ -306,10 +365,25 @@ function isToken(token) {
   return typeof token === "string" && token.length > 0;
 }
 
+// Runs in front of every page, file and API call, so the session and the
+// account it belongs to come back in one round trip rather than two.
 async function validateSession(token) {
   if (!isToken(token)) return null;
   const { sessions } = await collections();
-  const session = await sessions.findOne({ _id: token });
+  const [session] = await sessions
+    .aggregate([
+      { $match: { _id: token } },
+      { $limit: 1 },
+      {
+        $lookup: {
+          from: "users",
+          localField: "user_id",
+          foreignField: "id",
+          as: "user",
+        },
+      },
+    ])
+    .toArray();
   const expiresAt =
     session && session.expires_at instanceof Date
       ? Math.floor(session.expires_at.getTime() / 1000)
@@ -318,7 +392,7 @@ async function validateSession(token) {
     if (session) await sessions.deleteOne({ _id: token });
     return null;
   }
-  return withoutPassword(await getUserById(session.user_id));
+  return withoutPassword(session.user[0]);
 }
 
 async function destroySession(token) {
@@ -656,7 +730,7 @@ async function listIntegrations(userId) {
 }
 
 async function upsertIntegration(userId, provider, values) {
-  const { integrations } = await collections();
+  const { integrations } = await indexedCollections();
   await integrations.updateOne(
     { user_id: userId, provider },
     {
@@ -762,7 +836,7 @@ async function getSettings(userId) {
 }
 
 async function updateSettings(userId, newSettings) {
-  const { settings } = await collections();
+  const { settings } = await indexedCollections();
   const existing = await settings.findOne({ user_id: userId });
   const values = { ...(existing ? existing.values : {}), ...newSettings };
   await settings.updateOne(
@@ -795,7 +869,7 @@ async function updateSettings(userId, newSettings) {
  * second matches nothing, writes nothing, and reads back the winner's list.
  */
 async function initCategoriesIfAbsent(userId, list) {
-  const { settings } = await collections();
+  const { settings } = await indexedCollections();
   await settings.updateOne(
     { user_id: userId, "values.categories": { $exists: false } },
     { $set: { user_id: userId, "values.categories": list } },
@@ -886,7 +960,7 @@ async function nextAnnouncementId() {
 }
 
 async function insertAnnouncement(doc) {
-  const { announcements } = await collections();
+  const { announcements } = await indexedCollections();
   // A copy, because insertOne writes _id back onto the object it is handed.
   await announcements.insertOne({ ...doc });
 }
@@ -1104,7 +1178,7 @@ async function earliestReceiptAt() {
 // server/media.js and server/storage/r2.js.
 
 async function insertMedia(doc) {
-  const { media } = await collections();
+  const { media } = await indexedCollections();
   await media.insertOne({ ...doc });
 }
 

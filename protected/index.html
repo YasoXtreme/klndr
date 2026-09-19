@@ -38,6 +38,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="klndr" />
+    <!-- Opened while the page's own files load, so the icon font is not two
+         round trips behind them. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
     <!-- The boot overlay draws the lockup in ElmsSans Black before anything
          else is on screen, so the face has to be in flight from the first
