@@ -24,6 +24,18 @@ const KlndrAdmin = (() => {
 
   const $ = (id) => document.getElementById(id);
 
+  // Who is asking, sent the moment this file is parsed rather than once every
+  // section's script has loaded, so the round trip overlaps the rest of the
+  // page. Settled into a value either way, so it never rejects unobserved
+  // before start() gets to it.
+  const whoAmI = API.getMe().then(
+    (me) => ({ me }),
+    (error) => ({ error })
+  );
+
+  // The boot overlay (public/js/boot.js), when the page has one.
+  const boot = window.KlndrBoot || { ready: () => Promise.resolve(), fail: () => {} };
+
   // ==========================================
   // DOM
   // ==========================================
@@ -378,13 +390,18 @@ const KlndrAdmin = (() => {
     return last && resolve(last) ? last : homePath();
   }
 
+  /**
+   * Draw the page the URL names. Returns what the section's show() returned -
+   * a promise that settles once its first content is on screen, for the
+   * sections that load any - which is what the boot overlay waits on.
+   */
   function route() {
     let found = resolve(window.location.pathname);
     if (!found) {
-      if (!sections.length) return;
+      if (!sections.length) return undefined;
       window.history.replaceState(null, '', fallbackPath());
       found = resolve(window.location.pathname);
-      if (!found) return;
+      if (!found) return undefined;
     }
 
     const { section, subpath } = found;
@@ -403,8 +420,9 @@ const KlndrAdmin = (() => {
     remember(section, subpath);
     syncNav();
     window.scrollTo(0, 0);
-    section.show(subpath);
+    const shown = section.show(subpath);
     if (fromDrawer) content().focus({ preventScroll: true });
+    return shown;
   }
 
   /** Go to an admin URL. Going to where you already are draws it again. */
@@ -470,20 +488,26 @@ const KlndrAdmin = (() => {
     new ResizeObserver(publishHeights).observe($('admMobilebar'));
     publishHeights();
 
-    try {
-      const me = await API.getMe();
-      if (!me || !me.user) return; // request() has already gone to /login
-      state.me = me.user;
-    } catch (err) {
-      content().replaceChildren(errorBox(err));
+    const { me, error } = await whoAmI;
+    if (error) {
+      content().replaceChildren(errorBox(error));
+      boot.fail(error);
       return;
     }
+    // Already on its way to /login (request() saw the 401): the overlay stays
+    // up rather than revealing a page that is about to go.
+    if (!me || !me.user) return;
+    state.me = me.user;
     if (state.me.role !== 'admin') {
       content().replaceChildren(errorBox({ status: 403 }));
+      boot.ready();
       return;
     }
     $('admWhoami').textContent = `Signed in as ${state.me.username}`;
-    route();
+    // The first page gets a moment to draw its data behind the logo, so the
+    // logo lands on a finished page rather than one saying "Working it out".
+    // Only a moment: past the cap, the page's own loading state takes over.
+    boot.ready({ after: route(), cap: 1500 });
   }
 
   if (document.readyState === 'loading') {

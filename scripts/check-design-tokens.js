@@ -18,6 +18,7 @@ const ROOT = path.join(__dirname, '..');
 const SHEETS = [
   'public/css/theme.css',
   'public/css/common.css',
+  'public/css/boot.css',
   'public/css/login.css',
   'protected/css/app.css',
   'protected/css/responsive.css',

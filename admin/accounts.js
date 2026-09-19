@@ -264,7 +264,9 @@
         actions: [button('Add account', { icon: 'person_add', variant: 'primary', small: true, labelNarrow: false, onClick: addAccount })]
       });
       render();
-      refresh();
+      // Returned so the boot overlay can wait for the list when this is the
+      // first page opened.
+      return refresh();
     }
   });
 })();

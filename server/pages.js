@@ -36,6 +36,34 @@ const PAGES = {
   login: path.join(ROOT, "public", "login.html"),
 };
 
+// Written into the page at a `<!-- klndr:NAME -->` marker rather than linked,
+// because they draw the loading screen: linked, they would be one more request
+// between the page arriving and anything being on it. Kept as files of their
+// own so they can be read, linted and tested like any other.
+const PARTIALS = {
+  "boot.css": {
+    file: path.join(ROOT, "public", "css", "boot.css"),
+    open: '<style id="kb-css">',
+    close: "</style>",
+  },
+  "boot.js": {
+    file: path.join(ROOT, "public", "js", "boot.js"),
+    open: '<script id="kb-js">',
+    close: "</script>",
+  },
+};
+
+// Which partials each page has to carry, each exactly once. A marker that goes
+// missing would otherwise fail silently: the page would simply lose its
+// loading screen.
+const PAGE_PARTIALS = {
+  app: ["boot.css", "boot.js"],
+  admin: ["boot.css", "boot.js"],
+  login: [],
+};
+
+const MARKER = /<!--\s*klndr:([\w.-]+)\s*-->/g;
+
 const YEAR = 31536000;
 const WEEK = 604800;
 
@@ -115,10 +143,32 @@ function template(file) {
   return html;
 }
 
+function partial(name) {
+  const spec = PARTIALS[name];
+  const src = template(spec.file);
+  // The one sequence that would end the tag early and spill the rest of the
+  // partial into the page as markup.
+  if (src.toLowerCase().includes(spec.close.slice(0, -1))) {
+    throw new Error(`${name} contains ${spec.close.slice(0, -1)}, which would end its inline tag`);
+  }
+  return `${spec.open}\n${src}\n${spec.close}`;
+}
+
 function render(name) {
   const file = PAGES[name];
   if (!file) throw new Error(`No page called ${name}`);
-  return versionUrls(template(file));
+  // Versioned first, so nothing inside a partial is ever rewritten.
+  const html = versionUrls(template(file));
+
+  const found = [...html.matchAll(MARKER)].map((m) => m[1]);
+  for (const marker of found) {
+    if (!PARTIALS[marker]) throw new Error(`${name} has a marker for ${marker}, which does not exist`);
+  }
+  for (const wanted of PAGE_PARTIALS[name]) {
+    const count = found.filter((marker) => marker === wanted).length;
+    if (count !== 1) throw new Error(`${name} carries ${count} markers for ${wanted}, not one`);
+  }
+  return html.replace(MARKER, (m, marker) => partial(marker));
 }
 
 /**
@@ -185,4 +235,6 @@ module.exports = {
   cacheControl,
   staticOptions,
   PAGES,
+  PARTIALS,
+  PAGE_PARTIALS,
 };

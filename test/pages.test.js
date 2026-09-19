@@ -61,6 +61,34 @@ test("every local file each page loads is versioned, and page links are not", ()
   }
 });
 
+test("each page carries the boot overlay it needs, inlined exactly once", () => {
+  const countOf = (html, needle) => html.split(needle).length - 1;
+  for (const [name, partials] of Object.entries(pages.PAGE_PARTIALS)) {
+    const html = pages.render(name);
+    assert.doesNotMatch(html, /<!--\s*klndr:/, `${name} has a marker left`);
+    const wantsBoot = partials.includes("boot.js");
+    assert.equal(countOf(html, '<style id="kb-css">'), partials.includes("boot.css") ? 1 : 0, name);
+    assert.equal(countOf(html, '<script id="kb-js">'), wantsBoot ? 1 : 0, name);
+    if (wantsBoot) {
+      // Inside <body>, ahead of everything the overlay stands in front of.
+      // After </head>: the inlined stylesheet's comments mention <body too.
+      const body = html.indexOf("<body", html.indexOf("</head>"));
+      const script = html.indexOf('<script id="kb-js">');
+      assert.ok(body >= 0 && script > body, `${name}: the overlay script is in the body`);
+      const firstElement = html.slice(html.indexOf(">", body) + 1).replace(/<!--[\s\S]*?-->/g, "").trimStart();
+      assert.ok(firstElement.startsWith('<script id="kb-js">'), `${name}: the overlay script comes first`);
+      assert.match(html, /data-boot-brand/, `${name} has somewhere for the logo to land`);
+    }
+  }
+});
+
+test("a partial cannot close its own tag early", () => {
+  for (const [name, spec] of Object.entries(pages.PARTIALS)) {
+    const src = fs.readFileSync(spec.file, "utf8").toLowerCase();
+    assert.ok(!src.includes(spec.close.slice(0, -1)), `${name} contains ${spec.close}`);
+  }
+});
+
 test("the ElmsSans preload and the @font-face name the same URL", () => {
   const css = fs.readFileSync(path.join(ROOT, "public", "css", "common.css"), "utf8");
   const face = css.match(/url\(['"]?([^'")]+ElmsSans[^'")]*)['"]?\)/)[1];

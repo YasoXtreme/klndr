@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/announcements.test.js test/media.test.js test/motion.test.js test/motion-timeline.test.js test/pages.test.js",
+    "test": "node --test test/announcements.test.js test/media.test.js test/motion.test.js test/motion-timeline.test.js test/pages.test.js test/boot.test.js",
     "check:tokens": "node scripts/check-design-tokens.js",
     "dev": "node --watch server.js",
     "r2:check": "node scripts/r2.js check",

@@ -185,13 +185,17 @@
             localStorage.setItem("klndr_user", JSON.stringify(data.user));
           }
 
-          // Read once by the app on the very next load, then cleared. It is
-          // what separates "just signed in", which earns the full logo
-          // entrance, from every refresh after, which does not.
+          // Read once by the app's boot overlay on the very next load, then
+          // cleared (public/js/boot.js). It is what separates "just signed
+          // in", which earns the kit's full entrance, tagline and all, from
+          // every refresh after, which gets the quick one.
           try {
-            sessionStorage.setItem("klndr_boot_hero", "1");
+            sessionStorage.setItem(
+              "klndr:boot",
+              JSON.stringify({ v: 1, kind: "hero", to: "/", at: Date.now() })
+            );
           } catch (storageErr) {
-            // Storage blocked. The app still loads, it just skips the entrance.
+            // Storage blocked. The app still loads, with the quick entrance.
           }
 
           window.location.href = "/";

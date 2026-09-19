@@ -1,0 +1,478 @@
+/* klndr boot overlay
+   ====================================================
+   The logo that stands in for a page while it loads, on the app and on admin.
+   server/pages.js inlines this file into each page's <head>, and boot.js at the
+   top of <body>, so the overlay never waits on a file of its own.
+
+   Every rule is scoped to #klndrBoot. This sheet sits BEFORE common.css, and at
+   equal specificity the later file wins: .klndr-lockup{--klndr-size:64px} there
+   would beat anything an unscoped rule here said about the lockup.
+
+   Only transform and opacity animate. Those run on the compositor, so the logo
+   keeps its frame rate while the page behind it compiles its scripts and builds
+   the board - which is exactly when it is on screen. That is also why the kit's
+   clip-path wipe is re-drawn here as a mask sliding one way while the word
+   slides the other, and why the plate's slab is an element of its own rather
+   than a box-shadow.
+
+   Sizes are the lockup's own (common.css): the kit's 92px drawing, scaled by
+   --kb-size. The admin tag is .adm-tag (admin.css) drawn at the same scale.
+   boot.js flies each part onto its counterpart in the page when it leaves, so
+   the proportions have to be exact, not merely close.
+
+   Durations and delays come from boot.js as custom properties, so its clock
+   and these animations cannot disagree about when the entrance has landed. */
+
+/* While the overlay is up, the page under it stays invisible. Nothing but the
+   logo can be the page's first painted content, so a browser that keeps the
+   previous page on screen until the next one paints something hands straight
+   from one logo to the other. The bailout reveals the page anyway if boot.js
+   never gets as far as lifting it. No !important: an animation cannot override
+   one. */
+html.kb-busy body > :not(#klndrBoot) {
+  opacity: 0;
+  animation: kb-bailout 0s linear 15s forwards;
+}
+
+@keyframes kb-bailout {
+  to {
+    opacity: 1;
+  }
+}
+
+/* The page's own brand while the logo flies onto it; shown the frame it lands. */
+.kb-brand-hidden {
+  visibility: hidden;
+}
+
+#klndrBoot {
+  --kb-size: 92px;
+  --kb-shadow: 6px;
+  --kb-ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1); /* the kit's own curve */
+  --kb-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The kit steps the slab down with the plate: 6px past 78px, 3px at 56px. The
+   admin lockup, with its tag, is wider than a phone at 92px. */
+@media (max-width: 520px) {
+  #klndrBoot {
+    --kb-size: 64px;
+    --kb-shadow: 3px;
+  }
+}
+
+#klndrBoot .kb-ground {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-gradient);
+}
+
+#klndrBoot .kb-stage,
+#klndrBoot .kb-failure {
+  grid-area: 1 / 1;
+  position: relative;
+}
+
+#klndrBoot .kb-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+}
+
+/* ---- The lockup ---- */
+
+#klndrBoot .kb-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--kb-size) * 0.239);
+  line-height: 1;
+  user-select: none;
+  opacity: 0;
+}
+
+/* Lit once ElmsSans is in: before that the k would be Arial for a frame. */
+#klndrBoot.kb-lit .kb-lockup {
+  opacity: 1;
+}
+
+/* The plate: a slab that stays put, and a face that presses into it and, on
+   admin, turns over. Each moving layer is its own element, so no two
+   animations ever fight over one transform. */
+#klndrBoot .kb-plate {
+  position: relative;
+  flex: none;
+  width: var(--kb-size);
+  height: var(--kb-size);
+}
+
+#klndrBoot .kb-plate-in,
+#klndrBoot .kb-press,
+#klndrBoot .kb-flip,
+#klndrBoot .kb-face,
+#klndrBoot .kb-slab {
+  position: absolute;
+  inset: 0;
+}
+
+#klndrBoot .kb-plate-in {
+  perspective: calc(var(--kb-size) * 5);
+}
+
+#klndrBoot .kb-slab {
+  border-radius: calc(var(--kb-size) * 0.174);
+  background: var(--klndr-ink);
+  transform: translate(var(--kb-shadow), var(--kb-shadow));
+}
+
+#klndrBoot .kb-press,
+#klndrBoot .kb-flip {
+  transform-style: preserve-3d;
+}
+
+#klndrBoot .kb-face {
+  display: grid;
+  place-items: center;
+  border: calc(var(--kb-size) * 0.0435) solid var(--klndr-ink);
+  border-radius: calc(var(--kb-size) * 0.174);
+  background: var(--klndr-plate-fill);
+  color: var(--klndr-ink);
+  font-size: calc(var(--kb-size) * 0.674);
+  font-weight: 900;
+  letter-spacing: -0.058em;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* The glyph sits high in its em box: same nudge as .klndr-plate > span. */
+#klndrBoot .kb-face > span {
+  display: block;
+  transform: translateY(calc(var(--kb-size) * 0.033));
+}
+
+/* Admin's side of the plate: the kit's inverse mark (a black plate with a
+   white line) carrying a shield. Readable on either ground. */
+#klndrBoot .kb-face-shield {
+  transform: rotateY(180deg);
+  border-color: var(--klndr-plate-fill);
+  background: var(--klndr-ink);
+  color: var(--klndr-plate-fill);
+}
+
+#klndrBoot .kb-face-shield svg {
+  display: block;
+  width: 52%;
+  height: 52%;
+}
+
+/* The check is cut out of the shield in the plate's own colour. */
+#klndrBoot .kb-shield-mark {
+  fill: none;
+  stroke: var(--klndr-ink);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The wordmark, behind a mask. The padding gives the Black glyphs' overhang -
+   and the word's own spring past its mark - room inside the mask; the negative
+   margin takes it back out of the layout. */
+#klndrBoot .kb-text {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--kb-size) * 0.065);
+}
+
+#klndrBoot .kb-word {
+  display: block;
+  font-size: calc(var(--kb-size) * 0.674);
+}
+
+#klndrBoot .kb-mask {
+  display: block;
+  overflow: hidden;
+  padding: 0.1em 0.12em;
+  margin: -0.1em -0.12em;
+}
+
+#klndrBoot .kb-counter {
+  display: block;
+}
+
+#klndrBoot .kb-word-in {
+  display: block;
+  font-weight: 900;
+  letter-spacing: -0.058em;
+  line-height: 0.95;
+  color: var(--ink-strong);
+}
+
+/* The tagline is the ceremony, and ceremony belongs to arriving: only the
+   load straight after signing in gets it. */
+#klndrBoot .kb-tagline {
+  display: none;
+  font-size: calc(var(--kb-size) * 0.163);
+  font-weight: 700;
+  color: var(--ink-strong);
+}
+
+#klndrBoot[data-kind="hero"] .kb-tagline {
+  display: block;
+}
+
+/* .adm-tag at the lockup's scale: 20px tall at a 32px plate, 8px of padding,
+   11.5px type, a hairline, 10px from the lockup. */
+#klndrBoot .kb-tag {
+  display: none;
+  flex: none;
+  margin-left: calc(var(--kb-size) * 0.0735);
+}
+
+#klndrBoot[data-variant="admin"] .kb-tag {
+  display: block;
+}
+
+#klndrBoot .kb-tag-in {
+  display: inline-flex;
+  align-items: center;
+  height: calc(var(--kb-size) * 0.625);
+  padding: 0 calc(var(--kb-size) * 0.25);
+  border: calc(var(--kb-size) * 0.0469) solid var(--success-line);
+  border-radius: var(--radius-pill);
+  background: var(--success-bg);
+  color: var(--success-ink);
+  font-size: calc(var(--kb-size) * 0.359);
+  font-weight: 800;
+  line-height: 1;
+  transform-origin: left center;
+}
+
+/* ---- The entrance ---- */
+
+#klndrBoot.kb-lit .kb-plate-in {
+  animation: kb-plate-in var(--kb-plate-dur) var(--kb-ease-pop) both;
+}
+
+/* The mask and the counter share a curve with no overshoot, so they cancel
+   exactly and the mask's edge never swings back over the k. Only the word's
+   own small drift springs. */
+#klndrBoot.kb-lit .kb-mask {
+  animation: kb-mask-in var(--kb-word-dur) var(--kb-ease-out) var(--kb-word-delay) both;
+}
+
+#klndrBoot.kb-lit .kb-counter {
+  animation: kb-counter-in var(--kb-word-dur) var(--kb-ease-out) var(--kb-word-delay) both;
+}
+
+/* The kit's 14px drift moves the mask with the word, as its clip-path did:
+   drifting the word alone would slide the k into the mask's window before the
+   sweep had begun. On the part itself, which the exit flight later animates
+   from where this leaves it - at rest. */
+#klndrBoot.kb-lit .kb-word {
+  animation: kb-word-in var(--kb-word-dur) var(--kb-ease-pop) var(--kb-word-delay) both;
+}
+
+#klndrBoot.kb-lit .kb-tagline {
+  animation: kb-rise var(--kb-tagline-dur) ease var(--kb-tagline-delay) both;
+}
+
+#klndrBoot.kb-lit[data-variant="admin"] .kb-flip {
+  animation: kb-flip var(--kb-flip-dur) var(--kb-ease-pop) var(--kb-flip-delay) both;
+}
+
+#klndrBoot.kb-lit[data-variant="admin"] .kb-tag-in {
+  animation: kb-pop var(--kb-tag-dur) var(--kb-ease-pop) var(--kb-tag-delay) both;
+}
+
+/* Waiting: every so often the plate presses into its slab, like any klndr
+   button under a finger. */
+#klndrBoot.kb-lit .kb-press {
+  animation: kb-press var(--kb-idle-every) ease-in-out var(--kb-idle-delay) infinite;
+}
+
+#klndrBoot.kb-leaving .kb-press {
+  animation: none;
+}
+
+@keyframes kb-plate-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--kb-size) * 0.283)) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The mask sweeps right while the counter inside it sweeps left by exactly
+   as much - the mask's 100% includes its padding, 0.12em a side - so the word
+   stays put and the mask's edge does what the kit's clip-path did. The whole
+   wordmark drifts the kit's 14px. */
+@keyframes kb-mask-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes kb-counter-in {
+  from {
+    transform: translateX(calc(100% + 0.24em));
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes kb-word-in {
+  from {
+    transform: translateX(calc(var(--kb-size) * -0.152));
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes kb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--kb-size) * 0.109));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes kb-flip {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(180deg);
+  }
+}
+
+@keyframes kb-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-30%) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes kb-press {
+  0%,
+  16%,
+  100% {
+    transform: none;
+  }
+  7% {
+    transform: translate(calc(var(--kb-shadow) * 0.7), calc(var(--kb-shadow) * 0.7));
+  }
+}
+
+/* ---- A slow load, and one that failed ---- */
+
+/* Held back until a load is slow enough that silence starts to read as a
+   broken page rather than a fast one. */
+#klndrBoot .kb-note {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+#klndrBoot.kb-slow .kb-note {
+  opacity: 1;
+}
+
+#klndrBoot .kb-failure {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 380px;
+  margin: 0 16px;
+  padding: 28px 32px 30px;
+  text-align: center;
+  color: var(--ink-strong);
+  background: var(--surface-1);
+  border: var(--border-container);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
+}
+
+#klndrBoot.kb-failed .kb-stage {
+  display: none;
+}
+
+#klndrBoot.kb-failed .kb-failure {
+  display: flex;
+}
+
+#klndrBoot .kb-failure h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+}
+
+#klndrBoot .kb-reason {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+/* :where() keeps this at a single class's weight, so the hover and press
+   states common.css gives .btn-boot-retry still win over it. */
+:where(#klndrBoot) .btn-boot-retry {
+  margin-top: 6px;
+  height: var(--control-md);
+  padding: 0 26px;
+  background: var(--accent-active);
+  border: var(--border-control);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--accent-active-ink);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #klndrBoot.kb-lit .kb-plate-in,
+  #klndrBoot.kb-lit .kb-mask,
+  #klndrBoot.kb-lit .kb-counter,
+  #klndrBoot.kb-lit .kb-word,
+  #klndrBoot.kb-lit .kb-tagline,
+  #klndrBoot.kb-lit[data-variant="admin"] .kb-flip,
+  #klndrBoot.kb-lit[data-variant="admin"] .kb-tag-in,
+  #klndrBoot.kb-lit .kb-press {
+    animation: none;
+  }
+
+  #klndrBoot .kb-lockup {
+    transition: opacity 150ms ease;
+  }
+
+  #klndrBoot .kb-note {
+    transition-duration: 150ms;
+  }
+}

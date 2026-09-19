@@ -269,8 +269,10 @@ not stick to the pointer, and that **undo** restores the previous state exactly.
 ## Accessibility
 
 - [ ] With **prefers-reduced-motion: reduce**, no modal, sheet, context menu,
-      seam grip, focus flash or sync dot animates. The only animation that must
-      survive is `app-boot-bailout` — it is `0s` and is a timeout, not motion.
+      seam grip, focus flash or sync dot animates. The boot logo fades in and
+      out and nothing else: no bounce, sweep, press, shield turn or flight into
+      the topbar. The only animation that must survive is `kb-bailout` — it is
+      `0s` and is a timeout, not motion.
 - [ ] Touch targets reach 44px: nav arrows, zoom, Today, sidebar icons, modal
       close, and the day-count buttons.
 

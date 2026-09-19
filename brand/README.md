@@ -48,6 +48,13 @@ In the product the lockup is not an SVG at all: `.klndr-lockup` in
 `public/css/common.css` draws the plate and wordmark from markup, so it inherits the
 `@font-face` the page already loads and can be animated a part at a time.
 
+The animated state ships as the product's loading screen, `public/css/boot.css`
+and `public/js/boot.js`. It is the kit's entrance redrawn with transforms only,
+so it stays smooth while a page's scripts compile: the clip-path wipe becomes a
+mask sliding against its contents, and the slab becomes an element of its own.
+On admin the plate then turns over to the kit's inverse mark carrying a shield.
+Keep the timings in step with `klndr-logo-animation.html` if either changes.
+
 ## Uncontrolled surfaces
 
 Every mark here is black on transparency, which assumes a light background. On a

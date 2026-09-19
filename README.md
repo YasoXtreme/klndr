@@ -88,7 +88,7 @@ local work never touches production data.
 | `npm run list-users` | List accounts |
 | `npm run delete-user -- <username>` | Delete an account |
 | `npm run reset-password -- <username>` | Issue a one-shot temporary password |
-| `npm test` | Unit tests: announcement rules and markdown, media policy, motion scenes |
+| `npm test` | Unit tests: announcement rules and markdown, media policy, motion scenes, page caching, the boot overlay |
 | `npm run check:tokens` | Design-token lint across the stylesheets, including the motion scenes' theme copy |
 | `npm run r2:check` | Check the R2 credentials, bucket and CORS, with a write/read/delete round trip |
 | `npm run r2:cors [-- <origin> ...]` | Write the bucket CORS policy that browser uploads need |
@@ -120,6 +120,7 @@ work.
 | `SYLLA_BASE_URL`, `SYLLA_CLIENT_ID`, `SYLLA_CLIENT_SECRET` | for Sylla | See [Integrations](#integrations). Omit them and Sylla simply lists as "Not configured"; nothing else is affected. |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | for media uploads | A Cloudflare R2 bucket plus an API token with **Object Read & Write** on it. See [Setting up Cloudflare R2](#setting-up-cloudflare-r2). Without these, header uploads are switched off; motion scenes still work. |
 | `R2_PUBLIC_BASE_URL` | | The bucket's public origin: a custom domain or its `r2.dev` URL. Without it the bucket stays private and klndr signs every read, so media only loads for signed-in people. |
+| `KLNDR_DELAY_MS` | | Local only: holds every API call and page back by this many milliseconds, so the loading screen and its slow states can be worked on. Files are never delayed, and it is ignored on Vercel. |
 
 Generate an encryption key with:
 
@@ -229,6 +230,8 @@ docs/                        Manual regression checklists
 - **Read state is per post, not a watermark.** A receipt per person per post records delivery, opening, dismissal, button click and reaction, stamped with the delivery version it belongs to. "Notify again" makes a post unread for everyone without erasing anyone's history. Posts from before receipts still honour the old `last_seen_announcement_id` watermark, read at request time; nothing was backfilled.
 - **Media bytes never pass through Express.** Vercel caps a function body at 4.5 MB. So the studio asks the server for presigned R2 URLs, with type, size and cache headers bound into the signature, and uploads straight to the bucket with a progress bar. The server then confirms the object with a HEAD request, and reads SVG and Lottie files to reject anything scriptable.
 - **One motion scene, two renderers.** A scene animates in, stays idle - still moving - for as long as it is asked to, then animates out. It is a pure function from its clock (frames since it began, and frames since its out began) to canvas drawing, so any length of idle joins its out without a jump. The app's player and the Remotion workspace in `motion/` run the same timeline and the same functions, so a rendered clip matches the in-app scene frame for frame, and a resting pose costs nothing to show under reduced motion.
+- **Files are cached by what is in them.** Every page is served through `server/pages.js`, which stamps each local stylesheet and script URL with a hash of the file's contents. A URL naming the current hash is cached for a year and never asked about again; editing the file changes its URL. The pages themselves are always revalidated, which is how a deploy reaches everyone. The app's and admin's files stay behind their login guards and are only ever cached privately, in the browser that was allowed to fetch them.
+- **The loading screen is the page's first frame.** `public/css/boot.css` and `public/js/boot.js` are written into each page by the server rather than linked, so the logo never waits on a file of its own. It animates on the compositor only (transform and opacity) so it stays smooth while the page's scripts compile, holds a fast load for no longer than its entrance, and then flies each part of the logo onto the page's own brand - the topbar, or admin's sidebar - landing on it exactly.
 - **A run of clips is one camera move, not clips glued together.** Each clip is a panel on klndr's board, laid out left to right like days on the calendar. Just before a clip's out, the camera lifts its panel off the board and slides to the next one, which starts arriving while it is still sliding in; what the panels carry lags a touch as the camera sets off and runs on a touch as it stops. So the leaving clip is still on screen while the next one builds, and no moment is empty. The same move joins every pair of clips, the last back to the first included, and it is planned in `motion-timeline.js`, so the player, the scrubber and a Remotion render share it. Between moves, a clip draws exactly as it does on its own.
 
 ### Data model
@@ -567,6 +570,21 @@ function (`vercel.json` routes everything to `server.js`).
 
 Configure MongoDB Atlas network access for your own machine (local) and for
 Vercel. Any other Node host works too — `npm start` is the whole run command.
+
+Two Vercel settings matter more to how fast klndr feels than anything in the
+code, both under **Settings → Functions**:
+
+- **Function region.** Put it in the same region as the Atlas cluster. Every
+  API call makes a few database round trips one after another, so a function
+  on another continent from its database pays that distance several times per
+  request. The second part of a response's `x-vercel-id` header names the
+  region a request ran in.
+- **Fluid compute.** On. Without it, a page's parallel requests can each wake a
+  separate cold instance.
+
+Every response carries a `Server-Timing` header with the session lookup's cost
+(`auth`) and marks an instance's first request (`cold`), so both show up in the
+browser's network panel.
 
 ---
 
