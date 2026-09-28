@@ -87,6 +87,19 @@ const KlndrCharts = (() => {
     return tip;
   }
 
+  // A tooltip is the one thing here written as markup, so every value that goes
+  // into one is escaped first. The values are data, not ours: the "Where tasks
+  // come from" donut names its slices after each task's source_app, which the
+  // tasks API stores exactly as the client sent it, from any account.
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   // Hit targets are the mark plus padding, never the mark alone - a 3px column
   // is not a pointer target.
   function bindTip(node, html) {
@@ -226,7 +239,10 @@ const KlndrCharts = (() => {
         fill: SERIES(series),
         class: "chart-mark",
       });
-      bindTip(bar, `<strong>${d[labelKey]}</strong><br>${format(value)} ${tipLabel || ""}`);
+      bindTip(
+        bar,
+        `<strong>${escapeHtml(d[labelKey])}</strong><br>${escapeHtml(format(value))} ${escapeHtml(tipLabel || "")}`,
+      );
       svg.appendChild(bar);
     });
 
@@ -328,9 +344,9 @@ const KlndrCharts = (() => {
         class: "chart-hit",
       });
       const rows = series
-        .map((s, si) => `<span class="tip-dot" style="background:${SERIES(si)}"></span>${s.label}: <strong>${format(d[s.key] || 0)}</strong>`)
+        .map((s, si) => `<span class="tip-dot" style="background:${SERIES(si)}"></span>${escapeHtml(s.label)}: <strong>${escapeHtml(format(d[s.key] || 0))}</strong>`)
         .join("<br>");
-      bindTip(band, `<strong>${d[labelKey]}</strong><br>${rows}`);
+      bindTip(band, `<strong>${escapeHtml(d[labelKey])}</strong><br>${rows}`);
       svg.appendChild(band);
     });
 
@@ -393,7 +409,10 @@ const KlndrCharts = (() => {
           fill: SERIES(si),
           class: "chart-mark",
         });
-        bindTip(rect, `<strong>${d[labelKey]}</strong><br>${s.label}: <strong>${format(value)}</strong>`);
+        bindTip(
+          rect,
+          `<strong>${escapeHtml(d[labelKey])}</strong><br>${escapeHtml(s.label)}: <strong>${escapeHtml(format(value))}</strong>`,
+        );
         svg.appendChild(rect);
         cursor += segH;
       });
@@ -439,7 +458,7 @@ const KlndrCharts = (() => {
       });
       bindTip(
         path,
-        `${slice.label}: <strong>${fmt(slice.value)}</strong> (${Math.round(portion * 100)}%)`,
+        `${escapeHtml(slice.label)}: <strong>${escapeHtml(fmt(slice.value))}</strong> (${Math.round(portion * 100)}%)`,
       );
       svg.appendChild(path);
       angle = end;
@@ -522,7 +541,7 @@ const KlndrCharts = (() => {
         if (value > 0) {
           bindTip(
             cell,
-            `${rowLabel} <strong>${r.label}</strong>, ${colLabel} <strong>${c.label}</strong><br>${format(value)} ${valueLabel || ""}`,
+            `${escapeHtml(rowLabel)} <strong>${escapeHtml(r.label)}</strong>, ${escapeHtml(colLabel)} <strong>${escapeHtml(c.label)}</strong><br>${escapeHtml(format(value))} ${escapeHtml(valueLabel || "")}`,
           );
         }
         grid.appendChild(cell);
