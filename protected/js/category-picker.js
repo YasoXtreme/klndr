@@ -81,7 +81,7 @@ const CategoryPicker = {
     swatch.className = `picker-cat-swatch ${category.color ? '' : 'is-blank'}`.trim();
     if (category.color) KlndrTheme.paint(swatch, category.color);
     if (category.icon) {
-      swatch.innerHTML = `<span class="material-symbols-outlined">${category.icon}</span>`;
+      swatch.appendChild(this.buildIcon(category.icon));
     }
     row.appendChild(swatch);
 
@@ -120,5 +120,15 @@ const CategoryPicker = {
     });
 
     return row;
+  },
+
+  // The glyph inside a category swatch, here and on the board and the settings
+  // list. Text, never markup: an icon is meant to be a palette name, but the
+  // categories API stores whatever it is sent.
+  buildIcon(iconName) {
+    const icon = document.createElement('span');
+    icon.className = 'material-symbols-outlined';
+    icon.textContent = iconName;
+    return icon;
   }
 };

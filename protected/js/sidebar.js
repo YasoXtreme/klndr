@@ -454,7 +454,7 @@ class TasksSidebar {
     // Circular Category Badge
     const badge = document.createElement('div');
     badge.className = 'task-badge-circle';
-    badge.innerHTML = `<span class="material-symbols-outlined task-icon-symbol">${task.icon || 'task_alt'}</span>`;
+    badge.appendChild(TimelineDOM.getCategoryIconElement(task.icon));
     card.appendChild(badge);
 
     // Checkbox. A split task has three states, not two: the middle one means
@@ -743,7 +743,7 @@ class TasksSidebar {
         swatch.className = `category-column-swatch ${category.color ? '' : 'is-blank'}`.trim();
         if (category.color) KlndrTheme.paint(swatch, category.color);
         if (category.icon) {
-          swatch.innerHTML = `<span class="material-symbols-outlined">${category.icon}</span>`;
+          swatch.appendChild(CategoryPicker.buildIcon(category.icon));
         }
         header.appendChild(swatch);
 

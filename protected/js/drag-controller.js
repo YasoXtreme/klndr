@@ -600,15 +600,26 @@ class DragController {
     ghost.style.top = `${clientY}px`;
     ghost.style.width = '180px';
     ghost.style.height = '48px';
-    ghost.innerHTML = `
-      <div class="task-badge-circle">
-        <span class="material-symbols-outlined task-icon-symbol">${task.icon || 'task_alt'}</span>
-      </div>
-      <div class="task-content-inner">
-        <div class="task-title-text" style="font-size:13px;">${task.title}</div>
-        <div class="task-meta-text">${duration} min</div>
-      </div>
-    `;
+
+    // Built node by node rather than as an HTML string: the title is whatever
+    // the person typed or an import sent, and neither the icon nor the timing
+    // is checked on the way in, so all of it has to reach the page as text.
+    const badge = document.createElement('div');
+    badge.className = 'task-badge-circle';
+    badge.appendChild(TimelineDOM.getCategoryIconElement(task.icon));
+
+    const content = document.createElement('div');
+    content.className = 'task-content-inner';
+    const titleEl = document.createElement('div');
+    titleEl.className = 'task-title-text';
+    titleEl.style.fontSize = '13px';
+    titleEl.textContent = task.title;
+    const metaEl = document.createElement('div');
+    metaEl.className = 'task-meta-text';
+    metaEl.textContent = `${duration} min`;
+    content.append(titleEl, metaEl);
+
+    ghost.append(badge, content);
     document.body.appendChild(ghost);
     this.globalGhostEl = ghost;
 

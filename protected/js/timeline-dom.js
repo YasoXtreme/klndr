@@ -72,9 +72,13 @@ class TimelineDOM {
     this.initFocusHighlight();
   }
 
+  // A node, not an HTML string. Icons are meant to be palette names, but the
+  // tasks API stores whatever it is sent, so the name reaches the page as text.
   static getCategoryIconElement(iconName) {
-    const icon = iconName || 'task_alt';
-    return `<span class="material-symbols-outlined task-icon-symbol">${icon}</span>`;
+    const icon = document.createElement('span');
+    icon.className = 'material-symbols-outlined task-icon-symbol';
+    icon.textContent = iconName || 'task_alt';
+    return icon;
   }
 
   // Blocks shrink with their duration and the zoom level. Rather than clipping
@@ -577,7 +581,7 @@ class TimelineDOM {
 
     const badge = document.createElement('div');
     badge.className = 'task-badge-circle';
-    badge.innerHTML = TimelineDOM.getCategoryIconElement(task.icon);
+    badge.appendChild(TimelineDOM.getCategoryIconElement(task.icon));
     card.appendChild(badge);
 
     card.appendChild(this.buildPill(task, segment, segIdx, segTotal));

@@ -2391,7 +2391,7 @@ class KlndrApp {
       const swatch = document.createElement('span');
       swatch.className = 'category-row-swatch';
       KlndrTheme.paint(swatch, category.color);
-      swatch.innerHTML = `<span class="material-symbols-outlined">${category.icon}</span>`;
+      swatch.appendChild(CategoryPicker.buildIcon(category.icon));
       row.appendChild(swatch);
 
       const name = document.createElement('span');
