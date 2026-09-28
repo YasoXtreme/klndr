@@ -1030,6 +1030,12 @@ body[data-orientation="vertical"] .timeline-task-card .segment-pill:hover {
   transform: scaleY(1.08);
 }
 
+/* The bar is most of the block's width, so a tick's pop goes almost all into
+   its height (see tick-pill-pop). Back at dot size it pops evenly. */
+body[data-orientation="vertical"] .timeline-task-card:not(.is-xs):not(.is-min) .segment-pill {
+  --pop-x: 0.12;
+}
+
 /* The 26px on the right is a gutter for the lock, and only some blocks have
    one: it is dropped on a split, and on anything the person has unlocked. When
    there is nothing to dodge the bar takes the corner back and comes out centred
@@ -1039,7 +1045,8 @@ body[data-orientation="vertical"] .timeline-task-card:not(:has(.task-lock-indica
 }
 
 /* Too small for a bar. Back to a dot, at the free end of the grip row - the
-   badge has the other end at is-min, and is out of the way at is-xs. */
+   badge has the other end at is-min, and is out of the way at is-xs. Centred
+   with translate, like the horizontal dot, so its scales pivot on it. */
 body[data-orientation="vertical"] .timeline-task-card.is-xs .segment-pill,
 body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill {
   top: 50%;
@@ -1049,12 +1056,12 @@ body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill {
   width: var(--v-pill);
   height: var(--v-pill);
   border-radius: var(--radius-xs);
-  transform: translateY(-50%);
+  translate: 0 -50%;
 }
 
 body[data-orientation="vertical"] .timeline-task-card.is-xs .segment-pill:hover,
 body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill:hover {
-  transform: translateY(-50%) scale(1.12);
+  transform: scale(1.12);
 }
 
 body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill {

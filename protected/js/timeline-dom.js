@@ -33,6 +33,14 @@ class TimelineDOM {
   static FOCUS_FLASH_TWO_MS = 2000;
   static FOCUS_DIM_MS = 3000;
 
+  // The tick, in a 16-unit box. Shared with the tasks panel's checkbox and its
+  // "All clear" plate, so a tick is the same mark wherever it is drawn - and
+  // drawn as a stroke, so it can draw itself in.
+  static TICK_PATH = 'M3.6 8.4l3 3 5.8-6.6';
+
+  // How long a pill takes to pop after its block is ticked.
+  static PILL_POP_MS = 450;
+
   constructor(containerElement, canvasRenderer, state, onTaskInteraction) {
     this.container = containerElement;
     this.canvas = canvasRenderer;
@@ -53,6 +61,9 @@ class TimelineDOM {
 
     this.ghostPool = [];
     this.tooltipEl = null;
+
+    // Blocks ticked a moment ago: segmentId -> { at, to }. See notePillMotion.
+    this.pillMotion = new Map();
 
     this.seamRecords = [];
     this.armedSeam = null;
@@ -563,6 +574,15 @@ class TimelineDOM {
       placement.hasRightSeam ? 'has-seam-right' : ''
     ].filter(Boolean).join(' ');
 
+    // A block ticked a moment ago eases into (or out of) its done look, and
+    // its pill pops - from the elapsed time, because a save's reply rebuilds
+    // this layer mid-pop. The custom property reaches the pill as well.
+    const pop = this.pillMotionFor(segment);
+    if (pop) {
+      card.classList.add(pop.completed ? 'is-checking' : 'is-unchecking');
+      card.style.setProperty('--check-t', `${-Math.round(pop.elapsed)}ms`);
+    }
+
     card.dataset.taskId = task.id;
     card.dataset.segmentId = segment.id;
     card.dataset.segmentIndex = segIdx;
@@ -685,6 +705,32 @@ class TimelineDOM {
   }
 
   /**
+   * Records a tick on these blocks, so their pills pop. The app calls it for
+   * both ways in: a pill of its own, and the tasks panel's checkbox, which
+   * ticks every block of the task at once.
+   */
+  notePillMotion(segmentIds, completed) {
+    const at = performance.now();
+    segmentIds.forEach(id => this.pillMotion.set(id, { at, to: completed }));
+    setTimeout(() => {
+      segmentIds.forEach(id => {
+        if (this.pillMotion.get(id)?.at === at) this.pillMotion.delete(id);
+      });
+    }, TimelineDOM.PILL_POP_MS);
+  }
+
+  // How far into its pop a block is, if it is in one. By elapsed time, so a
+  // rebuild picks the pop up where it was; and only while the block still says
+  // what the tick said, so an undo or a failed save pops nothing.
+  pillMotionFor(segment) {
+    const motion = this.pillMotion.get(segment.id);
+    if (!motion || motion.to !== Boolean(segment.completed)) return null;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
+    const elapsed = performance.now() - motion.at;
+    return elapsed < TimelineDOM.PILL_POP_MS ? { completed: motion.to, elapsed } : null;
+  }
+
+  /**
    * One control carrying two signals: the shape says whether this block belongs
    * to a split (capsule) or stands alone (square), and the fill says whether it
    * is done. Fusing them means they never compete for the same pixels on a
@@ -692,12 +738,14 @@ class TimelineDOM {
    */
   buildPill(task, segment, segIdx, segTotal) {
     const isSplit = segTotal > 1;
+    const pop = this.pillMotionFor(segment);
     const pill = document.createElement('button');
     pill.type = 'button';
     pill.className = [
       'segment-pill',
       isSplit ? 'is-segment' : 'is-single',
-      segment.completed ? 'is-done' : ''
+      segment.completed ? 'is-done' : '',
+      pop ? (pop.completed ? 'is-popping' : 'is-unpopping') : ''
     ].filter(Boolean).join(' ');
 
     if (isSplit) {
@@ -718,7 +766,8 @@ class TimelineDOM {
       pill.setAttribute('aria-label',
         `Block ${segIdx + 1} of ${segTotal}, ${segment.completed ? 'done' : 'not done'}`);
     } else {
-      pill.innerHTML = '<span class="material-symbols-outlined segment-pill-check">check</span>';
+      // A stroke rather than the icon font's glyph, so it can draw itself in.
+      pill.innerHTML = `<svg class="segment-pill-check" viewBox="0 0 16 16" aria-hidden="true"><path pathLength="1" d="${TimelineDOM.TICK_PATH}"/></svg>`;
       pill.setAttribute('aria-label', segment.completed ? 'Mark not done' : 'Mark done');
     }
 
@@ -729,6 +778,11 @@ class TimelineDOM {
     pill.addEventListener('pointerdown', (e) => e.stopPropagation());
     pill.addEventListener('click', (e) => {
       e.stopPropagation();
+      // A finger covers the pill it taps, so the pop lands out of sight; the
+      // buzz is the part of the tick that reaches. Same as the panel's box.
+      if (!segment.completed && e.pointerType && e.pointerType !== 'mouse' && navigator.vibrate) {
+        navigator.vibrate(12);
+      }
       this.onTaskInteraction('toggleSegmentComplete', {
         taskId: task.id,
         segmentId: segment.id,

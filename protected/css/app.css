@@ -757,13 +757,15 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
   opacity: 0.92;
 }
 
-.timeline-task-card.is-completed,
-.sidebar-task-card.is-completed {
+/* Held while a tick plays, which fades the row or block down to this itself -
+   see THE TICK. */
+.timeline-task-card.is-completed:not(.is-checking),
+.sidebar-task-card.is-completed:not(.is-checking) {
   opacity: 0.55 !important;
 }
 
-.timeline-task-card.is-completed .task-title-text,
-.sidebar-task-card.is-completed .task-title-text {
+/* A panel row's strike is drawn along its words instead: see .task-title-ink. */
+.timeline-task-card.is-completed .task-title-text {
   text-decoration: line-through;
 }
 
@@ -816,6 +818,47 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
   background: var(--on-color-surface);
 }
 
+/* Done is a filled box, the calendar pill's language (.segment-pill.is-done):
+   ink with the tick cut out of it in the face colour. Both parts are always in
+   the box and the state only shows them, which is what lets a tick grow the
+   fill in and draw the tick, and an untick drain and erase them. */
+/* Square: its corners run under the box's own rounded line, which is the same
+   ink, so the box reads as one solid shape when full. */
+.task-checkbox-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--on-color-ink);
+  scale: 0;
+}
+
+.task-checkbox.checked .task-checkbox-fill {
+  scale: 1;
+}
+
+.task-checkbox-tick {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* pathLength="1" in the markup: a dash of 1 is the whole tick, so an offset of
+   1 hides it and 0 draws it, whatever size the box is. */
+.task-checkbox-tick path {
+  fill: none;
+  stroke: var(--on-color-surface);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.task-checkbox.checked .task-checkbox-tick path {
+  stroke-dashoffset: 0;
+}
+
 .task-content-inner {
   overflow: hidden;
   display: flex;
@@ -848,6 +891,18 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+/* The panel row's strike. A line-through cannot be animated, so the line is a
+   background drawn along the inline span of words instead: sized along an
+   inline box that wraps, it runs across the first line, then the next, which
+   is what lets a tick sweep it across a two-line title in reading order. */
+.task-title-ink {
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 60% / 0% var(--line-control);
+}
+
+.sidebar-task-card.is-completed .task-title-ink {
+  background-size: 100% var(--line-control);
 }
 
 .task-meta-text {
@@ -2436,21 +2491,28 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
   color: var(--on-color-surface);
 }
 
-/* Two classes, not one, and that is the whole point of the selector.
-
-   Google's Material Symbols stylesheet declares `.material-symbols-outlined
-   { font-size: 24px }` and is linked AFTER this file, so a one-class rule here
-   ties on specificity and loses on order. This tick has therefore been drawing
-   at 24px inside an 18px pill since the pill was written - the only icon in the
-   app that loses that race, because every other one is sized by a rule with a
-   parent in front of it. Nothing else needs the treatment; measured. */
+/* The tick is a stroke (TimelineDOM.TICK_PATH), the same mark as the panel's
+   checkbox, sized in em so the tiers that set this font-size - the vertical
+   bar's 11px among them - still size it. Hidden by its dash rather than by its
+   colour, so a tick can draw it in (see THE TICK). */
 .segment-pill .segment-pill-check {
+  width: 1em;
+  height: 1em;
   font-size: 12px;
-  font-weight: 800;
-  color: transparent;
+  overflow: visible;
 }
 
-.segment-pill.is-done .segment-pill-check { color: var(--on-color-surface); }
+.segment-pill-check path {
+  fill: none;
+  stroke: var(--on-color-surface);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.segment-pill.is-done .segment-pill-check path { stroke-dashoffset: 0; }
 
 .segment-pill-label { pointer-events: none; }
 
@@ -2464,11 +2526,14 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
   font-size: 9px;
 }
 
+/* Centred with translate rather than transform: a hover's scale and a tick's
+   pop then pivot on the dot, instead of scaling the centring offset with it
+   and pulling the dot off centre. */
 .timeline-task-card.is-min .segment-pill {
   top: 4px;
   left: 50%;
   right: auto;
-  transform: translateX(-50%);
+  translate: -50% 0;
   width: 11px;
   min-width: 0;
   height: 11px;
@@ -2477,7 +2542,7 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
   font-size: 0;
 }
 
-.timeline-task-card.is-min .segment-pill:hover { transform: translateX(-50%) scale(1.15); }
+.timeline-task-card.is-min .segment-pill:hover { transform: scale(1.15); }
 .timeline-task-card.is-min .segment-pill .segment-pill-check { display: none; }
 
 /* FOCUS: hovering a block eventually pulls its family forward and pushes the
@@ -2702,7 +2767,7 @@ body.is-placing-split .timeline-task-card {
   z-index: 99998;
   height: 4px;
   margin-top: -2px;
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
   background: var(--ink-strong);
   pointer-events: none;
   opacity: 0;
@@ -2733,6 +2798,382 @@ body.is-placing-split .timeline-task-card {
    leaves and the line it is heading for can be read together. */
 .sidebar-task-card.is-drag-source {
   opacity: 0.35;
+}
+
+/* ====================================================
+   THE TICK
+   ====================================================
+   Ticking a task off is the thing the list is for, so it lands like a stamp.
+   The row lifts onto the slab a reorder uses and slams flat as the box fills,
+   the impact throws a few ink streaks off the box, the title is struck through
+   in reading order, and the row settles to its done look. It then keeps its
+   place for a beat (TasksSidebar.CHECK_PAUSE_MS) before the list moves it on.
+
+   Every delay below counts from the click through --check-t, which the
+   builders set to MINUS the time already gone. A row rebuilt mid-tick - the
+   save's own reply lands in the middle of one - so starts its animations
+   part-way through rather than from the top. Movement goes through the
+   separate translate and scale properties, never transform: the list's FLIP
+   and the calendar pill's tier positioning both own that one. */
+.sidebar-task-card,
+.timeline-task-card,
+.sidebar-empty-state {
+  --check-t: 0ms;
+}
+
+/* Above its neighbours while it is off the page. */
+.sidebar-task-card.is-checking {
+  z-index: 4;
+  animation-name: tick-stamp, tick-dim;
+  animation-duration: 340ms, 340ms;
+  animation-timing-function: linear, ease;
+  animation-fill-mode: both;
+  animation-delay: var(--check-t), calc(var(--check-t) + 280ms);
+}
+
+.sidebar-task-card.is-checking .task-checkbox {
+  animation: tick-box-pop 400ms cubic-bezier(0.3, 0.6, 0.4, 1) both;
+  animation-delay: var(--check-t);
+}
+
+.sidebar-task-card.is-checking .task-checkbox-fill {
+  animation: tick-fill-in 190ms cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+  animation-delay: var(--check-t);
+}
+
+.sidebar-task-card.is-checking .task-checkbox-tick path {
+  animation: tick-draw 230ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: calc(var(--check-t) + 110ms);
+}
+
+.sidebar-task-card.is-checking .task-title-ink {
+  animation: tick-strike 320ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  animation-delay: calc(var(--check-t) + 250ms);
+}
+
+/* The impact: eight short streaks off the box, in the page's ink so they read
+   on the pane around the row as well as on the row. 400% of the box and
+   centred on it, so a phone's bigger box throws them further. */
+.task-check-burst {
+  position: absolute;
+  left: -150%;
+  top: -150%;
+  width: 400%;
+  height: 400%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* A dash of 5 on lines 10 long (pathLength), shot from short of the inner end
+   to past the outer one. */
+.task-check-burst line {
+  stroke: var(--ink-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 5 20;
+  stroke-dashoffset: 5;
+  animation: tick-streak 440ms cubic-bezier(0.15, 0.6, 0.35, 1) both;
+  animation-delay: calc(var(--check-t) + 225ms);
+}
+
+/* An untick is quieter: the ink drains, the line lifts off, no stamp. */
+.sidebar-task-card.is-unchecking {
+  animation: tick-undim 260ms ease both;
+  animation-delay: var(--check-t);
+}
+
+.sidebar-task-card.is-unchecking .task-checkbox {
+  animation: tick-box-pop-soft 260ms ease both;
+  animation-delay: var(--check-t);
+}
+
+.sidebar-task-card.is-unchecking .task-checkbox-fill {
+  animation: tick-fill-out 170ms ease-in both;
+  animation-delay: var(--check-t);
+}
+
+.sidebar-task-card.is-unchecking .task-checkbox-tick path {
+  animation: tick-erase 120ms ease-in both;
+  animation-delay: var(--check-t);
+}
+
+.sidebar-task-card.is-unchecking .task-title-ink {
+  animation: tick-unstrike 260ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  animation-delay: var(--check-t);
+}
+
+/* The calendar's half. The pill pops while ink floods it and the tick draws,
+   and the block eases down to its done look. No slab here: blocks sit edge to
+   edge, and one lifting would land on its neighbour. The pop is scaled by
+   --pop-x and --pop-y so the vertical layout's bar can pop mostly in height. */
+.timeline-task-card.is-checking {
+  animation: tick-dim 300ms ease both;
+  animation-delay: calc(var(--check-t) + 160ms);
+}
+
+.timeline-task-card.is-unchecking {
+  animation: tick-undim 240ms ease both;
+  animation-delay: var(--check-t);
+}
+
+.segment-pill.is-popping {
+  animation-name: tick-pill-pop, tick-pill-fill;
+  animation-duration: 380ms, 150ms;
+  animation-timing-function: cubic-bezier(0.3, 0.6, 0.4, 1), ease-out;
+  animation-fill-mode: both;
+  animation-delay: var(--check-t);
+}
+
+.segment-pill.is-popping .segment-pill-check path {
+  animation: tick-draw 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: calc(var(--check-t) + 80ms);
+}
+
+.segment-pill.is-unpopping {
+  animation-name: tick-pill-pop-soft, tick-pill-drain;
+  animation-duration: 260ms, 150ms;
+  animation-timing-function: ease, ease-in;
+  animation-fill-mode: both;
+  animation-delay: var(--check-t);
+}
+
+.segment-pill.is-unpopping .segment-pill-check path {
+  animation: tick-erase 120ms ease-in both;
+  animation-delay: var(--check-t);
+}
+
+/* A settled row on its way out of the list. The rebuild has already dropped
+   it, so it leaves from a frame laid over its old scroller and clipped to it
+   (TasksSidebar.exitRow). */
+.task-exit-frame {
+  position: absolute;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.task-exit-frame > .sidebar-task-card {
+  position: absolute;
+  margin: 0;
+}
+
+/* ---- All clear ----
+   The list a tick has just emptied. The plate is the rows' own material, a
+   white face in the block line, and it comes down from high above onto a
+   resting slab - stamped, like the rows were - before its tick draws. */
+.sidebar-empty-state.is-all-clear {
+  padding-top: 40px;
+}
+
+.all-clear-plate {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--on-color-surface);
+  border: var(--border-block);
+  border-radius: var(--radius-md);
+  box-shadow: var(--slab) var(--slab) 0 var(--on-color-border);
+  animation: tick-plate-drop 440ms both;
+  animation-delay: calc(var(--check-t) + 200ms);
+}
+
+.all-clear-plate svg {
+  width: 26px;
+  height: 26px;
+  overflow: visible;
+}
+
+.all-clear-plate path {
+  fill: none;
+  stroke: var(--on-color-ink);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  animation: tick-draw 240ms ease-out both;
+  animation-delay: calc(var(--check-t) + 430ms);
+}
+
+.sidebar-empty-state.is-all-clear p,
+.sidebar-empty-state.is-all-clear span {
+  animation: tick-rise 320ms ease-out both;
+  animation-delay: calc(var(--check-t) + 400ms);
+}
+
+/* The lift and the slam: up onto the reorder's slab, then flat onto the page
+   with a little squash - the impact the streaks come off. */
+@keyframes tick-stamp {
+  0% {
+    translate: 0 0;
+    scale: 1;
+    box-shadow: 0 0 0 var(--on-color-border);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  38% {
+    translate: calc(var(--slab-float) / -2) calc(var(--slab-float) / -2);
+    scale: 1;
+    box-shadow: var(--slab-float) var(--slab-float) 0 var(--on-color-border);
+    animation-timing-function: cubic-bezier(0.6, 0, 0.9, 0.4);
+  }
+  68% {
+    translate: 0 0;
+    scale: 0.985;
+    box-shadow: 0 0 0 var(--on-color-border);
+    animation-timing-function: ease-out;
+  }
+  84% {
+    scale: 1.006;
+  }
+  100% {
+    translate: 0 0;
+    scale: 1;
+    box-shadow: 0 0 0 var(--on-color-border);
+  }
+}
+
+@keyframes tick-dim {
+  from { opacity: 1; }
+  to { opacity: 0.55; }
+}
+
+@keyframes tick-undim {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+@keyframes tick-box-pop {
+  0% { scale: 0.78; }
+  32% { scale: 1.24; }
+  58% { scale: 0.93; }
+  80% { scale: 1.04; }
+  100% { scale: 1; }
+}
+
+@keyframes tick-box-pop-soft {
+  0% { scale: 0.86; }
+  55% { scale: 1.07; }
+  100% { scale: 1; }
+}
+
+@keyframes tick-fill-in {
+  from { scale: 0; }
+  to { scale: 1; }
+}
+
+@keyframes tick-fill-out {
+  from { scale: 1; }
+  to { scale: 0; }
+}
+
+@keyframes tick-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes tick-erase {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: 1; }
+}
+
+@keyframes tick-strike {
+  from { background-size: 0% var(--line-control); }
+  to { background-size: 100% var(--line-control); }
+}
+
+@keyframes tick-unstrike {
+  from { background-size: 100% var(--line-control); }
+  to { background-size: 0% var(--line-control); }
+}
+
+@keyframes tick-streak {
+  from { stroke-dashoffset: 5; }
+  to { stroke-dashoffset: -10; }
+}
+
+@keyframes tick-pill-pop {
+  0% { scale: calc(1 - 0.25 * var(--pop-x, 1)) calc(1 - 0.25 * var(--pop-y, 1)); }
+  35% { scale: calc(1 + 0.4 * var(--pop-x, 1)) calc(1 + 0.4 * var(--pop-y, 1)); }
+  62% { scale: calc(1 - 0.1 * var(--pop-x, 1)) calc(1 - 0.1 * var(--pop-y, 1)); }
+  82% { scale: calc(1 + 0.05 * var(--pop-x, 1)) calc(1 + 0.05 * var(--pop-y, 1)); }
+  100% { scale: 1; }
+}
+
+@keyframes tick-pill-pop-soft {
+  0% { scale: calc(1 - 0.14 * var(--pop-x, 1)) calc(1 - 0.14 * var(--pop-y, 1)); }
+  55% { scale: calc(1 + 0.07 * var(--pop-x, 1)) calc(1 + 0.07 * var(--pop-y, 1)); }
+  100% { scale: 1; }
+}
+
+/* One-ended: each runs to the pill's own resting colours. */
+@keyframes tick-pill-fill {
+  from { background-color: var(--on-color-surface); color: var(--on-color-ink); }
+}
+
+@keyframes tick-pill-drain {
+  from { background-color: var(--on-color-ink); color: var(--on-color-surface); }
+}
+
+/* From high above onto the page, a bounce, then at rest on its slab. */
+@keyframes tick-plate-drop {
+  0% {
+    opacity: 0;
+    translate: calc(var(--slab-float) * -1) calc(var(--slab-float) * -1);
+    scale: 1.5;
+    rotate: -10deg;
+    box-shadow: calc(var(--slab-float) * 2) calc(var(--slab-float) * 2) 0 var(--on-color-border);
+    animation-timing-function: cubic-bezier(0.55, 0, 0.85, 0.35);
+  }
+  55% {
+    opacity: 1;
+    translate: 0 0;
+    scale: 0.94;
+    rotate: 1deg;
+    box-shadow: 0 0 0 var(--on-color-border);
+    animation-timing-function: ease-out;
+  }
+  78% {
+    scale: 1.03;
+    rotate: 0deg;
+    box-shadow: calc(var(--slab) * 1.25) calc(var(--slab) * 1.25) 0 var(--on-color-border);
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+    rotate: 0deg;
+    box-shadow: var(--slab) var(--slab) 0 var(--on-color-border);
+  }
+}
+
+@keyframes tick-rise {
+  from { opacity: 0; translate: 0 6px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+/* The builders already skip the motion classes when motion is reduced; this
+   is the net for a preference that changes mid-tick. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-task-card.is-checking,
+  .sidebar-task-card.is-checking *,
+  .sidebar-task-card.is-unchecking,
+  .sidebar-task-card.is-unchecking *,
+  .timeline-task-card.is-checking,
+  .timeline-task-card.is-unchecking,
+  .segment-pill.is-popping,
+  .segment-pill.is-popping *,
+  .segment-pill.is-unpopping,
+  .segment-pill.is-unpopping *,
+  .sidebar-empty-state.is-all-clear,
+  .sidebar-empty-state.is-all-clear * {
+    animation: none !important;
+  }
+
+  .task-check-burst {
+    display: none;
+  }
 }
 
 

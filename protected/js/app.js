@@ -173,7 +173,10 @@ class KlndrApp {
         get days() { return window.klndr.days; },
         get bucketHours() { return window.klndr.settings.bucketHours; },
         get snapToRuler() { return window.klndr.settings.snapToRuler; },
-        get tickPercent() { return window.klndr.settings.tickPercent; }
+        get tickPercent() { return window.klndr.settings.tickPercent; },
+        // The tasks panel holds a deferred rebuild until a drag is over: the
+        // rebuild would tear out the row the drag is holding.
+        get isDragging() { return Boolean(window.klndr.dragController?.activeDrag); }
       };
 
       this.canvasRenderer = new TimelineCanvas({
@@ -1147,55 +1150,20 @@ class KlndrApp {
   }
 
   /**
-   * Run a change that re-renders the task list, and animate the result.
+   * Run a change that re-renders the task list, and animate the result: rows
+   * slide to their new places and the moved one lifts and lands. `from`
+   * overrides where the moved row starts - a drag drops it at the pointer.
    *
-   * A reorder rebuilds every row, so on its own it is a cut between two
-   * frames: the rows are simply somewhere else, and nothing says which one
-   * moved. Measured before and after (FLIP), each row that changed place
-   * slides from where it was to where it is, and the moved one rides above
-   * the rest and keeps a slab under it for a moment after it lands.
-   *
-   * `from` overrides where the moved row starts - a drag drops it at the
-   * pointer, not back where it was picked up.
+   * The motion itself lives in the tasks panel (TasksSidebar.animateChange),
+   * because a tick's settle needs exactly the same thing and the list is that
+   * pane's DOM.
    */
   animateTaskListChange(movedId, change, { from = null } = {}) {
-    const selector = '#sidebarTasksList .sidebar-task-card, #tasksMulticolumnContainer .sidebar-task-card';
-    const before = new Map();
-    document.querySelectorAll(selector).forEach(el => {
-      before.set(el.dataset.taskId, el.getBoundingClientRect());
-    });
-    if (from) before.set(movedId, from);
-
-    change();
-
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const easing = 'cubic-bezier(0.2, 0.9, 0.3, 1.15)';
-
-    document.querySelectorAll(selector).forEach(el => {
-      const id = el.dataset.taskId;
-      const isMoved = id === movedId;
-      if (isMoved) {
-        el.classList.add('is-just-moved');
-        setTimeout(() => el.classList.remove('is-just-moved'), reduced ? 700 : 900);
-      }
-      if (reduced) return;
-
-      const was = before.get(id);
-      if (!was) return;
-      const now = el.getBoundingClientRect();
-      const dx = was.left - now.left;
-      const dy = was.top - now.top;
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-
-      el.animate(isMoved ? [
-        { transform: `translate(${dx}px, ${dy}px) scale(1)` },
-        { transform: `translate(${dx * 0.4}px, ${dy * 0.4}px) scale(1.04)`, offset: 0.45 },
-        { transform: 'translate(0, 0) scale(1)' }
-      ] : [
-        { transform: `translate(${dx}px, ${dy}px)` },
-        { transform: 'translate(0, 0)' }
-      ], { duration: isMoved ? 420 : 340, easing });
-    });
+    if (!this.sidebarController) {
+      change();
+      return;
+    }
+    this.sidebarController.animateChange(change, { movedId, from });
   }
 
   // In-list reordering mechanism. `placeAfter` puts the task below the target
@@ -2966,6 +2934,9 @@ class KlndrApp {
         if (!task) break;
 
         const segments = TaskModel.cloneSegments(task);
+        // Every block the tick changes pops its pill on the calendar too.
+        this.domRenderer?.notePillMotion(
+          segments.filter(seg => seg.completed !== completed).map(seg => seg.id), completed);
         if (!segments.length) {
           await this.optimisticTaskUpdate(
             taskId, { completed }, { label: completed ? 'Complete task' : 'Uncomplete task' }
@@ -2991,7 +2962,14 @@ class KlndrApp {
         const segment = segments.find(seg => seg.id === segmentId);
         if (!segment) break;
 
+        const wasDone = TaskModel.completionState(task) === 'all';
         segment.completed = completed;
+        this.domRenderer?.notePillMotion([segmentId], completed);
+        // The block that finishes the task - or un-finishes it - is a tick of
+        // the whole task, and its row in the panel takes it as one. Before the
+        // commit, which is what moves the row.
+        const isDone = segments.every(seg => seg.completed);
+        if (isDone !== wasDone) this.sidebarController?.noteCompletion(task, isDone);
         await this.commitTaskUpdates(
           [this.payloadWithSegments(task, segments)],
           { label: completed ? 'Complete block' : 'Uncomplete block' }

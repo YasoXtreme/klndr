@@ -1,6 +1,7 @@
 // Klndr Tasks Sidebar Controller
-// Handles single-column and multi-column category views, 5-second completed task grace period,
-// filter tabs (default: Uncompleted & Unscheduled), inline task creation with dynamic background color.
+// Handles single-column and multi-column category views, the tick (and the pause
+// before a ticked row moves on), the list's motion, filter tabs (default:
+// Uncompleted & Unscheduled), and inline task creation with dynamic background color.
 
 const UNCATEGORIZED = CategoryPicker.UNCATEGORIZED;
 
@@ -11,6 +12,46 @@ class TasksSidebar {
   static MOUSE_DRAG_THRESHOLD_PX = 4;
   static TOUCH_SLOP_PX = 10;
   static LONG_PRESS_MS = 400;
+
+  // The tick. Every part of it is over by CHECK_MS (the streaks finish last,
+  // 225ms in + 440ms); a card built after that draws its resting state.
+  static CHECK_MS = 700;
+  static UNCHECK_MS = 300;
+
+  // How long a ticked row keeps its place before it moves on: long enough to
+  // see the tick land and to take it back with a second click, short enough
+  // that clearing a list never waits on it.
+  static CHECK_PAUSE_MS = 1000;
+  static UNCHECK_PAUSE_MS = 500;
+
+  // How long after a list change render() measures before it rebuilds. Covers
+  // the longest move there is: a leaving row's lift (110ms) and the close-up
+  // behind it (340ms).
+  static MOTION_WINDOW_MS = 560;
+  static LIST_EASING = 'cubic-bezier(0.2, 0.9, 0.3, 1.15)';
+
+  // Eight streaks around the checkbox, long and short in turn. The 64-unit
+  // box is sized off the checkbox in CSS, so a phone's bigger box throws them
+  // further.
+  static BURST_SVG = (() => {
+    const lines = Array.from({ length: 8 }, (_, k) => {
+      const angle = (k * 45 + 22.5) * Math.PI / 180;
+      const at = r => [r * Math.cos(angle), r * Math.sin(angle)].map(v => v.toFixed(2));
+      const [x1, y1] = at(13);
+      const [x2, y2] = at(k % 2 ? 19 : 24);
+      return `<line pathLength="10" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    }).join('');
+    return `<svg class="task-check-burst" viewBox="-32 -32 64 64" aria-hidden="true">${lines}</svg>`;
+  })();
+
+  static prefersReducedMotion() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  // Done means every block is: a part-done task is not.
+  static isDone(task) {
+    return TaskModel.completionState(task) === 'all';
+  }
 
   constructor(containerElement, state, onTaskInteraction, onDragStart, onToggleCollapse) {
     this.container = containerElement;
@@ -25,8 +66,20 @@ class TasksSidebar {
     this.isCollapsed = false;
     this.isFullView = false; // True when calendar is collapsed -> multi-column mode
 
-    // 5-second grace period timeouts map for completed tasks: taskId -> timeoutId
-    this.completedGraceTimeouts = new Map();
+    // Ticks in flight: taskId -> { at, to, layoutAs }. See noteCompletion.
+    this.checkMotion = new Map();
+    this.settleTimers = new Map();
+
+    // The row a move just landed, and until when it keeps its slab.
+    this.justMoved = null;
+    // Until when render() carries on the list's motion. See animateChange.
+    this.motionUntil = 0;
+    this.inChange = false;
+
+    // When a tick emptied the list, which then says "All clear" until it
+    // changes. pendingClear is raised only for the settle render that might.
+    this.clearedAt = null;
+    this.pendingClear = false;
 
     // A fresh draft carries no category. klndr ships none, so there is nothing
     // to fall back to and nothing to pretend with.
@@ -141,6 +194,7 @@ class TasksSidebar {
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
         this.searchQuery = e.target.value.toLowerCase().trim();
+        this.clearedAt = null;
         this.render();
       });
     }
@@ -172,6 +226,8 @@ class TasksSidebar {
           .forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         this.activeCategoryFilter = pill.dataset.category || 'UNCOMPLETED_UNSCHEDULED';
+        // "All clear" was about the list that was just emptied, not this one.
+        this.clearedAt = null;
         this.render();
       });
     }
@@ -368,66 +424,128 @@ class TasksSidebar {
     }
   }
 
-  // Handle task completion with 5-second grace period animation.
-  // Ticking here drives every block of the task; a part-done task is treated as
-  // not done, so this always completes it rather than toggling from 'partial'.
-  handleTaskCompletionToggle(task) {
-    const taskId = task.id;
-    const isNowCompleted = TaskModel.completionState(task) !== 'all';
-    TaskModel.setAllSegmentsCompleted(task, isNowCompleted);
+  // ==========================================
+  // THE TICK
+  // ==========================================
 
-    // Immediately update UI visually
-    this.render();
-
-    // If marked completed, start 5-second grace timer to move to bottom
-    if (isNowCompleted) {
-      if (this.completedGraceTimeouts.has(taskId)) {
-        clearTimeout(this.completedGraceTimeouts.get(taskId));
-      }
-
-      const timeoutId = setTimeout(() => {
-        this.completedGraceTimeouts.delete(taskId);
-        
-        // Move task to the bottom of the state tasks array
-        const idx = this.state.tasks.findIndex(t => t.id === taskId);
-        if (idx !== -1) {
-          const [movedTask] = this.state.tasks.splice(idx, 1);
-          this.state.tasks.push(movedTask);
-        }
-
-        // Animate re-render
-        this.render();
-      }, 5000);
-
-      this.completedGraceTimeouts.set(taskId, timeoutId);
-    } else {
-      // User reverted choice within grace period
-      if (this.completedGraceTimeouts.has(taskId)) {
-        clearTimeout(this.completedGraceTimeouts.get(taskId));
-        this.completedGraceTimeouts.delete(taskId);
-      }
+  /**
+   * The checkbox. Ticking drives every block of the task; a part-done task
+   * counts as not done, so this always completes it rather than toggling from
+   * 'partial'.
+   *
+   * It does not touch the task itself. The app's optimistic update does that,
+   * and it has to be the one to: it snapshots the task for undo and for rolling
+   * back a failed save, and a task this had already changed handed it a
+   * "before" equal to the "after" - so a tick from here could never be undone.
+   */
+  handleTaskCompletionToggle(task, pointerType) {
+    const completed = !TasksSidebar.isDone(task);
+    this.noteCompletion(task, completed);
+    // A finger covers the box it taps, so the tick lands out of sight; the
+    // buzz is the part of it that reaches.
+    if (completed && pointerType && pointerType !== 'mouse' && navigator.vibrate) {
+      navigator.vibrate(12);
     }
-
-    // Sync completion status to backend
-    this.onTaskInteraction('toggleComplete', { taskId, completed: isNowCompleted });
+    this.onTaskInteraction('toggleComplete', { taskId: task.id, completed });
   }
 
-  // Filter helper
+  /**
+   * Starts a tick's motion: the celebration on the card, a pause in place, and
+   * then the settle that sends the row where its new state belongs. Called
+   * BEFORE the change is applied - by the checkbox, and by the app when a
+   * calendar pill is what finished the task - because the pause has to know
+   * where the row was laid out until now.
+   */
+  noteCompletion(task, completed) {
+    const pending = this.checkMotion.get(task.id);
+    // A second click during the pause keeps the ORIGINAL place: the row has
+    // not moved yet, whichever way it is heading now. Unless an undo already
+    // moved it, in which case where it is now is where it was.
+    const layoutAs = pending && pending.to === TasksSidebar.isDone(task)
+      ? pending.layoutAs
+      : Boolean(task.completed);
+    this.checkMotion.set(task.id, { at: performance.now(), to: completed, layoutAs });
+    this.scheduleSettle(task.id,
+      completed ? TasksSidebar.CHECK_PAUSE_MS : TasksSidebar.UNCHECK_PAUSE_MS);
+  }
+
+  scheduleSettle(taskId, delay) {
+    clearTimeout(this.settleTimers.get(taskId));
+    this.settleTimers.set(taskId, setTimeout(() => this.settleCheck(taskId), delay));
+  }
+
+  // The pause is over: the row goes where its state says it belongs - off the
+  // list, or down to its done end - and the rest close up behind it.
+  settleCheck(taskId) {
+    this.settleTimers.delete(taskId);
+    // Never under a drag: the rebuild would tear out the row it is holding.
+    if (this.state.isDragging) {
+      this.scheduleSettle(taskId, 250);
+      return;
+    }
+    const motion = this.checkMotion.get(taskId);
+    this.checkMotion.delete(taskId);
+    if (!motion) return;
+
+    // Only a tick that still stands, on a row that was in the list, can be what
+    // cleared it - a calendar tick on a task this filter hides is not.
+    const task = (this.state.tasks || []).find(t => t.id === taskId);
+    const shown = this.bodyEl(this.listMode)
+      ?.querySelector(`.sidebar-task-card[data-task-id="${taskId}"]`);
+    this.pendingClear = Boolean(task && shown && motion.to && TasksSidebar.isDone(task));
+    try {
+      this.animateChange(() => this.render(), { settledId: taskId });
+    } finally {
+      this.pendingClear = false;
+    }
+  }
+
+  // The completion a row is LAID OUT by, which is what filtering and sorting
+  // read. During the pause after a tick it is the state the row had before, so
+  // the row holds its place while the tick lands; everything else on the card
+  // already shows the new state.
+  layoutCompleted(task) {
+    const motion = this.checkMotion.get(task.id);
+    if (motion && motion.to === TasksSidebar.isDone(task)) return motion.layoutAs;
+    return Boolean(task.completed);
+  }
+
+  /**
+   * How far into its tick a card is, if it is in one.
+   *
+   * Asked of the clock rather than of an element: the list is rebuilt from
+   * scratch on every render, and the save's own reply lands mid-tick. Each new
+   * card starts its animation at the elapsed time instead (a negative delay -
+   * see --check-t), so a rebuild is invisible. A tick the task no longer agrees
+   * with - an undo, a failed save - is not played at all, and with motion
+   * reduced none is: the row simply shows its new state for the pause.
+   */
+  tickMotion(task) {
+    const motion = this.checkMotion.get(task.id);
+    if (!motion || motion.to !== TasksSidebar.isDone(task)) return null;
+    if (TasksSidebar.prefersReducedMotion()) return null;
+    const elapsed = performance.now() - motion.at;
+    const span = motion.to ? TasksSidebar.CHECK_MS : TasksSidebar.UNCHECK_MS;
+    return elapsed < span ? { completed: motion.to, elapsed } : null;
+  }
+
+  // Filter helper. Completion is read as laid out - see layoutCompleted.
   filterTasks(tasks) {
     return tasks.filter(task => {
       if (this.searchQuery && !task.title.toLowerCase().includes(this.searchQuery)) {
         return false;
       }
       const isScheduled = task.start_times && task.start_times.length > 0;
+      const isDone = this.layoutCompleted(task);
 
       if (this.activeCategoryFilter === 'UNCOMPLETED_UNSCHEDULED') {
-        return !task.completed && !isScheduled;
+        return !isDone && !isScheduled;
       }
       if (this.activeCategoryFilter === 'UNCOMPLETED') {
-        return !task.completed;
+        return !isDone;
       }
       if (this.activeCategoryFilter === 'COMPLETED') {
-        return task.completed;
+        return isDone;
       }
       if (this.activeCategoryFilter === 'UNSCHEDULED') {
         return !isScheduled;
@@ -451,6 +569,17 @@ class TasksSidebar {
     card.dataset.taskId = task.id;
     KlndrTheme.paint(card, task.color || KlndrPalette.DEFAULT_COLOR);
 
+    const tick = this.tickMotion(task);
+    if (tick) {
+      card.classList.add(tick.completed ? 'is-checking' : 'is-unchecking');
+      card.style.setProperty('--check-t', `${-Math.round(tick.elapsed)}ms`);
+    }
+    // A rebuild must not take the slab out from under a row that just landed.
+    const slabLeft = this.justMoved && this.justMoved.id === task.id
+      ? this.justMoved.until - performance.now()
+      : 0;
+    if (slabLeft > 0) TasksSidebar.holdSlab(card, slabLeft);
+
     // Circular Category Badge
     const badge = document.createElement('div');
     badge.className = 'task-badge-circle';
@@ -472,12 +601,18 @@ class TasksSidebar {
       : completionState === 'partial'
         ? `${(task.segments || []).filter(seg => seg.completed).length} of ${(task.segments || []).length} blocks done — click to finish all`
         : 'Mark completed';
-    checkbox.innerHTML = completionState === 'all' ? `
-      <span class="material-symbols-outlined" style="font-size: 16px; color: var(--on-color-ink); font-weight: 800;">check</span>
-    ` : completionState === 'partial' ? '<span class="task-checkbox-partial"></span>' : '';
+    // The fill and the tick are always in the box, and the state only decides
+    // whether they show. That is what lets a tick grow them in and an untick
+    // drain them away, rather than one glyph simply swapping for another.
+    checkbox.innerHTML = `
+      <span class="task-checkbox-fill"></span>
+      <svg class="task-checkbox-tick" viewBox="0 0 16 16" aria-hidden="true"><path pathLength="1" d="${TimelineDOM.TICK_PATH}"/></svg>
+      ${completionState === 'partial' ? '<span class="task-checkbox-partial"></span>' : ''}
+      ${tick && tick.completed ? TasksSidebar.BURST_SVG : ''}
+    `;
     checkbox.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.handleTaskCompletionToggle(task);
+      this.handleTaskCompletionToggle(task, e.pointerType);
     });
 
     // Content Body
@@ -495,9 +630,15 @@ class TasksSidebar {
       content.appendChild(categoryEl);
     }
 
+    // The words sit in an inline span of their own: the strike is drawn along
+    // it rather than as a line-through, which cannot be animated. See
+    // .task-title-ink.
     const titleEl = document.createElement('div');
     titleEl.className = 'task-title-text';
-    titleEl.textContent = task.title;
+    const titleInk = document.createElement('span');
+    titleInk.className = 'task-title-ink';
+    titleInk.textContent = task.title;
+    titleEl.appendChild(titleInk);
     content.appendChild(titleEl);
 
     const metaEl = document.createElement('div');
@@ -668,8 +809,15 @@ class TasksSidebar {
 
   render() {
     const mode = this.listMode;
+    // A render that lands while rows are still moving - the save's reply to
+    // the tick before, say - measures where they are now and carries on from
+    // there, instead of snapping them to the end of a move nobody saw finish.
+    const before = !this.inChange && performance.now() < this.motionUntil
+      ? this.measureCards()
+      : null;
     this.renderInto(mode);
     this.setActiveBody(mode);
+    if (before) this.playFlip(before);
   }
 
   /**
@@ -687,11 +835,10 @@ class TasksSidebar {
     const allTasks = this.state.tasks || [];
     const filteredTasks = this.filterTasks(allTasks);
 
-    // Sort: Uncompleted tasks on top, completed tasks on bottom
-    const sortedTasks = [...filteredTasks].sort((a, b) => {
-      if (a.completed === b.completed) return 0;
-      return a.completed ? 1 : -1;
-    });
+    // Uncompleted on top, completed at the bottom - as laid out, so a row
+    // pausing after its tick is still sorted where it was.
+    const sortedTasks = [...filteredTasks].sort((a, b) =>
+      Number(this.layoutCompleted(a)) - Number(this.layoutCompleted(b)));
 
     // ==========================================
     // MULTI-COLUMN KANBAN VIEW (When Calendar is Collapsed)
@@ -785,6 +932,11 @@ class TasksSidebar {
     listEl.innerHTML = '';
 
     if (sortedTasks.length === 0) {
+      if (this.pendingClear) this.clearedAt = performance.now();
+      if (this.clearedAt) {
+        listEl.appendChild(this.allClearElement());
+        return;
+      }
       const emptyNotice = document.createElement('div');
       emptyNotice.className = 'sidebar-empty-state';
       emptyNotice.innerHTML = `
@@ -794,6 +946,7 @@ class TasksSidebar {
       listEl.appendChild(emptyNotice);
       return;
     }
+    this.clearedAt = null;
 
     sortedTasks.forEach(task => {
       listEl.appendChild(this.createTaskCardElement(task));
@@ -809,5 +962,189 @@ class TasksSidebar {
       if (up) up.disabled = i === 0;
       if (down) down.disabled = i === cards.length - 1;
     });
+  }
+
+  /**
+   * What the list says when a tick is what emptied it: a plate stamped down
+   * onto its slab, the way the rows were. It stays until the list changes; a
+   * list that is empty for any other reason keeps the ordinary notice.
+   */
+  allClearElement() {
+    const el = document.createElement('div');
+    el.className = 'sidebar-empty-state is-all-clear';
+    // Played by elapsed time, like a tick: a rebuild during the drop carries
+    // on from where it was, and a much later one draws it already landed.
+    el.style.setProperty('--check-t', `${-Math.round(performance.now() - this.clearedAt)}ms`);
+    el.innerHTML = `
+      <div class="all-clear-plate">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path pathLength="1" d="${TimelineDOM.TICK_PATH}"/></svg>
+      </div>
+      <p>All clear</p>
+      <span>Everything on this list is done.</span>
+    `;
+    return el;
+  }
+
+  // ==========================================
+  // LIST MOTION
+  // ==========================================
+
+  /**
+   * Run a change that re-renders the list, and animate the result.
+   *
+   * A rebuild is a cut between two frames: the rows are simply somewhere else,
+   * and nothing says which one moved. Measured before and after (FLIP), each
+   * row that changed place slides from where it was to where it is. The app's
+   * reorders come through here, and so does a tick's settle.
+   *
+   * `movedId` is the row the person moved: it rides above the rest and keeps
+   * a slab under it for a moment after it lands. `from` overrides where it
+   * starts - a drag drops it at the pointer, not back where it was picked up.
+   * `settledId` is a row whose tick has just settled: it rides the same way if
+   * it went anywhere, and leaves on its own if the filter now hides it.
+   */
+  animateChange(change, { movedId = null, from = null, settledId = null } = {}) {
+    const before = this.measureCards();
+    if (movedId && from) {
+      before.cards.set(movedId, { ...before.cards.get(movedId), rect: from });
+    }
+    // Renders for a while after this one measure first too - see render().
+    this.motionUntil = performance.now() + TasksSidebar.MOTION_WINDOW_MS;
+    this.inChange = true;
+    try {
+      change();
+    } finally {
+      this.inChange = false;
+    }
+    this.playFlip(before, { movedId, settledId });
+  }
+
+  // Where every row of the showing shape is, and the scroller that clips it.
+  measureCards() {
+    const mode = this.listMode;
+    const cards = new Map();
+    this.bodyEl(mode)?.querySelectorAll('.sidebar-task-card').forEach(el => {
+      const scroller = el.closest('.sidebar-tasks-scroll, .category-column-body');
+      cards.set(el.dataset.taskId, {
+        el,
+        rect: el.getBoundingClientRect(),
+        clip: scroller ? scroller.getBoundingClientRect() : null
+      });
+    });
+    return { mode, cards };
+  }
+
+  playFlip(before, { movedId = null, settledId = null } = {}) {
+    // A list that changed shape has nothing to slide from, and while the split
+    // is moving the pane its own cross-fade is the animation.
+    if (before.mode !== this.listMode) return;
+    if (this.container.classList.contains('is-animating')) return;
+
+    const reduced = TasksSidebar.prefersReducedMotion();
+    const rows = [...(this.bodyEl(before.mode)?.querySelectorAll('.sidebar-task-card') || [])]
+      .map(el => ({ el, id: el.dataset.taskId, rect: el.getBoundingClientRect() }));
+
+    const leaving = Boolean(settledId) && before.cards.has(settledId) &&
+      !rows.some(row => row.id === settledId);
+    if (leaving) this.exitRow(before.cards.get(settledId), reduced);
+
+    rows.forEach(({ el, id, rect }) => {
+      const was = before.cards.get(id);
+      const dx = was ? was.rect.left - rect.left : 0;
+      const dy = was ? was.rect.top - rect.top : 0;
+      const moved = Math.abs(dx) >= 1 || Math.abs(dy) >= 1;
+
+      // A moved row lands on its slab even when it went nowhere - it was
+      // still picked up. A settled one only if it actually travelled.
+      const rides = id === movedId || (id === settledId && moved);
+      if (rides) {
+        const hold = reduced ? 700 : 900;
+        this.justMoved = { id, until: performance.now() + hold };
+        TasksSidebar.holdSlab(el, hold);
+      }
+      if (reduced || !moved) return;
+
+      el.animate(rides ? [
+        { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+        { transform: `translate(${dx * 0.4}px, ${dy * 0.4}px) scale(1.04)`, offset: 0.45 },
+        { transform: 'translate(0, 0) scale(1)' }
+      ] : [
+        { transform: `translate(${dx}px, ${dy}px)` },
+        { transform: 'translate(0, 0)' }
+      ], {
+        duration: rides ? 420 : 340,
+        easing: TasksSidebar.LIST_EASING,
+        // The rows closing a gap wait for the row leaving it to lift out.
+        delay: leaving && !rides ? 110 : 0,
+        fill: 'backwards'
+      });
+    });
+  }
+
+  // The slab a moved row keeps under it for a beat after it lands.
+  static holdSlab(el, ms) {
+    el.classList.add('is-just-moved');
+    setTimeout(() => el.classList.remove('is-just-moved'), ms);
+  }
+
+  /**
+   * A settled row the filter now hides. The rebuild has already dropped it, so
+   * the old element - still in hand from the measure - goes back up in a frame
+   * over the list and leaves the way a moved row travels: lifted onto its
+   * slab, then away to the right. The frame is clipped to the row's own
+   * scroller, so in a kanban it never draws over a column header, and it is
+   * the frame that fades, because .is-completed pins the row's own opacity.
+   */
+  exitRow({ el, rect, clip }, reduced) {
+    const host = document.getElementById('sidebarBody');
+    if (!host || !clip) return;
+    const origin = host.getBoundingClientRect();
+
+    const frame = document.createElement('div');
+    frame.className = 'task-exit-frame';
+    Object.assign(frame.style, {
+      left: `${clip.left - origin.left - host.clientLeft}px`,
+      top: `${clip.top - origin.top - host.clientTop}px`,
+      width: `${clip.width}px`,
+      height: `${clip.height}px`
+    });
+
+    el.classList.remove('is-checking', 'is-unchecking', 'is-just-moved', 'is-drag-source');
+    el.querySelector('.task-check-burst')?.remove();
+    Object.assign(el.style, {
+      left: `${rect.left - clip.left}px`,
+      top: `${rect.top - clip.top}px`,
+      width: `${rect.width}px`,
+      height: `${rect.height}px`
+    });
+    frame.appendChild(el);
+    host.appendChild(frame);
+
+    const duration = reduced ? 200 : 380;
+    const fade = frame.animate(reduced
+      ? [{ opacity: 1 }, { opacity: 0 }]
+      : [{ opacity: 1 }, { opacity: 1, offset: 0.35 }, { opacity: 0 }],
+    { duration, easing: 'ease-in', fill: 'forwards' });
+    // Finished or cancelled, the frame goes - and on the clock as well, because
+    // a hidden tab never starts the animation at all, and a frame left waiting
+    // for it would play a stale exit the moment the person came back.
+    const remove = () => frame.remove();
+    fade.finished.then(remove, remove);
+    setTimeout(remove, duration + 250);
+
+    if (!reduced) {
+      // Read off the row, so the slab is the one the stylesheet draws.
+      const styles = getComputedStyle(el);
+      const depth = parseFloat(styles.getPropertyValue('--slab-float')) || 6;
+      const ink = styles.getPropertyValue('--on-color-border').trim();
+      const lifted = `${depth}px ${depth}px 0 ${ink}`;
+      const rise = depth / 2;
+      el.animate([
+        { transform: 'none', boxShadow: `0 0 0 ${ink}`, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
+        { transform: `translate(${-rise}px, ${-rise}px)`, boxShadow: lifted, offset: 0.3,
+          easing: 'cubic-bezier(0.55, 0, 0.8, 0.35)' },
+        { transform: `translate(46px, ${-rise}px) scale(0.97)`, boxShadow: lifted }
+      ], { duration, fill: 'forwards' });
+    }
   }
 }
