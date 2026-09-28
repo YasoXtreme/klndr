@@ -200,8 +200,8 @@ class KlndrApp {
         async (updatesList, label) => {
           await this.commitTaskUpdates(updatesList, { label });
         },
-        (draggedTaskId, targetTaskId, targetCategory) => {
-          this.reorderTasksInList(draggedTaskId, targetTaskId, targetCategory);
+        (draggedTaskId, targetTaskId, targetCategory, placeAfter, dropRect) => {
+          this.reorderTasksInList(draggedTaskId, targetTaskId, targetCategory, placeAfter, dropRect);
         }
       );
 
@@ -1141,8 +1141,67 @@ class KlndrApp {
     this.setSplit(tasksCollapsed ? 'calendar' : 'split');
   }
 
-  // In-list reordering mechanism
-  async reorderTasksInList(draggedTaskId, targetTaskId, targetCategory) {
+  /**
+   * Run a change that re-renders the task list, and animate the result.
+   *
+   * A reorder rebuilds every row, so on its own it is a cut between two
+   * frames: the rows are simply somewhere else, and nothing says which one
+   * moved. Measured before and after (FLIP), each row that changed place
+   * slides from where it was to where it is, and the moved one rides above
+   * the rest and keeps a slab under it for a moment after it lands.
+   *
+   * `from` overrides where the moved row starts - a drag drops it at the
+   * pointer, not back where it was picked up.
+   */
+  animateTaskListChange(movedId, change, { from = null } = {}) {
+    const selector = '#sidebarTasksList .sidebar-task-card, #tasksMulticolumnContainer .sidebar-task-card';
+    const before = new Map();
+    document.querySelectorAll(selector).forEach(el => {
+      before.set(el.dataset.taskId, el.getBoundingClientRect());
+    });
+    if (from) before.set(movedId, from);
+
+    change();
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const easing = 'cubic-bezier(0.2, 0.9, 0.3, 1.15)';
+
+    document.querySelectorAll(selector).forEach(el => {
+      const id = el.dataset.taskId;
+      const isMoved = id === movedId;
+      if (isMoved) {
+        el.classList.add('is-just-moved');
+        setTimeout(() => el.classList.remove('is-just-moved'), reduced ? 700 : 900);
+      }
+      if (reduced) return;
+
+      const was = before.get(id);
+      if (!was) return;
+      const now = el.getBoundingClientRect();
+      const dx = was.left - now.left;
+      const dy = was.top - now.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+
+      el.animate(isMoved ? [
+        { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+        { transform: `translate(${dx * 0.4}px, ${dy * 0.4}px) scale(1.04)`, offset: 0.45 },
+        { transform: 'translate(0, 0) scale(1)' }
+      ] : [
+        { transform: `translate(${dx}px, ${dy}px)` },
+        { transform: 'translate(0, 0)' }
+      ], { duration: isMoved ? 420 : 340, easing });
+    });
+  }
+
+  // In-list reordering mechanism. `placeAfter` puts the task below the target
+  // row rather than above it - which half of the row the drag was over.
+  async reorderTasksInList(draggedTaskId, targetTaskId, targetCategory, placeAfter = false, dropRect = null) {
+    this.animateTaskListChange(draggedTaskId,
+      () => this.applyListReorder(draggedTaskId, targetTaskId, targetCategory, placeAfter),
+      { from: dropRect });
+  }
+
+  applyListReorder(draggedTaskId, targetTaskId, targetCategory, placeAfter) {
     const draggedIdx = this.tasks.findIndex(t => t.id === draggedTaskId);
     if (draggedIdx === -1) return;
 
@@ -1167,10 +1226,14 @@ class KlndrApp {
       API.updateTask(draggedTask.id, { category: nextCategory });
     }
 
-    if (targetTaskId && targetTaskId !== draggedTaskId) {
+    if (targetTaskId === draggedTaskId) {
+      // Dropped on itself: it stays where it was. This used to fall through
+      // to the push below and send the task to the bottom of the list.
+      this.tasks.splice(draggedIdx, 0, draggedTask);
+    } else if (targetTaskId) {
       const targetIdx = this.tasks.findIndex(t => t.id === targetTaskId);
       if (targetIdx !== -1) {
-        this.tasks.splice(targetIdx, 0, draggedTask);
+        this.tasks.splice(targetIdx + (placeAfter ? 1 : 0), 0, draggedTask);
       } else {
         this.tasks.push(draggedTask);
       }
@@ -1178,9 +1241,16 @@ class KlndrApp {
       this.tasks.push(draggedTask);
     }
 
+    const orderAfter = this.tasks.map(t => t.id);
+    if (!changes.length && orderAfter.every((id, i) => id === orderBefore[i])) {
+      this.renderAll();
+      return;
+    }
+
     changes.push({ kind: 'order', before: orderBefore, after: this.tasks.map(t => t.id) });
     this.recordHistory({ label: 'Reorder tasks' }, changes);
     this.renderAll();
+    this.persistTaskOrder();
   }
 
   /**
@@ -1206,12 +1276,14 @@ class KlndrApp {
     [this.tasks[a], this.tasks[b]] = [this.tasks[b], this.tasks[a]];
     this.recordHistory({ label: 'Reorder tasks' },
       [{ kind: 'order', before: orderBefore, after: this.tasks.map(t => t.id) }]);
-    this.renderAll();
+    this.animateTaskListChange(taskId, () => this.renderAll());
+    this.persistTaskOrder();
 
     // The row is a new element after that render, and pressing the arrow
-    // repeatedly walks a task down a list longer than the screen.
+    // repeatedly walks a task down a list longer than the screen. Smooth, so
+    // the list follows the row rather than jumping out from under the slide.
     document.querySelector(`#sidebarTasksList .sidebar-task-card[data-task-id="${taskId}"]`)
-      ?.scrollIntoView({ block: 'nearest' });
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   // Rearrange the list to match a recorded order. Anything the order does not
@@ -1223,6 +1295,116 @@ class KlndrApp {
       ...ids.map(id => byId.get(id)).filter(Boolean),
       ...this.tasks.filter(t => !known.has(t.id))
     ];
+  }
+
+  // ==========================================
+  // SAVED ORDER
+  // ==========================================
+  //
+  // The order is kept on the tasks themselves, as a number each one sorts by,
+  // and not as one list of ids in the settings. Tasks arrive a week at a time -
+  // the unscheduled ones plus whatever falls in the visible range - so the
+  // client never holds the whole list, and saving "the list" would drop every
+  // task scheduled in another week out of it.
+
+  // Where a task sorts. One that has never been moved has no sort_order and
+  // falls back to when it was made, which is the order the list always had,
+  // so nothing jumps the first time this is read.
+  static orderKey(task) {
+    const key = Number(task.sort_order);
+    if (task.sort_order != null && Number.isFinite(key)) return key;
+    return Number(task.created_at) || Date.now() / 1000;
+  }
+
+  // Stable: tasks with equal keys keep the order the server sent them in.
+  static sortByOrder(tasks) {
+    return tasks
+      .map((task, i) => ({ task, key: KlndrApp.orderKey(task), i }))
+      .sort((a, b) => a.key - b.key || a.i - b.i)
+      .map(entry => entry.task);
+  }
+
+  // Indices of the longest run of strictly increasing keys - the tasks that
+  // are already in order and can be left alone.
+  static inOrderRun(keys) {
+    const tails = [];
+    const prev = new Array(keys.length).fill(-1);
+    keys.forEach((key, i) => {
+      let lo = 0;
+      let hi = tails.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (keys[tails[mid]] < key) lo = mid + 1; else hi = mid;
+      }
+      if (lo > 0) prev[i] = tails[lo - 1];
+      tails[lo] = i;
+    });
+    const run = new Set();
+    for (let i = tails.length ? tails[tails.length - 1] : -1; i !== -1; i = prev[i]) run.add(i);
+    return run;
+  }
+
+  /**
+   * Save the list's current order.
+   *
+   * Every task already in order keeps its key, and only the ones out of place
+   * get a new key between the neighbours that are not. So a move writes one
+   * task however far it travelled, and an undo writes the same one back.
+   */
+  async persistTaskOrder() {
+    const tasks = this.tasks;
+    const current = tasks.map(t => KlndrApp.orderKey(t));
+    let keys = [...current];
+    const keep = KlndrApp.inOrderRun(keys);
+
+    for (let i = 0; i < keys.length;) {
+      if (keep.has(i)) { i++; continue; }
+      let j = i;
+      while (j < keys.length && !keep.has(j)) j++;
+      // i-1 and j are both kept (or off the ends), so the gap is between them.
+      const lo = i > 0 ? keys[i - 1] : null;
+      const hi = j < keys.length ? keys[j] : null;
+      const count = j - i;
+      for (let m = 1; m <= count; m++) {
+        keys[i + m - 1] = lo != null && hi != null ? lo + (hi - lo) * m / (count + 1)
+          : lo != null ? lo + m
+            : hi - (count + 1 - m);
+      }
+      i = j;
+    }
+
+    // Halving the same gap over and over runs out of precision eventually.
+    // When it does, space the whole list out again from where it starts.
+    if (keys.some((key, i) => i > 0 && !(key > keys[i - 1]))) {
+      const start = Math.min(...current);
+      keys = keys.map((_, i) => start + i);
+    }
+
+    const updates = [];
+    tasks.forEach((task, i) => {
+      if (keys[i] === current[i]) return;
+      task.sort_order = keys[i];
+      // A reply to an earlier write, still in the air, carries the old key.
+      // Bumping the revision tells that reply it is stale.
+      this.bumpRevision(task.id);
+      updates.push({ id: task.id, sort_order: keys[i] });
+    });
+    if (!updates.length) return true;
+
+    this.setPending(1);
+    try {
+      await this.awaitCreates(updates.map(u => u.id));
+      await API.batchUpdateTasks(updates);
+      return true;
+    } catch (err) {
+      // The list stays as it is on screen: throwing a reorder back at the
+      // person is worse than it not surviving a reload.
+      console.error('Failed to save task order', err);
+      this.showToast("Couldn't save the new order.", 'error');
+      return false;
+    } finally {
+      this.setPending(-1);
+    }
   }
 
   initUIEventListeners() {
@@ -1719,7 +1901,7 @@ class KlndrApp {
     if (token !== this._rangeToken) return;
 
     tasks.forEach(t => TaskModel.ensureSegments(t));
-    this.tasks = tasks;
+    this.tasks = KlndrApp.sortByOrder(tasks);
     this.renderAll();
   }
 
@@ -2296,7 +2478,7 @@ class KlndrApp {
    * round trip once the others have finished.
    */
   applyTasks(tasks) {
-    this.tasks = tasks;
+    this.tasks = KlndrApp.sortByOrder(tasks);
     // Records written before segments existed are migrated here, once, on read.
     this.tasks.forEach(t => TaskModel.ensureSegments(t));
     // History describes edits to the list that was just replaced.
@@ -2398,9 +2580,11 @@ class KlndrApp {
     // Order first: it only rearranges the list, and doing it before the content
     // edits means their re-renders already draw the restored positions.
     const order = changes.find(c => c.kind === 'order');
+    let orderSaved = true;
     if (order) {
       this.applyTaskOrder(order[side]);
       this.renderAll();
+      orderSaved = this.persistTaskOrder();
     }
 
     // Existence next, so a schedule change that belongs to a task being brought
@@ -2433,6 +2617,7 @@ class KlndrApp {
       results.push(await this.optimisticTaskUpdate(change.id, change[side], { record: false }));
     }
 
+    results.push(await orderSaved);
     return results.every(Boolean);
   }
 

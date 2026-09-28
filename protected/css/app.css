@@ -2231,6 +2231,12 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--on-color-border);
   flex-direction: column;
   justify-content: center;
   box-sizing: border-box;
+  transition: opacity 0.12s ease;
+}
+
+/* The calendar draws the block where it will land; see moveSidebarDrop. */
+.global-drag-ghost.is-over-calendar {
+  opacity: 0;
 }
 
 /* ====================================================
@@ -2621,33 +2627,112 @@ body.is-placing-split .timeline-task-card {
    ====================================================
    Hidden by default: on a desktop the list is reordered by dragging a row, and
    two buttons per row would be clutter earning nothing. responsive.css reveals
-   them at phone width, where that drag now means "put this on the calendar". */
-.btn-task-nudge {
+   them at phone width, where that drag now means "put this on the calendar".
+
+   The wrapper holding them and the checkbox generates no box here, so the
+   checkbox keeps its absolute corner on a desktop card. */
+.task-card-actions {
+  display: contents;
+}
+
+/* One pill split down the middle rather than two boxes: the pair is a single
+   control, and drawn as two they read as two more checkboxes. Outlined in the
+   block's own line, like the checkbox it sits under. */
+.task-nudge-group {
   display: none;
-  position: absolute;
-  bottom: 8px;
-  width: var(--control-sm);
-  height: var(--control-sm);
+  align-items: stretch;
+  background: var(--on-color-surface);
+  border: var(--border-block);
+  border-radius: var(--radius-sm);
+}
+
+.btn-task-nudge {
+  position: relative;
+  display: flex;
+  width: 36px;
+  height: 30px;
   align-items: center;
   justify-content: center;
-  background: var(--nudge-bg);
-  border: var(--border-control);
-  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
   cursor: pointer;
-  color: var(--ink-strong);
+  color: var(--on-color-ink);
   padding: 0;
 }
 
-.btn-task-nudge.is-up { right: 46px; }
-.btn-task-nudge.is-down { right: 8px; }
+.btn-task-nudge.is-down {
+  border-left: var(--border-block);
+}
 
 .btn-task-nudge .material-symbols-outlined {
   font-size: 20px;
 }
 
+/* Only the arrow fades: the pill's outline stays whole at the ends of the
+   list, where one half of it has nowhere to go. */
 .btn-task-nudge:disabled {
-  opacity: 0.3;
   cursor: not-allowed;
+}
+
+.btn-task-nudge:disabled .material-symbols-outlined {
+  opacity: 0.25;
+}
+
+.btn-task-nudge:not(:disabled):active {
+  background: var(--on-color-hover);
+}
+
+/* ====================================================
+   REORDER FEEDBACK
+   ====================================================
+   A reorder re-renders the list, so without these the rows simply swap
+   between two frames and nothing says which one moved or where it went. The
+   moved row rises above its neighbours for the slide and keeps a slab
+   underneath it for a beat after landing (app.js times the class). */
+.sidebar-task-card.is-just-moved {
+  z-index: 5;
+  box-shadow: var(--slab-float) var(--slab-float) 0 var(--on-color-border);
+}
+
+/* Where a drag inside the list will put the task. Fixed to the viewport and
+   placed by the drag controller in the gap between two rows, so showing it
+   never moves the rows it is pointing between. */
+.task-drop-indicator {
+  position: fixed;
+  z-index: 99998;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  background: var(--ink-strong);
+  pointer-events: none;
+  opacity: 0;
+  /* Slides between slots rather than blinking out of one and into the next. */
+  transition: top 0.1s ease-out, opacity 0.1s ease-out;
+}
+
+.task-drop-indicator.is-visible {
+  opacity: 1;
+}
+
+.task-drop-indicator::before,
+.task-drop-indicator::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--ink-strong);
+}
+
+.task-drop-indicator::before { left: -5px; }
+.task-drop-indicator::after { right: -5px; }
+
+/* The row being dragged stays in the list as a placeholder, so the gap it
+   leaves and the line it is heading for can be read together. */
+.sidebar-task-card.is-drag-source {
+  opacity: 0.35;
 }
 
 

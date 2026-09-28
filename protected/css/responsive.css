@@ -1308,27 +1308,79 @@ body[data-input="touch"] .btn-block-more {
    task to the calendar - so the ordering needs a control of its own, and this
    is the only place that trade was made. */
 @media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
-  .btn-task-nudge {
-    display: flex;
-  }
-
-  /* Room for the pair, and for the checkbox above them. The meta line is the
-     one that reaches this corner. */
+  /* The controls get a column of their own instead of being pinned over the
+     text: a long title wraps inside its track and can never run under them,
+     however many lines it takes. */
   .sidebar-task-card {
-    min-height: 88px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 10px;
+    padding-right: 10px;
+    padding-top: 10px;
+    padding-bottom: 10px;
   }
 
-  .sidebar-task-card .task-meta-text {
-    padding-right: 86px;
+  .sidebar-task-card .task-content-inner {
+    align-self: center;
+  }
+
+  /* Checkbox at the top, reorder pill at the bottom, both on the right edge. */
+  .task-card-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .task-card-actions .task-checkbox {
+    position: relative;
+    top: auto;
+    right: auto;
+  }
+
+  .task-nudge-group {
+    display: flex;
   }
 }
 
 @media (pointer: coarse) {
-  /* Small visual on a card that is itself a drag target, so the hit area grows
-     past the button instead - the same technique the checkbox uses. */
+  /* common.css grows every button to 44px for a finger. These two sit on a
+     card and grow their hit area past the visual instead (see the checkbox
+     above), and the 44px floor on top of that is what stretched the checkbox
+     into a bar and pushed the two arrows over each other. */
+  .task-checkbox,
+  .task-nudge-group .btn-task-nudge {
+    min-height: 0;
+    min-width: 0;
+  }
+
+  /* Up and down only - sideways the two halves would steal each other's taps. */
   .btn-task-nudge::before {
     content: '';
     position: absolute;
-    inset: -6px;
+    inset: -7px 0;
+  }
+
+  /* The create bar was drawn at 48px around 32px buttons. The 44px floor made
+     the buttons fill it edge to edge, and the input - a flex item that will
+     not shrink below its intrinsic width without min-width:0 - pushed the
+     last of them out past the bar and the panel. The bar grows round the
+     finger-sized controls instead, and the input gives up the width. */
+  .inline-create-box {
+    height: auto;
+    min-height: 56px;
+    padding: 6px 6px 6px 8px;
+  }
+
+  .inline-create-input {
+    min-width: 0;
+    height: 44px;
+  }
+
+  .inline-picker-btn {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
   }
 }

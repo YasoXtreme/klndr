@@ -479,7 +479,6 @@ class TasksSidebar {
       e.stopPropagation();
       this.handleTaskCompletionToggle(task);
     });
-    card.appendChild(checkbox);
 
     // Content Body
     const content = document.createElement('div');
@@ -512,10 +511,19 @@ class TasksSidebar {
 
     card.appendChild(content);
 
+    // The controls on the card's right edge, as one group. On a desktop it
+    // is display:contents and the checkbox keeps its corner; on a phone it is
+    // a column of its own beside the text, so the two can never overlap.
+    const actions = document.createElement('div');
+    actions.className = 'task-card-actions';
+    actions.appendChild(checkbox);
+
     // Reordering by drag is gone on a phone: a long press in this list now
     // hands the gesture to the calendar, because that is the only way a task
     // can reach it there. These put the ordering back, and the stylesheet shows
     // them only where that trade was actually made.
+    const nudges = document.createElement('div');
+    nudges.className = 'task-nudge-group';
     const nudge = (direction, icon, label) => {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -526,10 +534,12 @@ class TasksSidebar {
         e.stopPropagation();
         this.onTaskInteraction('moveTaskInList', { task, direction });
       });
-      card.appendChild(btn);
+      nudges.appendChild(btn);
     };
     nudge(-1, 'keyboard_arrow_up', 'Move up');
     nudge(1, 'keyboard_arrow_down', 'Move down');
+    actions.appendChild(nudges);
+    card.appendChild(actions);
 
 
     // Drag initiation. Deferred rather than immediate - see the thresholds on
@@ -537,7 +547,7 @@ class TasksSidebar {
     // deliberately leaving to the browser, and .sidebar-task-card is already
     // user-select:none, which was all it bought for the mouse.
     card.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.task-checkbox, .btn-task-nudge')) return;
+      if (e.target.closest('.task-checkbox, .task-nudge-group')) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
 
       const isTouch = e.pointerType !== 'mouse';

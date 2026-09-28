@@ -624,8 +624,14 @@ class DragController {
       currentStartTime: null,
       currentDayIndex: 0,
       isOverCalendar: false,
-      hoveredSidebarTask: null
+      hoveredSidebarTask: null,
+      placeAfter: false
     };
+
+    // The row stays in the list, faded, so the gap it leaves and the line it
+    // is heading for can be read together.
+    document.querySelectorAll(`.sidebar-task-card[data-task-id="${task.id}"]`)
+      .forEach(el => el.classList.add('is-drag-source'));
 
     // The one touch drag that never went through beginDrag(), and so never
     // suppressed the list's own scrolling. See the touch-action rule keyed on
@@ -717,6 +723,9 @@ class DragController {
 
   computeDragOutcome(drag) {
     if (!drag) return [];
+    // Cleared up front so an outcome from the last frame over the calendar
+    // cannot keep speaking once the drag has left it for the tasks list.
+    drag.lastOutcome = null;
     if (drag.type === 'seam') return this.resolveSeamOutcome(drag);
 
     const day = this.state.days[drag.currentDayIndex ?? 0];
@@ -784,7 +793,10 @@ class DragController {
       ? PhysicsEngine.placeAroundBackward(obstacles, endTime, duration, dayStart)
       : PhysicsEngine.placeAround(obstacles, startTime, duration, dayEnd);
     this.placeDraggedSegment(workspace, task, drag, startTime, duration, pieces);
-    drag.lastOutcome = { kind: 'split', pieces: pieces.length };
+    // Whether anything sits where the block was aimed. The Ctrl tip is only
+    // worth saying then: with nothing in the way there is nothing to push.
+    const blocked = obstacles.some(o => o.startTime < endTime && o.endTime > startTime);
+    drag.lastOutcome = { kind: 'split', pieces: pieces.length, blocked };
     return workspace.payloads();
   }
 
@@ -876,6 +888,9 @@ class DragController {
     }
 
     const outcome = drag.lastOutcome || {};
+    // Nothing to report until the drag is over the calendar: from the tasks
+    // list a drop is a reorder, and the line in the list already says where.
+    if (!outcome.kind) return null;
 
     if (outcome.kind === 'divider') {
       if (outcome.removed > 0) {
@@ -897,16 +912,14 @@ class DragController {
       return `Ripple — ${moved} block${moved > 1 ? 's' : ''} pushed ${where}`;
     }
 
-    if (outcome.kind === 'split' && outcome.pieces > 1) {
-      return `Breaks into ${outcome.pieces} blocks around what's in the way`;
-    }
-
-    if (drag.type === 'move' || drag.type === 'sidebar-drop') {
-      // There is no Ctrl to hold on touch, and the mode chip is already on
-      // screen saying the same thing, so repeating it here is noise.
-      return TimelineDOM.isTouchInput()
-        ? null
-        : 'Hold Ctrl to push the blocks in the way instead of splitting';
+    // Only when something is actually in the way - a drop onto free time needs
+    // no commentary, and a tip that is always on screen stops being read. There
+    // is no Ctrl to hold on touch, where the mode chip already says it.
+    if (outcome.kind === 'split' && outcome.blocked) {
+      const tip = TimelineDOM.isTouchInput() ? '' : ' · hold Ctrl to push instead';
+      return outcome.pieces > 1
+        ? `Breaks into ${outcome.pieces} blocks around what's in the way${tip}`
+        : `Moves past what's in the way${tip}`;
     }
     return null;
   }
@@ -1210,19 +1223,23 @@ class DragController {
     );
     drag.isOverCalendar = isInsideCalendar;
 
+    // Over the calendar the projection IS the ghost - the block drawn at the
+    // time it will land. A second, translucent copy riding the pointer beside
+    // it was just two of the same task on screen, so it steps aside there.
+    this.globalGhostEl?.classList.toggle('is-over-calendar', isInsideCalendar);
+
     if (!isInsideCalendar) {
-      if (this.globalGhostEl) this.globalGhostEl.style.opacity = '0.9';
       this.canvas.setPlayhead(null);
       this.canvas.setSnapGuide(null);
       drag.currentStartTime = null;
 
       const hovered = document.elementFromPoint(e.clientX, e.clientY);
-      drag.hoveredSidebarTask = hovered?.closest('.sidebar-task-card')?.dataset.taskId || null;
       drag.hoveredCategory = hovered?.closest('.category-column-body')?.dataset.category || null;
+      this.resolveListSlot(drag, hovered, e.clientY);
       return;
     }
 
-    if (this.globalGhostEl) this.globalGhostEl.style.opacity = '0.4';
+    this.hideDropIndicator();
 
     const point = this.canvas.pointToTimeDay(e.clientX, e.clientY);
     const targetDay = this.state.days[point.dayIndex];
@@ -1405,6 +1422,91 @@ class DragController {
     metaEl.textContent = `${start} - ${end} (${durationMinutes}m)`;
   }
 
+  /**
+   * Work out where a drop inside the tasks list would put the task, and draw
+   * the line there.
+   *
+   * The slot comes from the pointer's height against the midpoints of the
+   * rows, not from whichever row is under the pointer. Asking "which row" had
+   * no answer in the gaps between rows, and every gap read as "the end of the
+   * list" - so the line jumped to the bottom and back each time the pointer
+   * crossed one, which is what made it flash.
+   *
+   * No line is drawn where a drop would change nothing: just above or just
+   * below the row being dragged.
+   */
+  resolveListSlot(drag, hovered, pointerY) {
+    drag.hoveredSidebarTask = null;
+    drag.placeAfter = false;
+
+    const container = hovered?.closest('.category-column-body, #sidebarTasksList') || null;
+    drag.overList = Boolean(container);
+    if (!container) return this.hideDropIndicator();
+
+    const rows = [...container.querySelectorAll(':scope > .sidebar-task-card')];
+    if (!rows.length) {
+      // An empty kanban column: a line at the top of its body.
+      const r = container.getBoundingClientRect();
+      return this.placeDropIndicator(r.left + 8, r.width - 16, r.top + 8);
+    }
+
+    const rects = rows.map(el => el.getBoundingClientRect());
+    let slot = rects.findIndex(r => pointerY < r.top + r.height / 2);
+    if (slot === -1) slot = rows.length;
+
+    // Named as "before this row", or "after the last one" at the very end.
+    if (slot < rows.length) {
+      drag.hoveredSidebarTask = rows[slot].dataset.taskId;
+    } else {
+      drag.hoveredSidebarTask = rows[rows.length - 1].dataset.taskId;
+      drag.placeAfter = true;
+    }
+
+    const sourceAt = rows.findIndex(el => el.dataset.taskId === drag.taskId);
+    if (sourceAt !== -1 && (slot === sourceAt || slot === sourceAt + 1)) {
+      return this.hideDropIndicator();
+    }
+
+    const above = rects[slot - 1];
+    const below = rects[slot];
+    const y = above && below ? (above.bottom + below.top) / 2
+      : below ? below.top - 7
+        : above.bottom + 7;
+
+    // The icon badge hangs over each card's top-left corner, out into the very
+    // gap the line is drawn in, so the line starts just past it - and stops
+    // the same distance short of the right edge, so it sits centred.
+    const card = rects[0];
+    const badge = rows[0].querySelector('.task-badge-circle')?.getBoundingClientRect();
+    const inset = badge ? Math.max(0, badge.right + 8 - card.left) : 0;
+    this.placeDropIndicator(card.left + inset, card.width - inset * 2, y);
+  }
+
+  placeDropIndicator(left, width, y) {
+    if (!this.dropIndicatorEl) {
+      this.dropIndicatorEl = document.createElement('div');
+      this.dropIndicatorEl.className = 'task-drop-indicator';
+      document.body.appendChild(this.dropIndicatorEl);
+    }
+    const el = this.dropIndicatorEl;
+    // It glides from slot to slot, but must not glide in from wherever it was
+    // last hidden - so a line that is appearing is placed with no transition.
+    const appearing = !el.classList.contains('is-visible');
+    if (appearing) el.style.transition = 'none';
+    el.style.left = `${left}px`;
+    el.style.width = `${width}px`;
+    el.style.top = `${y}px`;
+    if (appearing) {
+      void el.offsetHeight;
+      el.style.transition = '';
+    }
+    el.classList.add('is-visible');
+  }
+
+  hideDropIndicator() {
+    this.dropIndicatorEl?.classList.remove('is-visible');
+  }
+
   // ==========================================
   // DRAG END
   // ==========================================
@@ -1440,6 +1542,12 @@ class DragController {
       el.classList.remove('is-resizing');
     });
 
+    this.hideDropIndicator();
+    document.querySelectorAll('.sidebar-task-card.is-drag-source')
+      .forEach(el => el.classList.remove('is-drag-source'));
+
+    // Where the task was let go, so a reorder can land it from there.
+    const dropRect = this.globalGhostEl?.getBoundingClientRect() || null;
     if (this.globalGhostEl) {
       this.globalGhostEl.remove();
       this.globalGhostEl = null;
@@ -1461,9 +1569,17 @@ class DragController {
     }
 
     // Dropped back into the sidebar: this is a reorder, not a schedule change.
+    // Only over the list itself, where the line said where it would go -
+    // anywhere else (the header, the input bar) used to send the task to the
+    // bottom of the list with nothing on screen having said so.
     if (drag.type === 'sidebar-drop' && !drag.isOverCalendar) {
+      if (!drag.overList) {
+        this.dom.render();
+        return;
+      }
       if (this.onReorderTasks) {
-        this.onReorderTasks(drag.taskId, drag.hoveredSidebarTask, drag.hoveredCategory);
+        this.onReorderTasks(drag.taskId, drag.hoveredSidebarTask, drag.hoveredCategory,
+          drag.placeAfter, dropRect);
       }
       return;
     }

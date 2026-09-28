@@ -576,6 +576,15 @@ function applyCompletionTimestamps(existing, next, at = nowSeconds()) {
   return next;
 }
 
+// A task's place in the list. Absent until the task is first moved: the client
+// falls back to created_at, which is the order the list always had, so tasks
+// written before this existed need no migration. Anything that is not a finite
+// number is dropped rather than stored, because the client sorts on it.
+function sortOrder(value) {
+  const n = Number(value);
+  return value != null && value !== "" && Number.isFinite(n) ? n : null;
+}
+
 async function createTask(userId, taskData) {
   const { tasks } = await collections();
   const newTask = {
@@ -602,6 +611,10 @@ async function createTask(userId, taskData) {
     category: taskData.category || null,
     completed: Boolean(taskData.completed),
     metadata: taskData.metadata || {},
+    // Listed for the same reason as the source fields below: undoing a delete
+    // replays the snapshot through here, and the task should come back to the
+    // place it was taken from, not the end of the list.
+    sort_order: sortOrder(taskData.sort_order),
     // Where this task came from, when it was not made here. Deliberately
     // generic: `source_app` is a provider id, not a hardcoded name, so a
     // second integration needs no schema change.
@@ -661,6 +674,8 @@ async function updateTask(userId, taskId, updates) {
     updatedTask.is_locked = Boolean(updates.is_locked);
   if (updates.completed !== undefined)
     updatedTask.completed = Boolean(updates.completed);
+  if (updates.sort_order !== undefined)
+    updatedTask.sort_order = sortOrder(updates.sort_order);
   // created_at is written once, by createTask, and is never an input here.
   delete updatedTask.created_at;
   if (existing.created_at) updatedTask.created_at = existing.created_at;
@@ -683,6 +698,8 @@ async function batchUpdateTasks(userId, taskUpdatesList) {
       user_id: userId,
       updated_at: Math.floor(Date.now() / 1000),
     };
+    if (item.sort_order !== undefined)
+      updatedTask.sort_order = sortOrder(item.sort_order);
     delete updatedTask.created_at;
     if (existing.created_at) updatedTask.created_at = existing.created_at;
     applyCompletionTimestamps(existing, updatedTask);
