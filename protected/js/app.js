@@ -209,8 +209,13 @@ class KlndrApp {
       // calendar, and on a phone the calendar is not on screen when that drag
       // begins. Handed over as a callback rather than reached through the
       // shared state, because revealing a pane is the app's business.
+      //
+      // Only on a phone. Off one, a collapsed calendar is the tasks panel
+      // deliberately expanded, and a drag there is a reorder: flipping back
+      // to the split view underneath it threw the task onto the calendar.
       this.dragController.onNeedsCalendar = () => {
         if (!this.isCalendarCollapsed) return false;
+        if (document.body.dataset.layout !== 'phone') return false;
         this.setCalendarCollapsed(false);
         // Immediately, not on the ResizeObserver: on a coarse pointer that sits
         // behind a 150ms settle timer, and a drag already in flight would spend

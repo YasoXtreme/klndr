@@ -1217,7 +1217,10 @@ class DragController {
       document.getElementById('mobileTabTasks')?.classList.toggle('is-drop-target', overCancel);
     }
 
-    const isInsideCalendar = !overCancel && (
+    // A collapsed calendar is a rail with the timeline hidden inside it, but
+    // that hidden timeline still reports a rect - which must not catch a drop.
+    const calendarShown = !document.getElementById('calendarPane')?.classList.contains('is-collapsed');
+    const isInsideCalendar = !overCancel && calendarShown && (
       e.clientX >= workspaceRect.left && e.clientX <= workspaceRect.right &&
       e.clientY >= workspaceRect.top && e.clientY <= workspaceRect.bottom
     );
