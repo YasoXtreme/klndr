@@ -24,11 +24,38 @@ class TasksSidebar {
   static CHECK_PAUSE_MS = 1000;
   static UNCHECK_PAUSE_MS = 500;
 
-  // How long after a list change render() measures before it rebuilds. Covers
-  // the longest move there is: a leaving row's lift (110ms) and the close-up
-  // behind it (340ms).
+  // How long after a list change render() measures before it rebuilds: long
+  // enough for a reorder's moves. A settle's close-up runs longer, and
+  // playFlip stretches the window to cover it.
   static MOTION_WINDOW_MS = 560;
   static LIST_EASING = 'cubic-bezier(0.2, 0.9, 0.3, 1.15)';
+
+  // A leaving row lifts, then slides clean out of the list. Nothing below it
+  // moves until it has gone: two rows crossing each other read as a collision.
+  static EXIT_MS = 400;
+
+  // The rows then close up one after another rather than as one block, each on
+  // a spring. Row n waits STAGGER_MS * ln(1 + n): the first goes at once and
+  // each one after waits a little less extra than the one before, so a long
+  // list still closes up in a moment rather than rippling for seconds.
+  static STAGGER_MS = 70;
+
+  // One damped spring, sampled once and scaled to each row's distance. Lightly
+  // underdamped: it overshoots by about 7% and settles in about 450ms.
+  static SPRING = (() => {
+    const omega = 20;
+    const zeta = 0.65;
+    const damped = omega * Math.sqrt(1 - zeta * zeta);
+    const at = t => Math.exp(-zeta * omega * t) *
+      (Math.cos(damped * t) + (zeta * omega / damped) * Math.sin(damped * t));
+    const step = 1 / 60;
+    const steps = Math.ceil(Math.log(1 / 0.003) / (zeta * omega) / step);
+    const points = Array.from({ length: steps + 1 }, (_, i) => ({
+      offset: i / steps,
+      k: i === steps ? 0 : at(i * step)
+    }));
+    return { points, duration: steps * step * 1000 };
+  })();
 
   // Eight streaks around the checkbox, long and short in turn. The 64-unit
   // box is sized off the checkbox in CSS, so a phone's bigger box throws them
@@ -75,6 +102,9 @@ class TasksSidebar {
     // Until when render() carries on the list's motion. See animateChange.
     this.motionUntil = 0;
     this.inChange = false;
+    // When each row closing up behind a settle is due to start: taskId -> ms.
+    // A rebuild before then must keep it waiting - see playFlip.
+    this.closeUpStarts = new Map();
 
     // When a tick emptied the list, which then says "All clear" until it
     // changes. pendingClear is raised only for the settle render that might.
@@ -1048,21 +1078,52 @@ class TasksSidebar {
       !rows.some(row => row.id === settledId);
     if (leaving) this.exitRow(before.cards.get(settledId), reduced);
 
-    rows.forEach(({ el, id, rect }) => {
-      const was = before.cards.get(id);
-      const dx = was ? was.rect.left - rect.left : 0;
-      const dy = was ? was.rect.top - rect.top : 0;
-      const moved = Math.abs(dx) >= 1 || Math.abs(dy) >= 1;
+    const now = performance.now();
+    const moves = rows.map(row => {
+      const was = before.cards.get(row.id);
+      const dx = was ? was.rect.left - row.rect.left : 0;
+      const dy = was ? was.rect.top - row.rect.top : 0;
+      return { ...row, dx, dy, moved: Math.abs(dx) >= 1 || Math.abs(dy) >= 1 };
+    });
 
+    // A settle's close-up: top to bottom, each row due a little after the one
+    // above it, and none before the leaving row is out of the way.
+    if (settledId && !reduced) {
+      const wait = leaving ? TasksSidebar.EXIT_MS : 0;
+      moves
+        .filter(m => m.moved && m.id !== settledId)
+        .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left)
+        .forEach((m, n) => {
+          this.closeUpStarts.set(m.id, now + wait + TasksSidebar.STAGGER_MS * Math.log(1 + n));
+        });
+    }
+
+    let lastEnd = now;
+    moves.forEach(({ el, id, dx, dy, moved }) => {
       // A moved row lands on its slab even when it went nowhere - it was
       // still picked up. A settled one only if it actually travelled.
       const rides = id === movedId || (id === settledId && moved);
       if (rides) {
         const hold = reduced ? 700 : 900;
-        this.justMoved = { id, until: performance.now() + hold };
+        this.justMoved = { id, until: now + hold };
         TasksSidebar.holdSlab(el, hold);
       }
       if (reduced || !moved) return;
+
+      // A row still due to close up springs, from wherever a rebuild found it
+      // and not before its turn - so a save reply landing mid-settle neither
+      // releases a waiting row early nor flattens the ripple into a block.
+      const start = rides ? undefined : this.closeUpStarts.get(id);
+      if (start !== undefined) {
+        const delay = Math.max(0, start - now);
+        const { points, duration } = TasksSidebar.SPRING;
+        el.animate(points.map(({ offset, k }) => ({
+          offset,
+          transform: `translate(${dx * k}px, ${dy * k}px)`
+        })), { duration, delay, easing: 'linear', fill: 'backwards' });
+        lastEnd = Math.max(lastEnd, now + delay + duration);
+        return;
+      }
 
       el.animate(rides ? [
         { transform: `translate(${dx}px, ${dy}px) scale(1)` },
@@ -1074,10 +1135,16 @@ class TasksSidebar {
       ], {
         duration: rides ? 420 : 340,
         easing: TasksSidebar.LIST_EASING,
-        // The rows closing a gap wait for the row leaving it to lift out.
-        delay: leaving && !rides ? 110 : 0,
         fill: 'backwards'
       });
+      lastEnd = Math.max(lastEnd, now + (rides ? 420 : 340));
+    });
+
+    // A staggered close-up outlasts the usual window; renders keep carrying the
+    // motion on until the last row has come to rest.
+    this.motionUntil = Math.max(this.motionUntil, lastEnd + 50);
+    this.closeUpStarts.forEach((start, id) => {
+      if (start + TasksSidebar.SPRING.duration < now) this.closeUpStarts.delete(id);
     });
   }
 
@@ -1120,10 +1187,10 @@ class TasksSidebar {
     frame.appendChild(el);
     host.appendChild(frame);
 
-    const duration = reduced ? 200 : 380;
+    const duration = reduced ? 200 : TasksSidebar.EXIT_MS;
     const fade = frame.animate(reduced
       ? [{ opacity: 1 }, { opacity: 0 }]
-      : [{ opacity: 1 }, { opacity: 1, offset: 0.35 }, { opacity: 0 }],
+      : [{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }],
     { duration, easing: 'ease-in', fill: 'forwards' });
     // Finished or cancelled, the frame goes - and on the clock as well, because
     // a hidden tab never starts the animation at all, and a frame left waiting
@@ -1139,11 +1206,14 @@ class TasksSidebar {
       const ink = styles.getPropertyValue('--on-color-border').trim();
       const lifted = `${depth}px ${depth}px 0 ${ink}`;
       const rise = depth / 2;
+      // All the way past the scroller's edge, slab included, where the frame
+      // clips it: out of the rows' way before any of them moves into its place.
+      const away = clip.right - rect.left + depth;
       el.animate([
         { transform: 'none', boxShadow: `0 0 0 ${ink}`, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
-        { transform: `translate(${-rise}px, ${-rise}px)`, boxShadow: lifted, offset: 0.3,
-          easing: 'cubic-bezier(0.55, 0, 0.8, 0.35)' },
-        { transform: `translate(46px, ${-rise}px) scale(0.97)`, boxShadow: lifted }
+        { transform: `translate(${-rise}px, ${-rise}px)`, boxShadow: lifted, offset: 0.25,
+          easing: 'cubic-bezier(0.5, 0, 0.75, 0)' },
+        { transform: `translate(${away}px, ${-rise}px)`, boxShadow: lifted }
       ], { duration, fill: 'forwards' });
     }
   }
