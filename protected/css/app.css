@@ -476,6 +476,7 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
 
 .timeline-workspace-container::-webkit-scrollbar,
 .sidebar-tasks-scroll::-webkit-scrollbar,
+.category-column-body::-webkit-scrollbar,
 .tasks-multicolumn-container::-webkit-scrollbar,
 .sidebar-filter-bar::-webkit-scrollbar {
   width: 8px;
@@ -484,6 +485,7 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
 
 .timeline-workspace-container::-webkit-scrollbar-thumb,
 .sidebar-tasks-scroll::-webkit-scrollbar-thumb,
+.category-column-body::-webkit-scrollbar-thumb,
 .tasks-multicolumn-container::-webkit-scrollbar-thumb,
 .sidebar-filter-bar::-webkit-scrollbar-thumb {
   background: var(--line-scroll);
@@ -493,6 +495,7 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
 
 .timeline-workspace-container::-webkit-scrollbar-thumb:hover,
 .sidebar-tasks-scroll::-webkit-scrollbar-thumb:hover,
+.category-column-body::-webkit-scrollbar-thumb:hover,
 .tasks-multicolumn-container::-webkit-scrollbar-thumb:hover {
   background: var(--line-scroll-hover);
 }
@@ -1290,7 +1293,11 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
     visibility 0s;
 }
 
+/* overflow-x is spelled out because overflow-y: auto alone makes it auto too,
+   and a tick's ink burst and a reorder's landing scale both reach a few pixels
+   past the padding - enough to flash a sideways scrollbar for their length. */
 .sidebar-tasks-scroll {
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 16px 14px;
   display: flex;
@@ -1398,8 +1405,10 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
   padding: 1px 8px;
 }
 
+/* overflow-x: hidden for the same reason as .sidebar-tasks-scroll. */
 .category-column-body {
   flex: 1;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 14px 12px;
   display: flex;
