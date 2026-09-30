@@ -32,7 +32,11 @@ class TasksSidebar {
 
   // A leaving row lifts, then slides clean out of the list. Nothing below it
   // moves until it has gone: two rows crossing each other read as a collision.
-  static EXIT_MS = 400;
+  // The lift is its own beat, as long as the stamp's: squeezed into the start
+  // of the slide, the slab flashed in and the row seemed to jump away.
+  static EXIT_LIFT_MS = 240;
+  static EXIT_SLIDE_MS = 340;
+  static EXIT_MS = TasksSidebar.EXIT_LIFT_MS + TasksSidebar.EXIT_SLIDE_MS;
 
   // The rows then close up one after another rather than as one block, each on
   // a spring. Row n waits STAGGER_MS * ln(1 + n): the first goes at once and
@@ -1188,9 +1192,12 @@ class TasksSidebar {
     host.appendChild(frame);
 
     const duration = reduced ? 200 : TasksSidebar.EXIT_MS;
+    // Where the lift ends and the slide begins, as a fraction of the exit.
+    const lifted = TasksSidebar.EXIT_LIFT_MS / TasksSidebar.EXIT_MS;
+    // Held until the row is well under way, so the lift is seen in full.
     const fade = frame.animate(reduced
       ? [{ opacity: 1 }, { opacity: 0 }]
-      : [{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }],
+      : [{ opacity: 1 }, { opacity: 1, offset: lifted + (1 - lifted) / 2 }, { opacity: 0 }],
     { duration, easing: 'ease-in', fill: 'forwards' });
     // Finished or cancelled, the frame goes - and on the clock as well, because
     // a hidden tab never starts the animation at all, and a frame left waiting
@@ -1204,16 +1211,19 @@ class TasksSidebar {
       const styles = getComputedStyle(el);
       const depth = parseFloat(styles.getPropertyValue('--slab-float')) || 6;
       const ink = styles.getPropertyValue('--on-color-border').trim();
-      const lifted = `${depth}px ${depth}px 0 ${ink}`;
+      const slab = `${depth}px ${depth}px 0 ${ink}`;
       const rise = depth / 2;
       // All the way past the scroller's edge, slab included, where the frame
       // clips it: out of the rows' way before any of them moves into its place.
       const away = clip.right - rect.left + depth;
+      // The stamp's own lift, run the other way up: the slab grows out from
+      // under the row as it rises, and only once it is up does it set off -
+      // slowly at first, so the slide reads as the lift carrying on.
       el.animate([
-        { transform: 'none', boxShadow: `0 0 0 ${ink}`, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' },
-        { transform: `translate(${-rise}px, ${-rise}px)`, boxShadow: lifted, offset: 0.25,
-          easing: 'cubic-bezier(0.5, 0, 0.75, 0)' },
-        { transform: `translate(${away}px, ${-rise}px)`, boxShadow: lifted }
+        { transform: 'none', boxShadow: `0 0 0 ${ink}`, easing: 'cubic-bezier(0.3, 0, 0.2, 1)' },
+        { transform: `translate(${-rise}px, ${-rise}px)`, boxShadow: slab, offset: lifted,
+          easing: 'cubic-bezier(0.45, 0, 0.8, 0.3)' },
+        { transform: `translate(${away}px, ${-rise}px)`, boxShadow: slab }
       ], { duration, fill: 'forwards' });
     }
   }
