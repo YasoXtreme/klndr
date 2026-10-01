@@ -114,6 +114,7 @@ class TimelineCanvas {
     // A ResizeObserver keeps geometry correct for every cause of a size change
     // (window resize, pane collapse, devtools) instead of guessing with timers.
     this.scrollbarSize = this.measureScrollbar();
+    this._scrollbarLayout = document.body.dataset.layout || '';
 
     // Observe the VIEWPORT, not the scroll container: the scroll container's own
     // content box shrinks when a scrollbar appears, which would feed our own
@@ -632,6 +633,17 @@ class TimelineCanvas {
 
     this.dpr = TimelineCanvas.effectiveDpr();
     this._lastLayoutKey = this.layoutKey();
+
+    // The phone stylesheet hides this scrollbar, so its width follows the layout
+    // mode as well as the platform: a window or a DevTools device toggle that
+    // crosses into phone width would otherwise keep reserving a bar that is no
+    // longer there. Checked against the mode rather than re-measured outright,
+    // because a pinch calls this on every move.
+    const layout = document.body.dataset.layout || '';
+    if (layout !== this._scrollbarLayout) {
+      this._scrollbarLayout = layout;
+      this.scrollbarSize = this.measureScrollbar();
+    }
 
     const numDays = Math.max(1, this.state.days.length);
     const sb = this.scrollbarSize;

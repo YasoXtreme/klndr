@@ -348,6 +348,28 @@
     flex-wrap: wrap;
     justify-content: center;
   }
+
+  /* The themed ::-webkit-scrollbar in app.css is a classic scrollbar, and on
+     Android Chrome and in DevTools it takes 8px of layout. A finger never grabs
+     it and the phone's own bars are overlays, so here it only costs: the canvas
+     reserves its width and the ruler showed the leftover strip past the last day
+     as a sliver of a fourth column, and in the list it came and went with the
+     rows, re-wrapping every title as it did. */
+  .timeline-workspace-container,
+  .sidebar-tasks-scroll {
+    scrollbar-width: none;
+  }
+
+  .timeline-workspace-container::-webkit-scrollbar,
+  .sidebar-tasks-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Clear the tab bar, as .ann-toast-host does. */
+  .klndr-toast {
+    bottom: calc(56px + 12px + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 32px);
+  }
 }
 
 @keyframes modalSheetUp {
