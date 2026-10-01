@@ -539,17 +539,6 @@ body {
   }
 }
 
-/* Hover transforms fire on tap and then stick, because nothing ever un-hovers
-   a finger. */
-@media (hover: none) {
-  .sidebar-task-card:hover,
-  .btn-sidebar-icon:hover,
-  .btn-icon-square:hover,
-  .btn-calendar-collapse:hover {
-    transform: none;
-  }
-}
-
 /* ====================================================
    TOUCH TARGETS
    ==================================================== */
@@ -1050,7 +1039,12 @@ body[data-orientation="vertical"] .timeline-task-card.is-min:not(.is-short) .tas
    Anchored between the two edges rather than centred on the block, because the
    lock sits in the bottom right corner and a centred bar wide enough to look
    deliberate would run straight into it. Anchoring also means the bar grows
-   with the column instead of staying a fixed fraction of it. */
+   with the column instead of staying a fixed fraction of it.
+
+   No border-radius here or on the dot below: the corners are what say "part of
+   a split" (.is-segment, a capsule as a bar and a circle as a dot) against
+   "stands alone" (.is-single, square at every size), and a radius at this
+   specificity flattened both into one shape. */
 body[data-orientation="vertical"] .timeline-task-card .segment-pill {
   top: auto;
   bottom: var(--v-pill-lift);
@@ -1060,12 +1054,13 @@ body[data-orientation="vertical"] .timeline-task-card .segment-pill {
   min-width: 0;
   height: var(--v-pill);
   padding: 0;
-  border-radius: var(--radius-sm);
   transform: none;
 }
 
-body[data-orientation="vertical"] .timeline-task-card .segment-pill:hover {
-  transform: scaleY(1.08);
+@media (hover: hover) {
+  body[data-orientation="vertical"] .timeline-task-card .segment-pill:hover {
+    transform: scaleY(1.08);
+  }
 }
 
 /* The bar is most of the block's width, so a tick's pop goes almost all into
@@ -1093,13 +1088,14 @@ body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill {
   right: 4px;
   width: var(--v-pill);
   height: var(--v-pill);
-  border-radius: var(--radius-xs);
   translate: 0 -50%;
 }
 
-body[data-orientation="vertical"] .timeline-task-card.is-xs .segment-pill:hover,
-body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill:hover {
-  transform: scale(1.12);
+@media (hover: hover) {
+  body[data-orientation="vertical"] .timeline-task-card.is-xs .segment-pill:hover,
+  body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill:hover {
+    transform: scale(1.12);
+  }
 }
 
 body[data-orientation="vertical"] .timeline-task-card.is-min .segment-pill {
@@ -1204,8 +1200,17 @@ body[data-orientation="vertical"] .timeline-task-card.is-lg .task-title-text {
     display: none;
   }
 
+  /* min-width:0 on both, or the coarse-pointer floor .btn-zoom carries (these
+     buttons share the class) holds the group at 186px, and the row came out
+     6px wider than a 375px phone's header - 21px at 360, where the options
+     button was clipped by the pane. Four single digits are legible at 36px. */
+  .calendar-daycount-group {
+    min-width: 0;
+  }
+
   .day-count-btn {
     flex: 1;
+    min-width: 0;
   }
 }
 
@@ -1400,11 +1405,42 @@ body[data-input="touch"] .btn-block-more {
     min-width: 0;
   }
 
+  /* The icon and colour grids were laid out in 32px tracks, and that floor
+     makes every tile 44px - so each one ran 4px into the next and the last
+     column into the popup's own border. The tracks grow to the tile. The
+     category editor's grid is ten 1fr tracks, under 30px each on a phone; at
+     this size it takes five a row, four rows for the twenty swatches, the same
+     shape as the popups. */
+  .picker-popup-grid {
+    grid-template-columns: repeat(5, 44px);
+  }
+
+  .category-swatch-grid {
+    grid-template-columns: repeat(5, 44px);
+    justify-content: space-between;
+  }
+
+  /* The calendar pill is a <button> too, and the same floor turned the 16px
+     bar along a block's foot into a 44px slab and the smallest blocks' dot into
+     a 44px square. It already grows its hit area past the visual (see the
+     ::before above). */
+  .timeline-task-card .segment-pill {
+    min-height: 0;
+    min-width: 0;
+  }
+
   /* Up and down only - sideways the two halves would steal each other's taps. */
   .btn-task-nudge::before {
     content: '';
     position: absolute;
-    inset: -7px 0;
+    inset: -4px 0 -7px;
+  }
+
+  /* The checkbox sits 8px above the pill, and both grown hit areas reached
+     across that gap - the checkbox's on top, at z-index 3, so a tap just above
+     the down arrow ticked the task. Each now takes its own half of it. */
+  .task-card-actions .task-checkbox::before {
+    bottom: -4px;
   }
 
   /* The create bar was drawn at 48px around 32px buttons. The 44px floor made

@@ -275,39 +275,46 @@ html, body {
     transform var(--dur-fast) ease;
 }
 
-.btn-nav-arrow:hover:not(:disabled), .btn-calendar-collapse:hover:not(:disabled),
-.btn-sidebar-icon:hover:not(:disabled), .btn-icon-square:hover:not(:disabled),
-.ann-filter:hover:not(:disabled),
-.category-row-action:hover:not(:disabled), .btn-task-nudge:hover:not(:disabled),
-.btn-today:hover:not(:disabled), .btn-zoom:hover:not(:disabled),
-.btn-modal-secondary:hover:not(:disabled), .btn-modal-danger:hover:not(:disabled),
-.inline-picker-btn:hover:not(:disabled), .picker-item-icon:hover:not(:disabled),
-.picker-item-color:hover:not(:disabled), .picker-item-category:hover:not(:disabled),
-.picker-item-newcat:hover:not(:disabled), .picker-cat-edit:hover:not(:disabled),
-.modal-close-btn:hover:not(:disabled), .category-filter-pill:hover:not(:disabled),
-.user-profile-pill:hover:not(:disabled), .modal-tab-btn:hover:not(:disabled),
-.theme-option:hover:not(:disabled), .day-count-btn:hover:not(:disabled),
-.mobile-tab:hover:not(:disabled), .an-refresh:hover:not(:disabled),
-.adm-nav-link:hover, .ann-btn-danger:hover:not(:disabled),
-.st-segment-btn:hover:not(:disabled), .st-choice:hover:not(:disabled),
-.st-tool:hover:not(:disabled), .st-swatch:hover:not(:disabled),
-.st-tile:hover:not(:disabled),
-.an-tab:hover:not(:disabled), .chart-table-toggle:hover:not(:disabled),
-.ann-icon-btn:hover:not(:disabled), .ann-btn-secondary:hover:not(:disabled),
-.ann-btn-ghost:hover:not(:disabled), .ann-reaction:hover:not(:disabled),
-.ann-nav-btn:hover:not(:disabled), .ann-media-play:hover:not(:disabled),
-.ann-media-sound:hover:not(:disabled) {
-  background: var(--accent-mint);
-  transform: translateY(-1px);
-}
+/* Hover lives only where a pointer can hover. On touch, :hover sticks to
+   whatever was tapped last, so these lifted the tapped control 1px and left it
+   mint - the active tab rode up over the tab bar's top line, and the nudge and
+   header buttons hopped. A (hover: none) reset used to try to undo it, but it
+   could not: `:hover:not(:disabled)` out-specifies a plain `:hover`. */
+@media (hover: hover) {
+  .btn-nav-arrow:hover:not(:disabled), .btn-calendar-collapse:hover:not(:disabled),
+  .btn-sidebar-icon:hover:not(:disabled), .btn-icon-square:hover:not(:disabled),
+  .ann-filter:hover:not(:disabled),
+  .category-row-action:hover:not(:disabled), .btn-task-nudge:hover:not(:disabled),
+  .btn-today:hover:not(:disabled), .btn-zoom:hover:not(:disabled),
+  .btn-modal-secondary:hover:not(:disabled), .btn-modal-danger:hover:not(:disabled),
+  .inline-picker-btn:hover:not(:disabled), .picker-item-icon:hover:not(:disabled),
+  .picker-item-color:hover:not(:disabled), .picker-item-category:hover:not(:disabled),
+  .picker-item-newcat:hover:not(:disabled), .picker-cat-edit:hover:not(:disabled),
+  .modal-close-btn:hover:not(:disabled), .category-filter-pill:hover:not(:disabled),
+  .user-profile-pill:hover:not(:disabled), .modal-tab-btn:hover:not(:disabled),
+  .theme-option:hover:not(:disabled), .day-count-btn:hover:not(:disabled),
+  .mobile-tab:hover:not(:disabled), .an-refresh:hover:not(:disabled),
+  .adm-nav-link:hover, .ann-btn-danger:hover:not(:disabled),
+  .st-segment-btn:hover:not(:disabled), .st-choice:hover:not(:disabled),
+  .st-tool:hover:not(:disabled), .st-swatch:hover:not(:disabled),
+  .st-tile:hover:not(:disabled),
+  .an-tab:hover:not(:disabled), .chart-table-toggle:hover:not(:disabled),
+  .ann-icon-btn:hover:not(:disabled), .ann-btn-secondary:hover:not(:disabled),
+  .ann-btn-ghost:hover:not(:disabled), .ann-reaction:hover:not(:disabled),
+  .ann-nav-btn:hover:not(:disabled), .ann-media-play:hover:not(:disabled),
+  .ann-media-sound:hover:not(:disabled) {
+    background: var(--accent-mint);
+    transform: translateY(-1px);
+  }
 
-/* Already accent-filled, so hovering them to mint would be a step DOWN in
-   emphasis. They go to the pressed step of the same accent instead. */
-.btn-continue:hover:not(:disabled), .btn-boot-retry:hover:not(:disabled),
-.btn-modal-primary:hover:not(:disabled),
-.ann-btn-primary:hover:not(:disabled) {
-  background: var(--accent-active-hover);
-  transform: translateY(-1px);
+  /* Already accent-filled, so hovering them to mint would be a step DOWN in
+     emphasis. They go to the pressed step of the same accent instead. */
+  .btn-continue:hover:not(:disabled), .btn-boot-retry:hover:not(:disabled),
+  .btn-modal-primary:hover:not(:disabled),
+  .ann-btn-primary:hover:not(:disabled) {
+    background: var(--accent-active-hover);
+    transform: translateY(-1px);
+  }
 }
 
 .btn-nav-arrow:active:not(:disabled), .btn-calendar-collapse:active:not(:disabled),
@@ -395,30 +402,6 @@ button:disabled, select:disabled, input:disabled,
   opacity: 0.35;
   cursor: not-allowed;
   transform: none;
-}
-
-/* A hover state on a touch screen is a state that sticks until you tap
-   something else. Applies to the whole list, not the four it used to. */
-@media (hover: none) {
-  .btn-nav-arrow:hover, .btn-calendar-collapse:hover, .btn-sidebar-icon:hover,
-  .btn-icon-square:hover, .ann-filter:hover,
-  .category-row-action:hover, .btn-task-nudge:hover, .btn-today:hover,
-  .btn-zoom:hover, .btn-modal-secondary:hover, .btn-modal-danger:hover,
-  .inline-picker-btn:hover, .picker-item-icon:hover, .picker-item-color:hover,
-  .picker-item-category:hover, .picker-item-newcat:hover, .picker-cat-edit:hover,
-  .modal-close-btn:hover,
-  .category-filter-pill:hover, .user-profile-pill:hover, .modal-tab-btn:hover,
-  .theme-option:hover, .day-count-btn:hover, .mobile-tab:hover,
-  .an-refresh:hover, .an-tab:hover, .chart-table-toggle:hover,
-  .adm-nav-link:hover, .ann-btn-danger:hover, .st-segment-btn:hover,
-  .st-choice:hover, .st-tool:hover, .st-swatch:hover, .st-tile:hover,
-  .btn-continue:hover, .btn-boot-retry:hover, .btn-modal-primary:hover,
-  .sidebar-task-card:hover,
-  .ann-icon-btn:hover, .ann-btn-secondary:hover, .ann-btn-ghost:hover,
-  .ann-reaction:hover, .ann-nav-btn:hover, .ann-media-play:hover,
-  .ann-media-sound:hover, .ann-btn-primary:hover {
-    transform: none;
-  }
 }
 
 /* A finger needs 44px whatever the control was designed at. Previously six

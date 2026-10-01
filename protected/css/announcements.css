@@ -149,9 +149,11 @@
   transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 
-.ann-link-btn:hover:not(:disabled) {
-  background: var(--accent-mint);
-  color: var(--ink-strong);
+@media (hover: hover) {
+  .ann-link-btn:hover:not(:disabled) {
+    background: var(--accent-mint);
+    color: var(--ink-strong);
+  }
 }
 
 .ann-link-btn .material-symbols-outlined {

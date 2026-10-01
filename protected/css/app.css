@@ -826,8 +826,10 @@ box-shadow: var(--slab) var(--slab) 0 var(--shadow-container);
   transition: background-color 0.1s ease;
 }
 
-.task-checkbox:hover {
-  background: var(--on-color-hover);
+@media (hover: hover) {
+  .task-checkbox:hover {
+    background: var(--on-color-hover);
+  }
 }
 
 .task-checkbox.checked {
@@ -1579,8 +1581,10 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
   transition: transform 0.1s ease;
 }
 
-.picker-item-color:hover {
-  transform: scale(1.15);
+@media (hover: hover) {
+  .picker-item-color:hover {
+    transform: scale(1.15);
+  }
 }
 
 .picker-item-category {
@@ -2506,7 +2510,11 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
 .segment-pill.is-single { border-radius: var(--radius-xs); }
 .segment-pill.is-segment { border-radius: var(--radius-sm); }
 
-.segment-pill:hover { transform: scale(1.08); }
+/* Hover only on a pointer that can hover: a tap leaves :hover stuck on the
+   pill, and with it the scale, until something else is touched. */
+@media (hover: hover) {
+  .segment-pill:hover { transform: scale(1.08); }
+}
 
 .segment-pill.is-done {
   background: var(--on-color-ink);
@@ -2564,7 +2572,9 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
   font-size: 0;
 }
 
-.timeline-task-card.is-min .segment-pill:hover { transform: scale(1.15); }
+@media (hover: hover) {
+  .timeline-task-card.is-min .segment-pill:hover { transform: scale(1.15); }
+}
 .timeline-task-card.is-min .segment-pill .segment-pill-check { display: none; }
 
 /* FOCUS: hovering a block eventually pulls its family forward and pushes the
