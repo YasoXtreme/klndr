@@ -1255,8 +1255,24 @@ class KlndrApp {
     // The row is a new element after that render, and pressing the arrow
     // repeatedly walks a task down a list longer than the screen. Smooth, so
     // the list follows the row rather than jumping out from under the slide.
-    document.querySelector(`#sidebarTasksList .sidebar-task-card[data-task-id="${taskId}"]`)
-      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    //
+    // Measured from where the row has LANDED, not where it is drawn: the slide
+    // is a transform that starts the row back in its old place, which is on
+    // screen by definition, so scrollIntoView saw nothing to do and a row
+    // pressed down past the last visible one slid off under the tab bar.
+    const list = document.getElementById('sidebarTasksList');
+    const row = list?.querySelector(`.sidebar-task-card[data-task-id="${taskId}"]`);
+    if (!row) return;
+    const drawn = row.getBoundingClientRect();
+    const slide = new DOMMatrixReadOnly(getComputedStyle(row).transform).m42;
+    const top = drawn.top - slide;
+    const bottom = drawn.bottom - slide;
+    const view = list.getBoundingClientRect();
+    const pad = parseFloat(getComputedStyle(list).paddingTop) || 0;
+    const delta = top < view.top + pad ? top - view.top - pad
+      : bottom > view.bottom - pad ? bottom - view.bottom + pad
+      : 0;
+    if (delta) list.scrollBy({ top: delta, behavior: 'smooth' });
   }
 
   // Rearrange the list to match a recorded order. Anything the order does not

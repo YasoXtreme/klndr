@@ -1040,7 +1040,7 @@ class TasksSidebar {
   animateChange(change, { movedId = null, from = null, settledId = null } = {}) {
     const before = this.measureCards();
     if (movedId && from) {
-      before.cards.set(movedId, { ...before.cards.get(movedId), rect: from });
+      before.cards.set(movedId, { ...before.cards.get(movedId), rect: from, dropped: true });
     }
     // Renders for a while after this one measure first too - see render().
     this.motionUntil = performance.now() + TasksSidebar.MOTION_WINDOW_MS;
@@ -1083,11 +1083,24 @@ class TasksSidebar {
     if (leaving) this.exitRow(before.cards.get(settledId), reduced);
 
     const now = performance.now();
+    // Centre to centre, and from the size the row was caught at. A row pressed
+    // again mid-landing is still scaled up for its land, so corner to corner
+    // read that swell as a 6px move and the new slide began 12px narrower than
+    // the row on screen - a visible hop on a quick double tap of the arrows.
+    // A drop is the exception: it lands from the ghost's corner at the row's
+    // own size, as it always has, not grown out of a 180px ghost.
     const moves = rows.map(row => {
       const was = before.cards.get(row.id);
-      const dx = was ? was.rect.left - row.rect.left : 0;
-      const dy = was ? was.rect.top - row.rect.top : 0;
-      return { ...row, dx, dy, moved: Math.abs(dx) >= 1 || Math.abs(dy) >= 1 };
+      if (!was) return { ...row, dx: 0, dy: 0, scale: 1, moved: false };
+      const caught = !was.dropped && row.rect.width > 0;
+      const dx = caught
+        ? (was.rect.left + was.rect.width / 2) - (row.rect.left + row.rect.width / 2)
+        : was.rect.left - row.rect.left;
+      const dy = caught
+        ? (was.rect.top + was.rect.height / 2) - (row.rect.top + row.rect.height / 2)
+        : was.rect.top - row.rect.top;
+      const scale = caught ? was.rect.width / row.rect.width : 1;
+      return { ...row, dx, dy, scale, moved: Math.abs(dx) >= 1 || Math.abs(dy) >= 1 };
     });
 
     // A settle's close-up: top to bottom, each row due a little after the one
@@ -1103,7 +1116,7 @@ class TasksSidebar {
     }
 
     let lastEnd = now;
-    moves.forEach(({ el, id, dx, dy, moved }) => {
+    moves.forEach(({ el, id, dx, dy, scale, moved }) => {
       // A moved row lands on its slab even when it went nowhere - it was
       // still picked up. A settled one only if it actually travelled.
       const rides = id === movedId || (id === settledId && moved);
@@ -1130,12 +1143,12 @@ class TasksSidebar {
       }
 
       el.animate(rides ? [
-        { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+        { transform: `translate(${dx}px, ${dy}px) scale(${scale})` },
         { transform: `translate(${dx * 0.4}px, ${dy * 0.4}px) scale(1.04)`, offset: 0.45 },
         { transform: 'translate(0, 0) scale(1)' }
       ] : [
-        { transform: `translate(${dx}px, ${dy}px)` },
-        { transform: 'translate(0, 0)' }
+        { transform: `translate(${dx}px, ${dy}px) scale(${scale})` },
+        { transform: 'translate(0, 0) scale(1)' }
       ], {
         duration: rides ? 420 : 340,
         easing: TasksSidebar.LIST_EASING,
