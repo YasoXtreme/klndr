@@ -442,6 +442,12 @@ class TimelineCanvas {
     // setZoom re-anchors for the same reason; this is the rotation's version of
     // that, and it is also what puts the phone's first vertical frame somewhere
     // other than midnight.
+    //
+    // The CROSS offset is the same problem the other way round: the old time
+    // scroll is now a distance down the days, so a phone turned on its side
+    // opened with its first day tucked under the ruler.
+    if (this.mainIsX) this.scrollContainer.scrollTop = 0;
+    else this.scrollContainer.scrollLeft = 0;
     this.scrollToNow();
   }
 
