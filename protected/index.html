@@ -1164,6 +1164,11 @@
       </button>
     </div>
 
+    <!-- Dims the page behind a menu that is a sheet at phone width, and takes
+         the tap that dismisses it, so that tap cannot land on the page too.
+         Shown by responsive.css only; it does nothing on a desktop. -->
+    <div class="sheet-scrim" aria-hidden="true"></div>
+
     <div class="context-menu" id="taskContextMenu">
       <div class="context-menu-item" id="ctxEdit">
         <span class="material-symbols-outlined">edit</span>

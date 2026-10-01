@@ -2113,9 +2113,12 @@ box-shadow: var(--slab-float) var(--slab-float) 0 var(--shadow-container);
   color: var(--ink-strong);
 }
 
+/* minmax(0, ...) because a bare 1fr will not go below its content, and the
+   "Confirm New Password" input's intrinsic width pushed the pair 6px past a
+   phone sheet's padding. */
 .form-row-group {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -3223,4 +3226,65 @@ body.is-placing-split .timeline-task-card {
   border: var(--border-control);
   border-radius: var(--radius-md);
   font-size: 13.5px;
+}
+
+/* The same story for a connected app's row in Integrations, which app.js used
+   to build entirely out of style="" strings - out of reach of the phone layout,
+   where its three buttons refused to shrink and squeezed the name and status
+   into a column one word wide. */
+.integration-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--surface-1);
+  border: var(--line-hair) solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.integration-row-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 24px;
+}
+
+.integration-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.integration-row-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.integration-row-status {
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.integration-row-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.integration-row-actions > button,
+.integration-row-link {
+  height: 34px;
+}
+
+.integration-row-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.integration-row-note {
+  font-size: 12px;
+  color: var(--ink-faint);
 }

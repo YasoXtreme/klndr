@@ -1223,6 +1223,9 @@ h5.ann-md-heading {
   .ann-reader-card,
   .ann-story-card {
     max-width: none;
+    /* The sheet's overhang (responsive.css): the width above would otherwise
+       pull the side borders back on screen. */
+    width: calc(100% + 2 * var(--line-container));
     max-height: 88dvh;
     padding: 0 0 env(safe-area-inset-bottom);
   }
@@ -1248,6 +1251,19 @@ h5.ann-md-heading {
 
   .ann-notice .ann-kind {
     display: none;
+  }
+
+  /* The admin's Manage link and Mark all read left the title 70px, and it
+     broke onto two lines. Manage keeps its icon, and its label stays in the
+     accessible name at size zero. */
+  .ann-inbox-head h2 {
+    white-space: nowrap;
+  }
+
+  #annOpenStudio {
+    font-size: 0;
+    gap: 0;
+    min-height: 44px;
   }
 }
 

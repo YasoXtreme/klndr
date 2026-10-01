@@ -273,22 +273,42 @@
     width: 100%;
   }
 
-  /* ---- Modals become bottom sheets. Twelve lines, and all nine of them feel
-     native at once - the best value-per-line in this file. */
+  /* ---- Modals become bottom sheets: the full width, down to the bottom edge,
+     rising from below it. A sheet, not a card - so no slab, and its only edge
+     is the line across the top and round both corners.
+
+     A top-only border tapers to nothing through a radius, so the card is
+     widened by its own line on each side instead: the side borders land just
+     off screen and what shows is the top line at full weight the whole way
+     round. The container clips that overhang, which also keeps it out of the
+     page's width (see the body rule in app.css for why that matters). */
   .modal-container {
     align-items: flex-end;
     padding-left: 0;
     padding-right: 0;
+    overflow: hidden;
+    overflow: clip;
   }
 
   .modal-card {
-    width: 100%;
+    width: calc(100% + 2 * var(--line-container));
     max-width: none;
+    margin: 0 calc(-1 * var(--line-container));
     max-height: 88dvh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     border-bottom: none;
-    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
-    animation: modalSheetUp 0.2s ease-out;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding:
+      20px
+      max(16px, env(safe-area-inset-right))
+      calc(20px + env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+    box-shadow: none;
+    animation: sheetRise 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* The page behind dims as the sheet rises. */
+  .modal-backdrop {
+    animation: sheetScrimIn 0.28s ease-out;
   }
 
   /* The dual-pane account modal is a sidebar layout; column-reverse keeps the
@@ -314,12 +334,53 @@
     padding: 8px;
   }
 
+  /* Icon over label, as the tab bar does it: three side-by-side rows cannot
+     share 359px, and "Integrations" was the one cut off at the edge. */
+  .modal-nav-list .modal-tab-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px 4px;
+    font-size: 12px;
+    text-align: center;
+  }
+
   .modal-pane-header {
     padding: 0 14px;
   }
 
+  /* The tab row above already says which section this is; the title under it
+     only said it again. */
+  .modal-content-pane > .modal-pane-header {
+    display: none;
+  }
+
+  /* A connected app's buttons take their own row under its name, and share
+     it: three of them beside the text left the text one word wide. */
+  .integration-row {
+    flex-wrap: wrap;
+  }
+
+  .integration-row-actions {
+    flex: 1 0 100%;
+  }
+
+  .integration-row-actions > button,
+  .integration-row-link {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
   .modal-pane-body {
     padding: 16px 14px 20px;
+  }
+
+  /* The dual card spends no padding of its own, so its scrolling column is
+     what has to clear the home indicator now that the sheet reaches it. */
+  .modal-card-dual .modal-pane-body {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
   }
 
   .block-preview-card {
@@ -377,8 +438,26 @@
   to { transform: none; opacity: 1; }
 }
 
+/* From all the way below the screen's edge, which is where a sheet lives. */
+@keyframes sheetRise {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+@keyframes sheetScrimIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Only a menu that is a sheet - at phone width, below - ever shows this. */
+.sheet-scrim {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .modal-card {
+  .modal-card,
+  .modal-backdrop,
+  .sheet-scrim {
     animation: none;
   }
 }
@@ -1262,17 +1341,35 @@ body[data-input="touch"] .btn-block-more {
    left/top it would otherwise position it with, so none of this needs
    !important to win. */
 @media (max-width: 767px), (max-height: 500px) and (orientation: landscape) {
+  /* The same sheet as the modals above, overhang and all. Being fixed, it is
+     no part of the page's width, so there is nothing to clip it. */
   .context-menu {
-    left: 0;
-    right: 0;
+    left: calc(-1 * var(--line-container));
+    right: calc(-1 * var(--line-container));
     bottom: 0;
     top: auto;
     min-width: 0;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     border-bottom: none;
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
-    box-shadow: calc(var(--slab-float) * -1) calc(var(--slab-float) * -1) 0 var(--shadow-container);
-    animation: modalSheetUp 0.2s ease-out;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding:
+      8px
+      max(8px, env(safe-area-inset-right))
+      calc(8px + env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+    box-shadow: none;
+    animation: sheetRise 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Behind the menu and over everything else, the tab bar included. A real
+     element rather than a spread shadow: the tap that dismisses the menu lands
+     here instead of on whatever was under it. */
+  body:has(.context-menu.active) .sheet-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1999;
+    background: var(--scrim);
+    animation: sheetScrimIn 0.28s ease-out;
   }
 
   /* 44px rows: this is now a primary control surface, not a secondary menu. */
@@ -1343,14 +1440,20 @@ body[data-input="touch"] .btn-block-more {
     font-size: 18px;
   }
 
-  /* A bottom sheet with 390px to work in should not also spend it on padding. */
+  .klndr-toast {
+    bottom: calc(44px + 12px + env(safe-area-inset-bottom));
+  }
+
+  /* A sheet with 390px to work in should not also spend it on padding. */
   .modal-card {
     max-height: 92dvh;
-    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    padding-top: 14px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
   }
 
   .modal-card-dual {
     height: 92dvh;
+    padding: 0;
   }
 }
 

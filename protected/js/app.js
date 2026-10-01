@@ -1703,55 +1703,52 @@ class KlndrApp {
     });
   }
 
+  // Classes rather than inline styles, so a phone can rearrange the row: see
+  // .integration-row in app.css and responsive.css.
   buildIntegrationRow(provider, msgEl) {
     const row = document.createElement('div');
-    row.style.cssText =
-      'display:flex;align-items:flex-start;gap:12px;padding:12px;border:1.5px solid var(--color-border);' +
-      'border-radius:10px;margin-bottom:10px;background:var(--surface-1);';
+    row.className = 'integration-row';
 
     const icon = document.createElement('span');
-    icon.className = 'material-symbols-outlined';
-    icon.style.cssText = 'font-size:24px;flex-shrink:0;margin-top:2px;';
+    icon.className = 'material-symbols-outlined integration-row-icon';
     icon.textContent = provider.icon || 'extension';
     row.appendChild(icon);
 
     const body = document.createElement('div');
-    body.style.cssText = 'flex:1;min-width:0;';
+    body.className = 'integration-row-body';
 
     const title = document.createElement('div');
-    title.style.cssText = 'font-weight:700;font-size:14px;';
+    title.className = 'integration-row-title';
     title.textContent = provider.label;
     body.appendChild(title);
 
     const status = document.createElement('div');
-    status.style.cssText = 'font-size:12.5px;color:var(--ink-soft);margin-top:2px;line-height:1.45;';
+    status.className = 'integration-row-status';
     status.textContent = this.integrationStatusText(provider);
     body.appendChild(status);
     row.appendChild(body);
 
     const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;';
+    actions.className = 'integration-row-actions';
 
     if (!provider.available) {
       // Say so rather than offering a button that fails: the only symptom of a
       // missing environment variable is otherwise a dead click.
       const note = document.createElement('span');
-      note.style.cssText = 'font-size:12px;color:var(--ink-faint);';
+      note.className = 'integration-row-note';
       note.textContent = 'Not configured';
       actions.appendChild(note);
     } else if (!provider.connected) {
       // A real navigation, not a fetch: this 302s off to the other app.
       const connect = document.createElement('a');
       connect.href = `/api/integrations/${provider.id}/connect`;
-      connect.className = 'btn-modal-primary';
-      connect.style.cssText = 'height:34px;display:inline-flex;align-items:center;text-decoration:none;';
+      connect.className = 'btn-modal-primary integration-row-link';
       connect.textContent = 'Connect';
       actions.appendChild(connect);
     } else {
       const sync = document.createElement('button');
       sync.type = 'button';
       sync.className = 'btn-modal-secondary';
-      sync.style.height = '34px';
       sync.textContent = 'Sync now';
       sync.addEventListener('click', async () => {
         sync.disabled = true;
@@ -1778,7 +1775,6 @@ class KlndrApp {
         const restore = document.createElement('button');
         restore.type = 'button';
         restore.className = 'btn-modal-secondary';
-        restore.style.height = '34px';
         restore.textContent = `Restore ${provider.dismissed_count}`;
         restore.title = 'Bring back imported tasks you deleted here';
         restore.addEventListener('click', async () => {
@@ -1801,7 +1797,6 @@ class KlndrApp {
       const disconnect = document.createElement('button');
       disconnect.type = 'button';
       disconnect.className = 'btn-modal-danger';
-      disconnect.style.height = '34px';
       disconnect.textContent = 'Disconnect';
       disconnect.addEventListener('click', async () => {
         const ok = window.confirm(
