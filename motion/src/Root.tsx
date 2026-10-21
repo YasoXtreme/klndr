@@ -1,5 +1,4 @@
 import { Test } from './Test';
-import { NewComposition } from './NewComposition';
 import React from 'react';
 import { Composition, Folder } from 'remotion';
 import './klndr/fonts';

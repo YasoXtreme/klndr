@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, types and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run check:tokens
+      - run: npm test
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    # A throwaway database for this run only. The suites refuse any database
+    # whose name doesn't end in _e2e or _test.
+    services:
+      mongo:
+        # 7.0, not 8: MongoDB 8 refuses to start on Linux 6.19 and newer, which
+        # the runners now use (SERVER-121912).
+        image: mongo:7.0
+        ports: ["27017:27017"]
+    env:
+      MONGODB_URI: mongodb://localhost:27017
+      MONGODB_DB: klndr_ci_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration
+
+  e2e:
+    name: UI tests
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        # 7.0, not 8: MongoDB 8 refuses to start on Linux 6.19 and newer, which
+        # the runners now use (SERVER-121912).
+        image: mongo:7.0
+        ports: ["27017:27017"]
+    env:
+      MONGODB_URI: mongodb://localhost:27017
+      MONGODB_DB: klndr_ci_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+  motion:
+    name: Motion workspace types
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: motion
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: motion/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck

@@ -1,7 +1,6 @@
 // Media library rules and R2 URL signing. No bucket and no database: the
 // signing is pure WebCrypto, and the policy module does no I/O.
 
-const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const policy = require("../server/media-policy");

@@ -3,9 +3,17 @@
   "version": "1.0.0",
   "description": "Klndr: A Fluid Time-Blocking Workspace",
   "main": "server.js",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/announcements.test.js test/media.test.js test/motion.test.js test/motion-timeline.test.js test/pages.test.js test/boot.test.js",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "check": "npm run lint && npm run typecheck && npm run check:tokens && npm test",
     "check:tokens": "node scripts/check-design-tokens.js",
     "dev": "node --watch server.js",
     "r2:check": "node scripts/r2.js check",
@@ -34,7 +42,15 @@
     "mongodb": "^7.5.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.13.0",
     "fflate": "^0.8.3",
-    "lottie-web": "^5.13.0"
+    "globals": "^17.13.0",
+    "lottie-web": "^5.13.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
   }
 }

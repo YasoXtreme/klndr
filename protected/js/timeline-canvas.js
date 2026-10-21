@@ -1166,7 +1166,7 @@ class TimelineCanvas {
   }
 
   paintTickRuler(surface) {
-    const { ctx, length, depth } = surface;
+    const { ctx, length } = surface;
     const bucketHours = this.state.bucketHours || 2;
     const tickPercent = this.state.tickPercent || 25;
     const tickMinutes = (bucketHours * 60) * (tickPercent / 100);

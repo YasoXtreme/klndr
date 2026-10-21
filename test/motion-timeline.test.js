@@ -3,7 +3,6 @@
 // is. The player, the Studio and the Remotion render all ask it, so its
 // arithmetic is pinned down here.
 
-const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const Core = require("../protected/js/motion/motion-core");

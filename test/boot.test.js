@@ -3,7 +3,6 @@
 // land on the page's own brand. The DOM half is checked in a browser; these
 // are the numbers it runs on.
 
-const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");

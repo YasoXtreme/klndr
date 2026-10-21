@@ -23,10 +23,12 @@ if (!mongoUri) {
 // for good: after one failed connect, every request on it hung.
 
 let connecting = null;
+let openClient = null;
 
 function connect() {
   if (!connecting) {
     const client = new MongoClient(mongoUri);
+    openClient = client;
     connecting = client.connect().then(
       () => client.db(databaseName),
       (err) => {
@@ -140,6 +142,17 @@ const ready = Promise.all([ensureIndexes(), ensureSeeded()]).then(() => {});
 ready.catch((err) => {
   console.error("Database setup failed, and is retried on next use:", err.message);
 });
+
+// Lets a test run or a script end its process. A server never calls this: the
+// client is meant to outlive every request on the instance. Waits for the
+// setup above first, so closing never cuts an index build off halfway.
+async function close() {
+  await ready.catch(() => {});
+  const client = openClient;
+  connecting = null;
+  openClient = null;
+  if (client) await client.close();
+}
 
 async function collections() {
   const db = await connect();
@@ -1258,6 +1271,7 @@ async function mediaUsage() {
 
 module.exports = {
   ready,
+  close,
   // Exported so read-only reporting can run its own aggregations rather than
   // growing a CRUD wrapper per chart. Writes still go through the functions
   // below; nothing outside this file should be calling insert or update on a

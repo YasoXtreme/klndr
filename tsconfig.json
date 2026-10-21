@@ -1,0 +1,7 @@
+{
+  // The TypeScript that exists so far: the test suites and the tool configs.
+  // The app and the server join as they are converted.
+  "extends": "./tsconfig.base.json",
+  "include": ["test/**/*.ts", "e2e/**/*.ts", "playwright.config.ts", "vitest.config.mts"],
+  "exclude": ["node_modules", ".claude", "motion"]
+}

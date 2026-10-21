@@ -3,7 +3,6 @@
 // Everything here is pure: no server, no database. The API itself is exercised
 // by test-e2e.js against a running instance.
 
-const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const Rules = require("../protected/js/announcements/rules");

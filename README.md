@@ -60,8 +60,7 @@ lie about the outcome.
 
 ## Quick start
 
-**Requirements:** Node.js ≥ 20.19 (the MongoDB driver's floor) and a MongoDB
-database — Atlas or local.
+**Requirements:** Node.js 24 and a MongoDB database — Atlas or local.
 
 ```bash
 npm install
@@ -88,7 +87,11 @@ local work never touches production data.
 | `npm run list-users` | List accounts |
 | `npm run delete-user -- <username>` | Delete an account |
 | `npm run reset-password -- <username>` | Issue a one-shot temporary password |
+| `npm run check` | Lint, typecheck, design-token lint and unit tests in one go |
 | `npm test` | Unit tests: announcement rules and markdown, media policy, motion scenes, page caching, the boot overlay |
+| `npm run test:integration` | The HTTP API end to end against a test database (see [Testing](#testing)) |
+| `npm run test:e2e` | Playwright UI tests, desktop and phone |
+| `npm run lint` / `npm run typecheck` | ESLint, and `tsc` over the TypeScript |
 | `npm run check:tokens` | Design-token lint across the stylesheets, including the motion scenes' theme copy |
 | `npm run r2:check` | Check the R2 credentials, bucket and CORS, with a write/read/delete round trip |
 | `npm run r2:cors [-- <origin> ...]` | Write the bucket CORS policy that browser uploads need |
@@ -212,7 +215,8 @@ public/                      Login page, brand assets, fonts — unauthenticated
 brand/                       Logo kit, source SVGs, PNG renders (see brand/README.md)
 motion/                      Remotion workspace for header clips; never deployed (see motion/README.md)
 scripts/                     Account CLI, brand asset build, design-token lint, R2 setup, vendoring
-test/                        Unit tests (node --test)
+test/                        Unit tests (Vitest); integration/ is the HTTP API against a test database
+e2e/                         Playwright UI tests
 docs/                        Manual regression checklists
 ```
 
@@ -606,20 +610,34 @@ They cover:
 - the motion timeline: clips, loop and play-once progress, and edits that keep the preview's place;
 - the camera move between clips: when it sets off and where the next clip starts, no jolt at either end, never an empty frame once the animation has begun, every pass after the first drawn the same, a clip between moves drawn exactly as on its own, and a looping video without a seam.
 
-`test-e2e.js` is a raw-`http` smoke test of the API: auth redirects, session
-handling, task CRUD and the announcement lifecycle. Start the server, then:
+The other two suites run against a real database, and create and delete
+accounts, tasks and posts as they go. So both refuse to start unless the
+database name ends in `_e2e` or `_test`:
 
 ```bash
-node test-e2e.js
+cp .env.test.example .env.test     # MONGODB_DB=klndr_e2e; MONGODB_URI comes from .env
+npm run test:integration
+npx playwright install chromium    # once
+npm run test:e2e
 ```
 
-It signs in as the seeded `yassen` admin. Once that password has been changed,
-name the account with `E2E_USERNAME` and `E2E_PASSWORD`. The run changes that
-password and then restores it.
+- **Integration** (`test/integration`) starts the server in-process and walks
+  the HTTP API the way a session would: the guards (including `..` and its
+  encodings against the login and admin boundaries), auth and the forged-cookie
+  case, tasks and settings, admin accounts, the announcement lifecycle, page
+  caching and the media handshake. It makes its own admin for each run and
+  deletes it afterwards.
+- **UI** (`e2e/`, Playwright) signs in through the real login page on a desktop
+  and a phone profile, and checks that the board starts with a clean console,
+  that the timeline geometry self-check passes, that a new task can be dragged
+  onto the calendar and the drop undone, and that admin loads its sections in
+  order and hands the logo back and forth. It reuses a server already running
+  on port 3011, which is what the `klndr-e2e` launch config starts.
 
-There is no DOM test framework in this repository, so geometry, input and layout
-are covered by a manual checklist:
-[`docs/mobile-regression-checklist.md`](docs/mobile-regression-checklist.md).
+CI runs every suite on each pull request against a throwaway Mongo container.
+
+Geometry, input and layout beyond that are still covered by a manual
+checklist: [`docs/mobile-regression-checklist.md`](docs/mobile-regression-checklist.md).
 Run it after any change to the timeline renderer, the drag controller, the
 layout controller or `responsive.css`. Two of its checks are free and should be
 done first — load `/?debug=geom` and confirm the console prints
