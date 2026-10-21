@@ -565,12 +565,28 @@ Running both locally means running them on different ports: Sylla defaults to
 
 ## Deployment
 
-klndr ships as a single Node process and deploys to Vercel as a serverless
-function (`vercel.json` routes everything to `server.js`).
+klndr runs as a single Node process. On Vercel, `npm run build`
+(`scripts/build-vercel-output.mjs`) writes the deployment in Vercel's
+[Build Output API](https://vercel.com/docs/build-output-api) layout, and
+`vercel.json` makes that the build:
 
-1. Import the repository into Vercel.
-2. Leave the framework preset as **Other** and keep the build and output settings empty.
-3. Add the production environment variables from [Configuration](#configuration) — at minimum `MONGODB_URI`, `MONGODB_DB` (for example `klndr`, *not* `klndr_dev`) and `SESSION_SECRET`, plus `KLNDR_BASE_URL` and `INTEGRATION_ENC_KEY` if you use integrations, and the `R2_*` variables for announcement media.
+- **One function** holds the server, bundled by esbuild into a single file,
+  with `public/`, `protected/` and `admin/` copied beside it as siblings. Every
+  request that isn't a CDN file reaches it with its path intact.
+- **The CDN** serves only `/assets` (the font, icons and manifest) and
+  `/favicon.ico`, cached for a week. Nothing behind the login is ever put
+  there; `npm run test:build` checks the layout.
+
+`npm run build && npm run serve:bundle` serves that output locally the way
+Vercel does, and CI runs the integration and UI suites against it.
+
+1. Import the repository into Vercel. Leave the framework preset as **Other**
+   and the build, install and output settings without overrides; `vercel.json`
+   sets them.
+2. Add the production environment variables from [Configuration](#configuration) — at minimum `MONGODB_URI`, `MONGODB_DB` (for example `klndr`, *not* `klndr_dev`) and `SESSION_SECRET`, plus `KLNDR_BASE_URL` and `INTEGRATION_ENC_KEY` if you use integrations, and the `R2_*` variables for announcement media.
+3. Give **Preview** its own `MONGODB_DB` (for example `klndr_preview`): every
+   pushed branch gets a preview deployment, and without one it falls back to
+   `klndr`, which is production's data.
 4. Deploy.
 
 Configure MongoDB Atlas network access for your own machine (local) and for

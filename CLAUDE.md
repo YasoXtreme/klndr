@@ -21,6 +21,8 @@ add new browser globals, and write new tooling and tests in TypeScript.
 | `npm run test:e2e` | Playwright UI tests (`e2e/`), desktop and phone projects |
 | `npm run lint` / `npm run typecheck` | ESLint / `tsc` on the TypeScript so far |
 | `npm run check:tokens` | Stylesheet design-token lint |
+| `npm run build` | The Vercel deployment in `.vercel/output` (Build Output API); `npm run test:build` checks its layout |
+| `npm run serve:bundle` | Serves `.vercel/output` locally the way Vercel does; `KLNDR_TARGET=bundle` points both suites at it |
 
 The integration and UI suites create and delete accounts, so they refuse any
 database whose name doesn't end in `_e2e` or `_test`

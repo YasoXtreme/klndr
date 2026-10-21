@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { ROOT } = require("./paths");
 
 // How klndr's pages and their files reach the browser.
 //
@@ -20,8 +21,6 @@ const path = require("path");
 // None of this touches the guards. /protected and /admin still demand a
 // session, and an admin for /admin; their files are only ever cached privately,
 // in the browser that was allowed to fetch them.
-
-const ROOT = path.join(__dirname, "..");
 
 // The same URL-to-directory mapping as the static mounts in server.js.
 const MOUNTS = [

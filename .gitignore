@@ -2,6 +2,8 @@ node_modules
 .claude
 .env
 .env.test
+# npm run build (Build Output API), and the Vercel CLI's project link
+.vercel
 data/
 motion/out/
 motion/public/klndr/

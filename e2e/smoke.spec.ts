@@ -12,12 +12,18 @@ type Account = { username: string; password: string };
 // isn't configured, and the 400 it logs.
 const KNOWN_NOISE = [/Failed to load resource: the server responded with a status of 400/, /Background sync failed/];
 
+// The icon font comes from Google Fonts. A network that drops one of those
+// requests is not something the app did.
+const THIRD_PARTY = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
+
 function watchConsole(page: Page) {
   const problems: string[] = [];
   page.on("console", (message: ConsoleMessage) => {
     if (message.type() !== "error") return;
     const text = message.text();
-    if (!KNOWN_NOISE.some((pattern) => pattern.test(text))) problems.push(text);
+    if (KNOWN_NOISE.some((pattern) => pattern.test(text))) return;
+    if (text.startsWith("Failed to load resource") && THIRD_PARTY.test(message.location().url)) return;
+    problems.push(text);
   });
   page.on("pageerror", (error) => problems.push(`${error.name}: ${error.message}`));
   return problems;
