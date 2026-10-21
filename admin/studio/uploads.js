@@ -11,7 +11,6 @@
   const S = KlndrStudio;
   const { h, icon, iconButton, fmtBytes } = S;
 
-  const FFLATE_SRC = '/protected/vendor/fflate.min.js';
   const POSTER_WIDTH = 1280;
 
   const ACCEPT = [
@@ -28,18 +27,6 @@
     avif: 'image/avif',
     gif: 'image/gif'
   };
-
-  function loadScript(src, globalName) {
-    if (window[globalName]) return Promise.resolve(window[globalName]);
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = src;
-      script.async = true;
-      script.onload = () => (window[globalName] ? resolve(window[globalName]) : reject(new Error(`${globalName} did not load`)));
-      script.onerror = () => reject(new Error(`${globalName} did not load`));
-      document.head.appendChild(script);
-    });
-  }
 
   function loadImage(src) {
     return new Promise((resolve, reject) => {
@@ -149,7 +136,7 @@
   // than its usually-empty first frame. Best effort: some files taint the
   // canvas, and then there is simply no poster.
   async function lottiePoster(data) {
-    const lottie = await KlndrAnnouncementMedia.loadLottie();
+    const lottie = await KlndrVendor.load('lottie');
     const host = document.createElement('div');
     host.style.cssText = `position:fixed;left:-10000px;top:0;width:${data.w}px;height:${data.h}px;`;
     document.body.appendChild(host);
@@ -215,7 +202,7 @@
    * inlined so the one file plays on its own. The server only ever sees JSON.
    */
   async function dotLottieToJson(file) {
-    const fflate = await loadScript(FFLATE_SRC, 'fflate');
+    const fflate = await KlndrVendor.load('fflate');
     let entries;
     try {
       entries = fflate.unzipSync(new Uint8Array(await file.arrayBuffer()));

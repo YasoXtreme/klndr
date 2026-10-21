@@ -8,7 +8,7 @@ import tseslint from "typescript-eslint";
 // or a missing <script>. They go away when the files become modules and
 // import what they use.
 const SHARED = [
-  "KlndrTheme", "KlndrBoot", "API", "KlndrPalette",
+  "KlndrTheme", "KlndrBoot", "API", "KlndrPalette", "KlndrVendor",
   "KlndrAnnouncementRules", "KlndrMarkdown", "KlndrAnnouncementMedia", "KlndrAnnouncementReader",
   "KlndrMotionCore", "KlndrScenes", "KlndrMotionTimeline", "KlndrMotion",
 ];
