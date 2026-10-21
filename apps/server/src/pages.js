@@ -93,6 +93,9 @@ function cacheControl(scope, hashed) {
  */
 function staticOptions(scope, root, options = {}) {
   return {
+    // Said outright: by default only a path's last segment is checked, so the
+    // manifest the build leaves in .vite/ would be served.
+    dotfiles: "ignore",
     ...options,
     setHeaders(res, file) {
       const hashed = path.relative(root, file).split(path.sep)[0] === "assets";

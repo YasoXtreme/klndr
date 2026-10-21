@@ -413,6 +413,12 @@ describe("the admin page", () => {
     expect(res.body).toContain(ADMIN_PAGE.sample);
   });
 
+  test("what the build leaves in .vite/ is never served", async () => {
+    for (const dir of ["protected", "admin", "public"]) {
+      expect((await page(`/${dir}/.vite/manifest.json`, token)).status, dir).toBe(404);
+    }
+  });
+
   test("a missing admin asset is a 404, not the page", async () => {
     expect((await page("/admin/nope.js", token)).status).toBe(404);
   });

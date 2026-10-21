@@ -45,6 +45,8 @@ test("staticOptions keeps the options it is given", () => {
   assert.equal(options.index, false);
   assert.equal(options.redirect, false);
   assert.equal(typeof options.setHeaders, "function");
+  // Every segment is checked, so the build's .vite/ manifest is never served.
+  assert.equal(options.dotfiles, "ignore");
 });
 
 test("there is no page by any other name", () => {
