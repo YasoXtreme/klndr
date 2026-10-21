@@ -15,6 +15,8 @@
 //
 // Browser global and CommonJS module, like palette.js, so the tests can reach it.
 
+'use strict';
+
 const KlndrMarkdown = (() => {
   // Placeholders for finished HTML while the rest of a line is still being
   // formatted. Private-use characters, stripped from the input first, so no

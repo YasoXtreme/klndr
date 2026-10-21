@@ -5,6 +5,8 @@
 // the ghost blocks the user sees during a drag are produced by exactly the same
 // physics call that will run when they let go, so the preview cannot lie.
 
+'use strict';
+
 class DragController {
   static SEAM_MIN_MINUTES = PhysicsEngine.MIN_TASK_DURATION_MINUTES;
 

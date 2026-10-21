@@ -1,5 +1,7 @@
 // Klndr Application Coordinator & Main Controller
 
+'use strict';
+
 class KlndrApp {
   constructor() {
     this.user = null;

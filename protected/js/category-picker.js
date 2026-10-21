@@ -10,6 +10,8 @@
 // every time a popup opens, never at init, so the list is whatever the person
 // owns right now.
 
+'use strict';
+
 const CategoryPicker = {
   // "No category" is drawn as though it were a category, so the pinned-selected
   // row, the checkmark and the accent all work without a special case. It has

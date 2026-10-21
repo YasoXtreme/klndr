@@ -18,6 +18,8 @@
 //
 // Browser global and CommonJS module, like palette.js.
 
+'use strict';
+
 const KlndrMotionTimeline = (() => {
   const M = typeof KlndrMotionCore !== 'undefined' ? KlndrMotionCore : require('./motion-core');
   const Scenes = typeof KlndrScenes !== 'undefined' ? KlndrScenes : require('./scenes');

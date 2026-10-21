@@ -11,6 +11,8 @@
 // missing number means "we were not watching yet", never "zero" - and every
 // place that distinction exists, it is spelled out on screen.
 
+'use strict';
+
 (() => {
   const C = KlndrCharts;
   const A = KlndrAdmin;

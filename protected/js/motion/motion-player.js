@@ -14,6 +14,8 @@
 // play, and redraws the moment the theme changes instead of waiting for its
 // next frame.
 
+'use strict';
+
 const KlndrMotion = (() => {
   const Timeline = KlndrMotionTimeline;
   const FPS = KlndrScenes.FPS;

@@ -12,6 +12,8 @@
 // Browser global and CommonJS module, like palette.js: the Remotion project and
 // the unit tests require it.
 
+'use strict';
+
 const KlndrMotionCore = (() => {
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const lerp = (from, to, t) => from + (to - from) * t;

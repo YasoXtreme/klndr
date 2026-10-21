@@ -5,6 +5,8 @@
 // the router in admin/studio/core.js. Each view lives in its own file under
 // admin/studio/.
 
+'use strict';
+
 (() => {
   const S = KlndrStudio;
   let ready = null;

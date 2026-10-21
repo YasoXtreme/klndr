@@ -24,6 +24,8 @@
 // ground under it is the registry's to paint. test/motion.test.js holds every
 // scene to all of that.
 
+'use strict';
+
 const KlndrScenes = (() => {
   const M = typeof KlndrMotionCore !== 'undefined' ? KlndrMotionCore : require('./motion-core');
   const Palette = typeof KlndrPalette !== 'undefined' ? KlndrPalette : require('../palette');

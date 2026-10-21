@@ -7,6 +7,8 @@
 // Every username on this page is set with textContent. Usernames are whatever
 // an admin typed, and nothing upstream escapes them.
 
+'use strict';
+
 (() => {
   const A = KlndrAdmin;
   const { h, button, iconButton, errorBox, toast, dialog, confirmDialog } = A.ui;

@@ -8,6 +8,8 @@
 // It builds DOM and wires callbacks, and that is all. Where the result is put,
 // and what a click means, are the caller's business.
 
+'use strict';
+
 const KlndrAnnouncementReader = (() => {
   const Rules = KlndrAnnouncementRules;
 

@@ -9,6 +9,8 @@
 // a post have to be the same sum, and two copies of these rules would drift into
 // two different answers.
 
+'use strict';
+
 const KlndrAnnouncementRules = (() => {
   const KINDS = [
     { id: 'feature', label: 'New feature', icon: 'auto_awesome' },

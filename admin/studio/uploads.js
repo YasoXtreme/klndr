@@ -5,6 +5,8 @@
 // to sign an upload, PUTs the bytes straight to R2 with progress, and asks the
 // server to confirm what arrived. See server/media.js for the other half.
 
+'use strict';
+
 (() => {
   const S = KlndrStudio;
   const { h, icon, iconButton, fmtBytes } = S;

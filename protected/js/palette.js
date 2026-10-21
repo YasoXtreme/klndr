@@ -6,6 +6,8 @@
 // meaningful if both sides are drawing from the same twenty. Two copies would
 // drift, and the drift would show up as a category the picker cannot render.
 
+'use strict';
+
 const KlndrPalette = {
   // 20 Curated Google Icons
   icons: [

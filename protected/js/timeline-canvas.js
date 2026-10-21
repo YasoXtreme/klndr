@@ -8,6 +8,8 @@
 // 00:00 and y = 0 is the top of the first day row; the ruler and gutter live in
 // their own surfaces and are not part of it.
 
+'use strict';
+
 class TimelineCanvas {
   static MIN_ROW_HEIGHT = 72;
   static MIN_ZOOM = 1;

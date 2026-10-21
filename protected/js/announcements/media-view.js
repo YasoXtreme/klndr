@@ -9,6 +9,8 @@
 // tap when someone has asked for reduced motion. SVG is only ever an <img>:
 // inlined, an uploaded SVG could run script in the page.
 
+'use strict';
+
 const KlndrAnnouncementMedia = (() => {
   const LOTTIE_SRC = '/protected/vendor/lottie_light.min.js';
 

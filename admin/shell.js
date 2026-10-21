@@ -13,6 +13,8 @@
 // Hiding the way in from people who are not admins is presentation. The page
 // and every endpoint behind it are guarded on the server.
 
+'use strict';
+
 const KlndrAdmin = (() => {
   const BASE = '/admin';
   const LAST_PAGE_KEY = 'klndr:admin:last';

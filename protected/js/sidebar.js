@@ -3,6 +3,8 @@
 // before a ticked row moves on), the list's motion, filter tabs (default:
 // Uncompleted & Unscheduled), and inline task creation with dynamic background color.
 
+'use strict';
+
 const UNCATEGORIZED = CategoryPicker.UNCATEGORIZED;
 
 class TasksSidebar {

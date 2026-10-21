@@ -1,4 +1,6 @@
 // Klndr Client API Service
+'use strict';
+
 const API = {
   async request(endpoint, options = {}) {
     const defaultHeaders = {

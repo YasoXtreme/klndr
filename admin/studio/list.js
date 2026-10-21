@@ -1,5 +1,7 @@
 // Announcement Studio - the list, and the actions a post's card offers.
 
+'use strict';
+
 (() => {
   const S = KlndrStudio;
   const { Rules, state, h, icon, button, iconButton, statusPill, menu, toast, confirmDialog, go } = S;

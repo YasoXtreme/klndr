@@ -6,6 +6,8 @@
 // what every view needs: page state, small DOM builders, formatting, and the
 // router. admin/announcements.js registers it with the admin shell.
 
+'use strict';
+
 const KlndrStudio = (() => {
   const Rules = KlndrAnnouncementRules;
   // The pieces every admin section shares live in the shell; the Studio's
