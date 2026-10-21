@@ -8,7 +8,10 @@ touching before changing it.
 The codebase is partway through a planned migration to TypeScript, Vite,
 Hono + Zod and React (for app chrome and admin only; the timeline engine stays
 framework-free). Until a file has moved, keep it in its current style: don't
-add new browser globals, and write new tooling and tests in TypeScript.
+add new browser globals, and write new tooling and tests in TypeScript. Every
+browser script is strict, and its top-level names are its exports: each is
+declared in an `/* exported Name */` comment in the file and listed in the
+globals maps in `eslint.config.mjs`, and lint rejects any other.
 
 ## Commands
 

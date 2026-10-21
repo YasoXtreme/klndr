@@ -1,6 +1,8 @@
 // Announcement Studio - the editor's form: words, button, delivery, audience
 // and schedule. The header section is editor-media.js.
 
+'use strict';
+
 (() => {
   const S = KlndrStudio;
   const { Rules, state, h, icon, checkbox, select, segment, section, counterFor, field } = S;

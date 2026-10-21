@@ -9,9 +9,10 @@
 // tap when someone has asked for reduced motion. SVG is only ever an <img>:
 // inlined, an uploaded SVG could run script in the page.
 
-const KlndrAnnouncementMedia = (() => {
-  const LOTTIE_SRC = '/protected/vendor/lottie_light.min.js';
+'use strict';
 
+/* exported KlndrAnnouncementMedia */
+const KlndrAnnouncementMedia = (() => {
   const TYPE_ICONS = {
     image: 'image',
     animated_image: 'gif_box',
@@ -20,28 +21,6 @@ const KlndrAnnouncementMedia = (() => {
     lottie: 'animation',
     scene: 'animated_images'
   };
-
-  let lottieLoading = null;
-
-  // The Lottie player is 170 kB and most posts will never need it, so it is
-  // fetched the first time one does.
-  function loadLottie() {
-    if (window.lottie) return Promise.resolve(window.lottie);
-    if (!lottieLoading) {
-      lottieLoading = new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = LOTTIE_SRC;
-        script.async = true;
-        script.onload = () => (window.lottie ? resolve(window.lottie) : reject(new Error('Lottie did not load')));
-        script.onerror = () => {
-          lottieLoading = null;
-          reject(new Error('Lottie did not load'));
-        };
-        document.head.appendChild(script);
-      });
-    }
-    return lottieLoading;
-  }
 
   function prefersReducedMotion() {
     return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -287,7 +266,7 @@ const KlndrAnnouncementMedia = (() => {
           : null);
 
         Promise.all([
-          loadLottie(),
+          KlndrVendor.load('lottie'),
           fetch(media.url).then((res) => {
             if (!res.ok) throw new Error(`Lottie file answered ${res.status}`);
             return res.json();
@@ -363,5 +342,5 @@ const KlndrAnnouncementMedia = (() => {
     return result;
   }
 
-  return { mount, loadLottie, ratioOf, TYPE_ICONS };
+  return { mount, ratioOf, TYPE_ICONS };
 })();

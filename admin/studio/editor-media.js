@@ -1,6 +1,8 @@
 // Announcement Studio - the header section: motion scenes, uploads, the media
 // library, and how the chosen header is framed.
 
+'use strict';
+
 (() => {
   const S = KlndrStudio;
   const { Rules, state, h, iconButton, checkbox, select, segment, section, counterFor, field } = S;

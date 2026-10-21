@@ -189,6 +189,7 @@ protected/                   Served only to an authenticated session
     sidebar.js               Tasks panel, filters, multi-column board
     category-picker.js       One picker shared by the inline bar and the block editor
     history.js               Undo/redo stack of gestures
+    vendor.js                Fetches lottie-web and fflate the first time a post or an upload needs one
     announcements/
       rules.js               Who a post is for, when it is delivered and read — the server requires it too
       markdown.js            Escape-first Markdown for post bodies, and the legacy three-rule markup

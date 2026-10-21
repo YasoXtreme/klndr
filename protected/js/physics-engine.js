@@ -7,6 +7,9 @@
 //
 // Entry shape: { taskId, segmentId, startTime, duration, endTime, isLocked, completed }
 
+'use strict';
+
+/* exported PhysicsEngine */
 const PhysicsEngine = {
   MIN_TASK_DURATION_MINUTES: 15,
 

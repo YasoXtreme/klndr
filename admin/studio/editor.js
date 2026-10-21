@@ -5,6 +5,8 @@
 // each other. The form sections are editor-sections.js and editor-media.js; the
 // live preview is preview.js.
 
+'use strict';
+
 (() => {
   const S = KlndrStudio;
   const { Rules, state, h, icon, button, iconButton, statusPill, menu, toast, confirmDialog, go } = S;

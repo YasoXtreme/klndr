@@ -25,6 +25,8 @@
    round trip on a preference this cheap would only slow the page down.
    ==================================================== */
 
+'use strict';
+
 window.KlndrTheme = (function () {
   const STORAGE_KEY = 'klndr:theme';
   const MODES = ['system', 'light', 'dark'];

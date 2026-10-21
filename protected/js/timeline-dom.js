@@ -9,6 +9,9 @@
 // the shared boundary, then pops in. Aim at the boundary and you move both
 // blocks; aim a few pixels either side and you resize just that one.
 
+'use strict';
+
+/* exported TimelineDOM */
 class TimelineDOM {
   // Two boundaries within this many minutes of each other count as touching.
   static SEAM_TOLERANCE_MINUTES = 0.5;

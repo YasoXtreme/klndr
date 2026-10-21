@@ -15,6 +15,9 @@
 // only have the parallel arrays, so they stay authoritative on the wire while
 // segments are authoritative in memory.
 
+'use strict';
+
+/* exported TaskModel */
 const TaskModel = {
   MIN_SEGMENT_MINUTES: 15,
 

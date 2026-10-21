@@ -1,5 +1,8 @@
 // Klndr Application Coordinator & Main Controller
 
+'use strict';
+
+/* exported KlndrApp */
 class KlndrApp {
   constructor() {
     this.user = null;
@@ -2320,7 +2323,7 @@ class KlndrApp {
       if (this.previewTaskState && this.previewTaskState.category === goneName) {
         this.previewTaskState.category = newName;
         const categoryBtn = document.getElementById('btnPreviewCategory');
-        if (categoryBtn) categoryBtn.title = KlndrApp.categoryButtonTitle(newName);
+        if (categoryBtn) categoryBtn.title = CategoryPicker.buttonTitle(newName);
       }
     }
 
@@ -3022,11 +3025,6 @@ class KlndrApp {
     }
   }
 
-  // "Category: null" is not a tooltip.
-  static categoryButtonTitle(name) {
-    return name ? `Category: ${name}` : 'Category: none';
-  }
-
   /**
    * Give the block being edited the look of the category just picked.
    *
@@ -3052,7 +3050,7 @@ class KlndrApp {
       }
     }
 
-    if (categoryBtn) categoryBtn.title = KlndrApp.categoryButtonTitle(nextName);
+    if (categoryBtn) categoryBtn.title = CategoryPicker.buttonTitle(nextName);
   }
 
   openBlockPreviewModal(task, segmentId = null) {
@@ -3083,7 +3081,7 @@ class KlndrApp {
       KlndrTheme.paint(previewCard, this.previewTaskState.color);
       badgeIcon.textContent = this.previewTaskState.icon;
       iconBtn.querySelector('.material-symbols-outlined').textContent = this.previewTaskState.icon;
-      categoryBtn.title = KlndrApp.categoryButtonTitle(this.previewTaskState.category);
+      categoryBtn.title = CategoryPicker.buttonTitle(this.previewTaskState.category);
 
       const scopeNote = document.getElementById('previewScopeNote');
       if (scopeNote) {
@@ -3632,7 +3630,18 @@ class KlndrApp {
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  window.klndr = new KlndrApp();
-  window.klndr.init();
-});
+// Started once the page is parsed. As the last script in <body> this runs
+// while the page is still loading, but loaded any other way (async, or imported
+// once the page is up) it would run after DOMContentLoaded has fired and wait
+// for an event that never comes. theme.js and admin/shell.js start the same way.
+(() => {
+  const start = () => {
+    window.klndr = new KlndrApp();
+    window.klndr.init();
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();

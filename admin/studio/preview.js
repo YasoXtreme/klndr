@@ -5,6 +5,8 @@
 // inbox, banner and card views are only frames around those pieces, placed
 // the way each one sits in the app.
 
+'use strict';
+
 (() => {
   const S = KlndrStudio;
   const { state, h, icon, button, iconButton, segment } = S;

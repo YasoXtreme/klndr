@@ -10,6 +10,9 @@
 // every time a popup opens, never at init, so the list is whatever the person
 // owns right now.
 
+'use strict';
+
+/* exported CategoryPicker */
 const CategoryPicker = {
   // "No category" is drawn as though it were a category, so the pinned-selected
   // row, the checkmark and the accent all work without a special case. It has
@@ -22,6 +25,12 @@ const CategoryPicker = {
   // so "" would silently become the default filter in one place and "no column
   // was under the pointer" in the other.
   UNCATEGORIZED: '__UNCATEGORIZED__',
+
+  // The tooltip on the category button of the create bar and the block
+  // editor. "Category: null" is not a tooltip.
+  buttonTitle(name) {
+    return name ? `Category: ${name}` : 'Category: none';
+  },
 
   /**
    * @param {HTMLElement} popupEl      the .picker-popup-categories container

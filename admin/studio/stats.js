@@ -1,6 +1,8 @@
 // Announcement Studio - one post's numbers: who it was for, who it reached,
 // who opened it, and what they did with it.
 
+'use strict';
+
 (() => {
   const S = KlndrStudio;
   const { Rules, h, button, statusPill } = S;

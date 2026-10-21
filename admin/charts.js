@@ -15,6 +15,9 @@
 //   - Three light-mode steps sit under 3:1 against white, so every chart ships
 //     either direct labels or a table view. That relief is a requirement.
 
+'use strict';
+
+/* exported KlndrCharts */
 const KlndrCharts = (() => {
   const NS = "http://www.w3.org/2000/svg";
   const SERIES = (i) => `var(--chart-${(i % 8) + 1})`;
