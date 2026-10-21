@@ -36,8 +36,14 @@ export type TestDb = {
   deleteUser: (username: string) => Promise<boolean>;
 };
 
+// KLNDR_TARGET=bundle runs the same suite against the bundle Vercel deploys
+// (npm run build first), so what ships is what was tested.
+const BUNDLE = "../../.vercel/output/functions/index.func/index.js";
+
 export async function startServer(): Promise<TestServer> {
-  const app = require("../../server.js");
+  const app = require(process.env.KLNDR_TARGET === "bundle" ? BUNDLE : "../../server.js");
+  // Test-side account helpers. Against the bundle this is a second client on
+  // the same database, which is all they need.
   const db: TestDb = require("../../server/db");
   await db.ready;
 

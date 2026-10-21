@@ -52,7 +52,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "node server.js",
+    // KLNDR_TARGET=bundle tests the bundle Vercel deploys (npm run build first).
+    command: process.env.KLNDR_TARGET === "bundle" ? "node scripts/serve-bundle.mjs" : "node server.js",
     url: `${BASE_URL}/login`,
     reuseExistingServer: !CI,
     timeout: 120_000,

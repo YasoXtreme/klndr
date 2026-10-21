@@ -28,6 +28,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run check:tokens
       - run: npm test
+      - run: npm run test:build
 
   integration:
     name: Integration tests
@@ -49,6 +50,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:integration
+      # Again, against the bundle Vercel deploys.
+      - run: npm run build
+      - run: npm run test:integration
+        env:
+          KLNDR_TARGET: bundle
 
   e2e:
     name: UI tests
@@ -68,7 +74,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # The UI suite runs against the bundle Vercel deploys.
+      - run: npm run build
       - run: npm run test:e2e
+        env:
+          KLNDR_TARGET: bundle
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

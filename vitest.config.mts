@@ -20,6 +20,11 @@ export default defineConfig({
         test: { name: "unit", include: ["test/*.test.js"] },
       },
       {
+        // Runs npm run build itself, then checks what Vercel would deploy.
+        extends: true,
+        test: { name: "build", include: ["test/build/**/*.test.ts"] },
+      },
+      {
         extends: true,
         test: {
           name: "integration",
