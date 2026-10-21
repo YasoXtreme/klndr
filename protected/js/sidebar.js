@@ -338,7 +338,7 @@ class TasksSidebar {
         selectedName: this.newTaskState.category,
         onPick: (category) => {
           this.applyCategoryToDraft(this.newTaskState, category, createBox);
-          categoryBtn.title = KlndrApp.categoryButtonTitle(this.newTaskState.category);
+          categoryBtn.title = CategoryPicker.buttonTitle(this.newTaskState.category);
           if (iconBtn) {
             iconBtn.querySelector('.material-symbols-outlined').textContent =
               this.newTaskState.icon;

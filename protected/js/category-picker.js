@@ -26,6 +26,12 @@ const CategoryPicker = {
   // was under the pointer" in the other.
   UNCATEGORIZED: '__UNCATEGORIZED__',
 
+  // The tooltip on the category button of the create bar and the block
+  // editor. "Category: null" is not a tooltip.
+  buttonTitle(name) {
+    return name ? `Category: ${name}` : 'Category: none';
+  },
+
   /**
    * @param {HTMLElement} popupEl      the .picker-popup-categories container
    * @param {Object}      options

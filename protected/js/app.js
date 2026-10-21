@@ -2323,7 +2323,7 @@ class KlndrApp {
       if (this.previewTaskState && this.previewTaskState.category === goneName) {
         this.previewTaskState.category = newName;
         const categoryBtn = document.getElementById('btnPreviewCategory');
-        if (categoryBtn) categoryBtn.title = KlndrApp.categoryButtonTitle(newName);
+        if (categoryBtn) categoryBtn.title = CategoryPicker.buttonTitle(newName);
       }
     }
 
@@ -3025,11 +3025,6 @@ class KlndrApp {
     }
   }
 
-  // "Category: null" is not a tooltip.
-  static categoryButtonTitle(name) {
-    return name ? `Category: ${name}` : 'Category: none';
-  }
-
   /**
    * Give the block being edited the look of the category just picked.
    *
@@ -3055,7 +3050,7 @@ class KlndrApp {
       }
     }
 
-    if (categoryBtn) categoryBtn.title = KlndrApp.categoryButtonTitle(nextName);
+    if (categoryBtn) categoryBtn.title = CategoryPicker.buttonTitle(nextName);
   }
 
   openBlockPreviewModal(task, segmentId = null) {
@@ -3086,7 +3081,7 @@ class KlndrApp {
       KlndrTheme.paint(previewCard, this.previewTaskState.color);
       badgeIcon.textContent = this.previewTaskState.icon;
       iconBtn.querySelector('.material-symbols-outlined').textContent = this.previewTaskState.icon;
-      categoryBtn.title = KlndrApp.categoryButtonTitle(this.previewTaskState.category);
+      categoryBtn.title = CategoryPicker.buttonTitle(this.previewTaskState.category);
 
       const scopeNote = document.getElementById('previewScopeNote');
       if (scopeNote) {
