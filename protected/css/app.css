@@ -109,6 +109,12 @@ body {
   transform: rotate(180deg);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .user-profile-pill .user-profile-chevron {
+    transition: none;
+  }
+}
+
 /* The only sign of unread announcements up here. No number and no colour that
    reads as an error: the count is inside the menu, and new posts have already
    announced themselves by arriving. */

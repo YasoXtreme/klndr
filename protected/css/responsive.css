@@ -1384,6 +1384,12 @@ body[data-input="touch"] .btn-block-more {
   .context-menu {
     animation: none;
   }
+
+  /* The scrim's own selector, not just .sheet-scrim: the :has() rule above
+     outranks the plain class in the reduced-motion block further up. */
+  body:has(.context-menu.active) .sheet-scrim {
+    animation: none;
+  }
 }
 
 /* ====================================================
