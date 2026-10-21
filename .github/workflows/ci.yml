@@ -36,7 +36,9 @@ jobs:
     # whose name doesn't end in _e2e or _test.
     services:
       mongo:
-        image: mongo:8
+        # 7.0, not 8: MongoDB 8 refuses to start on Linux 6.19 and newer, which
+        # the runners now use (SERVER-121912).
+        image: mongo:7.0
         ports: ["27017:27017"]
     env:
       MONGODB_URI: mongodb://localhost:27017
@@ -55,7 +57,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       mongo:
-        image: mongo:8
+        # 7.0, not 8: MongoDB 8 refuses to start on Linux 6.19 and newer, which
+        # the runners now use (SERVER-121912).
+        image: mongo:7.0
         ports: ["27017:27017"]
     env:
       MONGODB_URI: mongodb://localhost:27017
