@@ -3,7 +3,6 @@
 // at the wrong bytes, or a page that quietly stops being versioned and goes
 // back to asking the server about every file on every load.
 
-const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");

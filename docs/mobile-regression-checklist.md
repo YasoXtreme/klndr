@@ -1,10 +1,10 @@
 # klndr — responsive & touch regression checklist
 
-There is no DOM test framework in this repo. `test-e2e.js` is a raw-`http` API
-smoke test — auth redirects and CRUD — with zero coverage of geometry, input or
-layout, and `package.json` has no `test` script. This file is the substitute:
-run it by hand after any change to the timeline renderer, the drag controller,
-the layout controller or `responsive.css`.
+The Playwright suite (`npm run test:e2e`) only smoke-tests the UI so far:
+sign-in, the geometry check on desktop, one mouse drag from the task list and
+its undo, and admin. Everything else here is still checked by hand: run it
+after any change to the timeline renderer, the drag controller, the layout
+controller or `responsive.css`.
 
 Two things here are automatable and should be done first, because they are free:
 

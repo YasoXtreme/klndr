@@ -7,7 +7,6 @@
 // Drawing is recorded against a fake 2D context rather than compared as pixels,
 // which keeps the test free of a canvas implementation.
 
-const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const Core = require("../protected/js/motion/motion-core");
