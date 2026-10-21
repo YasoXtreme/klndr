@@ -39,8 +39,17 @@ export default defineConfig({
     contextOptions: { reducedMotion: "reduce" },
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "phone", use: { ...devices["Pixel 7"] } },
+    // The smoke suite, once per device class.
+    { name: "desktop", testIgnore: /mobile[\\/]/, use: { ...devices["Desktop Chrome"] } },
+    { name: "phone", testIgnore: /mobile[\\/]/, use: { ...devices["Pixel 7"] } },
+    // docs/mobile-regression-checklist.md, automated. A desktop-sized browser
+    // that can also be touched, so one board serves both kinds of pointer;
+    // tests that need a particular device open their own context.
+    {
+      name: "checklist",
+      testMatch: /mobile[\\/].*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], hasTouch: true, viewport: { width: 1280, height: 800 } },
+    },
   ],
   webServer: {
     command: "node server.js",
