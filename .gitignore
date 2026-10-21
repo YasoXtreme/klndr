@@ -1,7 +1,14 @@
 node_modules
 .claude
-package-lock.json
 .env
+.env.test
 data/
 motion/out/
 motion/public/klndr/
+# An untracked leftover of the desktop wrapper: node_modules and a lockfile.
+/desktop/
+# Test output
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
