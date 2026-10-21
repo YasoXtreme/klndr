@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 
 // The server is CommonJS and is loaded by Node itself rather than through
-// Vite, so what runs here is exactly what `node server.js` runs.
+// Vite, so what runs here is exactly what `npm start` runs.
 const require = createRequire(import.meta.url);
 
 export type Response = {
@@ -41,10 +41,10 @@ export type TestDb = {
 const BUNDLE = "../../.vercel/output/functions/index.func/index.js";
 
 export async function startServer(): Promise<TestServer> {
-  const app = require(process.env.KLNDR_TARGET === "bundle" ? BUNDLE : "../../server.js");
+  const app = require(process.env.KLNDR_TARGET === "bundle" ? BUNDLE : "../../apps/server/src/server.js");
   // Test-side account helpers. Against the bundle this is a second client on
   // the same database, which is all they need.
-  const db: TestDb = require("../../server/db");
+  const db: TestDb = require("../../apps/server/src/db");
   await db.ready;
 
   const server = await new Promise<http.Server>((resolve) => {

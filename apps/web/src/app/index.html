@@ -1,0 +1,1280 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) report real
+         numbers; without it every inset resolves to 0 on notched iOS. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f2ffec" />
+    <!-- The theme stamp, first statement on the page. Everything below - the
+         critical CSS, the stylesheets, the boot overlay - is written against
+         html[data-theme], so this has to land before any of it is parsed or
+         the app opens on the wrong ground and then lurches.
+
+         It writes an attribute and nothing else, and only for a PINNED
+         choice: the default is the OS, which the media queries below and in
+         theme.css already answer without any script running. The rest of the
+         controller is src/shared/theme.js. -->
+    <script>
+      try {
+        var t = localStorage.getItem('klndr:theme');
+        if (t === 'dark' || t === 'light')
+          document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    </script>
+    <title>klndr — Think of it. Schedule it.</title>
+    <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/favicon-16.png" />
+    <link rel="icon" href="/assets/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <!-- Served from /assets rather than from /protected, because the browser
+         fetches it to decide whether the app is installable and that fetch is
+         not carrying the session. -->
+    <link rel="manifest" href="/assets/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="klndr" />
+    <!-- Opened while the page's own files load, so the icon font is not two
+         round trips behind them. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- The boot overlay draws the lockup in ElmsSans Black before anything
+         else is on screen, so the face has to be in flight from the first
+         byte, not discovered later inside common.css. -->
+    <link
+      rel="preload"
+      href="/assets/ElmsSans.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+
+    <!-- The boot overlay's styles, written in here by the build from
+         src/shared/boot.css: the loading screen cannot wait on a file of its
+         own. -->
+    <!-- klndr:boot.css -->
+
+    <!-- The page's stylesheet, as built from the imports in main.js. The build
+         puts it here, before the icon font's stylesheet below: that one
+         also styles .material-symbols-outlined, and the later sheet wins at
+         equal specificity. -->
+    <!-- klndr:styles -->
+
+    <!-- Third party and render-blocking, which on a cold start is the single
+         longest thing between the request and a first paint. Loaded async so
+         the logo can come up without it; the boot overlay waits for the font
+         before it lets go of the page, so no icon is ever seen as its name. -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      onload="this.rel = 'stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      />
+    </noscript>
+  </head>
+  <body data-boot="app">
+    <!-- ====================================================
+       0. BOOT OVERLAY
+       ====================================================
+       The build writes src/shared/boot.js in here, first thing in the
+       body, and it puts the klndr logo up before anything else is parsed.
+       app.js tells it two things: KlndrBoot.ready() once the board is on
+       screen, when the logo flies into the topbar's (data-boot-brand), and
+       KlndrBoot.fail(err) when it never will be. -->
+    <!-- klndr:boot.js -->
+
+    <!-- 1. Top Navigation Bar -->
+    <header class="app-topbar">
+      <div class="topbar-left">
+        <div class="topbar-brand">
+          <span class="klndr-lockup klndr-lockup-topbar" role="img" aria-label="klndr" data-boot-brand>
+            <span class="klndr-plate" aria-hidden="true"><span>k</span></span>
+            <span class="klndr-wordmark" aria-hidden="true">klndr</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Opens the account menu (#userMenu, near the end of the page),
+             which is also where What's new lives. KlndrAnnouncements puts a
+             dot on the avatar while something is unread, and nothing at all
+             otherwise. -->
+        <button
+          type="button"
+          class="user-profile-pill"
+          id="userProfileTrigger"
+          aria-haspopup="menu"
+          aria-expanded="false"
+          aria-controls="userMenu"
+        >
+          <span class="user-avatar-circle">
+            <span
+              class="material-symbols-outlined"
+              style="font-size: 18px; color: var(--accent-active-ink)"
+              aria-hidden="true"
+              >person</span
+            >
+            <span class="user-unread-dot" id="userUnreadDot" hidden></span>
+          </span>
+          <span id="topbarUsername">User</span>
+          <span class="ann-sr-only" id="userUnreadSr"></span>
+          <span class="material-symbols-outlined user-profile-chevron" aria-hidden="true">expand_more</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 2. Main Dual-Pane Workspace Layout -->
+    <main class="app-workspace-layout" data-split="split">
+      <!-- LEFT PANE: CALENDAR TIMELINE -->
+      <section class="calendar-pane" id="calendarPane">
+        <div class="calendar-pane-header">
+          <div class="calendar-header-left">
+            <!-- Calendar Collapse Button -->
+            <button
+              type="button"
+              class="btn-calendar-collapse"
+              id="btnCalendarCollapse"
+              title="Toggle calendar width"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 18px; color: var(--ink-strong)"
+                >chevron_left</span
+              >
+            </button>
+            <h2 class="calendar-title">Calendar</h2>
+          </div>
+
+          <!-- Date Range Navigator -->
+          <div class="calendar-header-center">
+            <div class="calendar-date-nav-group">
+              <button
+                type="button"
+                class="btn-nav-arrow"
+                id="btnPrevWeek"
+                title="Previous week"
+              >
+                <span class="material-symbols-outlined" style="font-size: 16px"
+                  >chevron_left</span
+                >
+              </button>
+              <span class="date-range-label" id="calendarDateRangeLabel"
+                >Loading...</span
+              >
+              <button
+                type="button"
+                class="btn-nav-arrow"
+                id="btnNextWeek"
+                title="Next week"
+              >
+                <span class="material-symbols-outlined" style="font-size: 16px"
+                  >chevron_right</span
+                >
+              </button>
+              <button type="button" class="btn-today" id="btnTodayWeek">
+                Today
+              </button>
+            </div>
+          </div>
+
+          <!-- Zoom controls & Calendar Options -->
+          <div class="calendar-header-right">
+            <!-- Only appears while a background save is in flight; edits are
+                 already on screen by the time it shows. -->
+            <div class="sync-status-chip" id="syncStatusChip">
+              <span class="sync-status-dot"></span>Saving
+            </div>
+            <!-- Undo/redo for the whole board. Ctrl+Z / Ctrl+Shift+Z do the
+                 same thing; the titles say what the next press would revert. -->
+            <div class="calendar-zoom-group calendar-history-group">
+              <button
+                type="button"
+                class="btn-zoom"
+                id="btnUndo"
+                title="Nothing to undo"
+                disabled
+              >
+                <span class="material-symbols-outlined" style="font-size: 18px"
+                  >undo</span
+                >
+              </button>
+              <button
+                type="button"
+                class="btn-zoom"
+                id="btnRedo"
+                title="Nothing to redo"
+                disabled
+              >
+                <span class="material-symbols-outlined" style="font-size: 18px"
+                  >redo</span
+                >
+              </button>
+            </div>
+            <div class="calendar-zoom-group calendar-timezoom-group">
+              <button
+                type="button"
+                class="btn-zoom"
+                id="btnZoomOut"
+                title="Zoom out (Ctrl + scroll)"
+              >
+                <span class="material-symbols-outlined" style="font-size: 18px"
+                  >remove</span
+                >
+              </button>
+              <button
+                type="button"
+                class="btn-zoom btn-zoom-fit"
+                id="btnZoomFit"
+                title="Fit whole day"
+              >
+                Fit
+              </button>
+              <button
+                type="button"
+                class="btn-zoom"
+                id="btnZoomIn"
+                title="Zoom in (Ctrl + scroll)"
+              >
+                <span class="material-symbols-outlined" style="font-size: 18px"
+                  >add</span
+                >
+              </button>
+            </div>
+            <!-- How many days are on screen. A range rather than a
+                 magnification - it decides what gets fetched - so it is a
+                 separate control from the zoom group beside it, and on a phone
+                 it takes that group's place. -->
+            <div class="calendar-zoom-group calendar-daycount-group">
+              <button type="button" class="btn-zoom day-count-btn" data-days="1" aria-pressed="false" title="One day">1</button>
+              <button type="button" class="btn-zoom day-count-btn" data-days="3" aria-pressed="false" title="Three days">3</button>
+              <button type="button" class="btn-zoom day-count-btn" data-days="5" aria-pressed="false" title="Five days">5</button>
+              <button type="button" class="btn-zoom day-count-btn" data-days="7" aria-pressed="false" title="Full week">7</button>
+            </div>
+            <button
+              type="button"
+              class="btn-icon-square"
+              id="btnCalendarSliders"
+              title="Calendar Settings"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 20px; color: var(--ink-strong)"
+                >tune</span
+              >
+            </button>
+          </div>
+        </div>
+
+        <!-- Timeline Workspace (0-24H).
+             The ruler and day gutter are separate canvases outside the scroll
+             container so they stay frozen while the grid scrolls under them. -->
+        <div class="timeline-viewport" id="timelineViewport">
+          <div class="timeline-corner"></div>
+          <canvas id="timelineRulerCanvas" class="timeline-ruler-canvas"></canvas>
+          <canvas id="timelineGutterCanvas" class="timeline-gutter-canvas"></canvas>
+          <div class="timeline-workspace-container" id="timeline-workspace">
+            <canvas id="timelineCanvas"></canvas>
+            <div id="timelineDomOverlay"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT PANE: TASKS SIDEBAR DRAWER & MULTI-COLUMN FULL VIEW -->
+      <aside class="tasks-sidebar-pane" id="tasks-sidebar-pane">
+        <div class="sidebar-header">
+          <h2 class="sidebar-header-title">Tasks</h2>
+          <div class="sidebar-actions-group">
+            <!-- Search icon -->
+            <button
+              type="button"
+              class="btn-sidebar-icon"
+              id="sidebarSearchBtn"
+              title="Search tasks"
+            >
+              <span class="material-symbols-outlined" style="font-size: 18px"
+                >search</span
+              >
+            </button>
+            <!-- Filter icon -->
+            <button
+              type="button"
+              class="btn-sidebar-icon"
+              id="sidebarFilterBtn"
+              title="Filter tasks"
+            >
+              <span class="material-symbols-outlined" style="font-size: 18px"
+                >filter_list</span
+              >
+            </button>
+            <!-- Collapse/Expand icon -->
+            <button
+              type="button"
+              class="btn-sidebar-icon"
+              id="sidebarCollapseBtn"
+              title="Toggle sidebar width"
+            >
+              <span class="material-symbols-outlined" style="font-size: 18px"
+                >chevron_right</span
+              >
+            </button>
+          </div>
+        </div>
+
+        <!-- Expandable Search Bar -->
+        <div
+          class="sidebar-search-bar"
+          id="sidebarSearchBar"
+          style="display: none"
+        >
+          <input
+            type="text"
+            id="sidebarSearchInput"
+            class="sidebar-search-input"
+            placeholder="Search tasks by name..."
+          />
+        </div>
+
+        <!-- Expandable Filter Bar (All is leftmost, Uncompleted & Unscheduled is
+             default). Only the five status pills are markup; one pill per
+             category is appended by sidebar.js, because the categories belong
+             to the person and klndr ships none. -->
+        <div
+          class="sidebar-filter-bar"
+          id="sidebarFilterBar"
+          style="display: none"
+        >
+          <button
+            type="button"
+            class="category-filter-pill"
+            data-category="ALL"
+          >
+            All
+          </button>
+          <button
+            type="button"
+            class="category-filter-pill active"
+            data-category="UNCOMPLETED_UNSCHEDULED"
+          >
+            Uncompleted & Unscheduled
+          </button>
+          <button
+            type="button"
+            class="category-filter-pill"
+            data-category="UNCOMPLETED"
+          >
+            Uncompleted
+          </button>
+          <button
+            type="button"
+            class="category-filter-pill"
+            data-category="COMPLETED"
+          >
+            Completed
+          </button>
+          <button
+            type="button"
+            class="category-filter-pill"
+            data-category="UNSCHEDULED"
+          >
+            Unscheduled
+          </button>
+        </div>
+
+        <!-- The two shapes the task list can take, stacked so one can dissolve
+             into the other while the pane is still moving. Which one is showing
+             is the .is-active class, never display - see .sidebar-body. -->
+        <div class="sidebar-body" id="sidebarBody">
+          <!-- Task Cards Standard Scrollable List -->
+          <div class="sidebar-tasks-scroll is-active" id="sidebarTasksList"></div>
+
+          <!-- Multi-Column Category Kanban Container (Visible when Calendar is Collapsed) -->
+          <div
+            class="tasks-multicolumn-container"
+            id="tasksMulticolumnContainer"
+          ></div>
+        </div>
+
+        <!-- Simplified Inline Task Creation Bar -->
+        <div class="sidebar-inline-create-container">
+          <div class="inline-create-box">
+            <input
+              type="text"
+              id="inlineTaskInput"
+              class="inline-create-input"
+              placeholder="Write your task here"
+              autocomplete="off"
+            />
+
+            <!-- 3 Right-Aligned Picker Buttons -->
+            <button
+              type="button"
+              class="inline-picker-btn"
+              id="btnInlineIcon"
+              title="Choose Icon"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 18px"
+                >add_reaction</span
+              >
+            </button>
+
+            <button
+              type="button"
+              class="inline-picker-btn"
+              id="btnInlineColor"
+              title="Choose Color"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 18px"
+                >palette</span
+              >
+            </button>
+
+            <button
+              type="button"
+              class="inline-picker-btn"
+              id="btnInlineCategory"
+              title="Choose Category"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 18px"
+                >category</span
+              >
+            </button>
+          </div>
+
+          <!-- 20 Icons Popup Grid -->
+          <div class="picker-popup-grid" id="inlineIconPopup"></div>
+
+          <!-- 20 Colors Popup Grid -->
+          <div class="picker-popup-grid" id="inlineColorPopup"></div>
+
+          <!-- Category Popup List -->
+          <div class="picker-popup-categories" id="inlineCategoryPopup"></div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Phone-only pane switcher. Both buttons drive setCalendarCollapsed(), the
+         same method the desktop chevron uses, so there is no second state
+         machine to keep in step with the first. Hidden above 767px. -->
+    <nav class="mobile-tabbar" id="mobileTabbar" aria-label="Switch pane">
+      <button
+        type="button"
+        class="mobile-tab is-active"
+        id="mobileTabCalendar"
+        aria-pressed="true"
+      >
+        <span class="material-symbols-outlined">calendar_month</span>
+        <span class="mobile-tab-label">Calendar</span>
+      </button>
+      <button
+        type="button"
+        class="mobile-tab"
+        id="mobileTabTasks"
+        aria-pressed="false"
+      >
+        <span class="material-symbols-outlined">checklist</span>
+        <span class="mobile-tab-label">Tasks</span>
+      </button>
+    </nav>
+
+    <!-- ====================================================
+       3. MODALS & FLOATING EDITOR
+       ==================================================== -->
+
+    <!-- Modal 1: Account & Settings.
+         Dual panel, like the calendar and the tasks panel it sits over: the
+         active section on the left, the section list pinned down the right. -->
+    <div class="modal-container" id="accountModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card modal-card-dual">
+        <!-- LEFT PANE: the active section -->
+        <section class="modal-content-pane">
+          <div class="modal-pane-header">
+            <h3 id="accountPanelTitle">Account Settings</h3>
+          </div>
+          <div class="modal-pane-body">
+            <!-- Tab 1: Account Settings -->
+            <div class="modal-tab-panel" id="tabPanelSettings">
+              <div class="settings-identity-box">
+                <div>
+                  Logged in as: <strong id="displayCurrentUsername">user</strong>
+                </div>
+                <div>
+                  Role:
+                  <span
+                    id="displayCurrentRole"
+                    style="font-weight: 700; text-transform: uppercase"
+                    >user</span
+                  >
+                </div>
+              </div>
+
+              <!-- Appearance. A radiogroup rather than a switch, because
+                   there are three states and a switch only has two: the
+                   design system's default is the OS, and pinning a theme has
+                   to be undoable. -->
+              <div class="settings-block">
+                <span class="settings-block-label" id="themeChoiceLabel"
+                  >Appearance</span
+                >
+                <div
+                  class="theme-toggle"
+                  role="radiogroup"
+                  aria-labelledby="themeChoiceLabel"
+                >
+                  <button
+                    type="button"
+                    class="theme-option is-active"
+                    data-theme-choice="system"
+                    role="radio"
+                    aria-checked="true"
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true"
+                      >contrast</span
+                    >
+                    System
+                  </button>
+                  <button
+                    type="button"
+                    class="theme-option"
+                    data-theme-choice="light"
+                    role="radio"
+                    aria-checked="false"
+                    tabindex="-1"
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true"
+                      >light_mode</span
+                    >
+                    Light
+                  </button>
+                  <button
+                    type="button"
+                    class="theme-option"
+                    data-theme-choice="dark"
+                    role="radio"
+                    aria-checked="false"
+                    tabindex="-1"
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true"
+                      >dark_mode</span
+                    >
+                    Dark
+                  </button>
+                </div>
+                <p class="settings-block-note">
+                  System follows your device. Remembered on this device.
+                </p>
+              </div>
+
+              <!-- Change Username -->
+              <form
+                id="changeUsernameForm"
+                class="modal-form"
+                style="margin-bottom: 18px"
+              >
+                <div id="usernameStatusMsg" class="status-msg"></div>
+                <div class="form-row">
+                  <label for="inputNewUsername">Change Username</label>
+                  <div style="display: flex; gap: 8px">
+                    <input
+                      type="text"
+                      id="inputNewUsername"
+                      required
+                      placeholder="New username"
+                      style="flex: 1"
+                    />
+                    <button
+                      type="submit"
+                      class="btn-modal-primary"
+                      style="height: 38px"
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              <!-- Change Password -->
+              <form id="changePasswordForm" class="modal-form">
+                <div id="passwordStatusMsg" class="status-msg"></div>
+                <div class="form-row">
+                  <label for="inputCurrentPassword">Current Password</label>
+                  <input
+                    type="password"
+                    id="inputCurrentPassword"
+                    required
+                    placeholder="••••••••"
+                  />
+                </div>
+                <div class="form-row-group">
+                  <div class="form-row">
+                    <label for="inputNewPassword">New Password</label>
+                    <input
+                      type="password"
+                      id="inputNewPassword"
+                      required
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div class="form-row">
+                    <label for="inputConfirmPassword">Confirm New Password</label>
+                    <input
+                      type="password"
+                      id="inputConfirmPassword"
+                      required
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+                <div class="modal-actions" style="justify-content: space-between">
+                  <button
+                    type="button"
+                    class="btn-modal-danger"
+                    id="btnAccountLogout"
+                  >
+                    <span
+                      class="material-symbols-outlined"
+                      style="font-size: 16px; margin-right: 4px"
+                      >logout</span
+                    >
+                    Log Out
+                  </button>
+                  <button type="submit" class="btn-modal-primary">
+                    Change Password
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Tab: Integrations. Rows are rendered by app.js from
+                 GET /api/integrations, one per provider in the connector registry,
+                 so adding an integration needs no markup here. -->
+            <div
+              class="modal-tab-panel"
+              id="tabPanelIntegrations"
+              style="display: none"
+            >
+              <div id="integrationsStatusMsg" class="status-msg"></div>
+              <p
+                style="
+                  margin: 0 0 14px;
+                  font-size: 13px;
+                  color: var(--ink-soft);
+                  line-height: 1.5;
+                "
+              >
+                Connect another app to pull its outstanding work into your tasks
+                panel. Imported work arrives unscheduled — drag it onto the week
+                yourself, and ticking it off updates the other app too.
+              </p>
+              <div id="integrationsList"></div>
+            </div>
+
+            <!-- Tab: Categories. Rows are rendered by app.js from
+                 GET /api/categories. klndr ships no categories at all, so an empty
+                 list here is the normal starting state, not an error. -->
+            <div class="modal-tab-panel" id="tabPanelCategories" style="display: none">
+              <div id="categoriesStatusMsg" class="status-msg"></div>
+              <div class="categories-tab-header">
+                <p class="categories-tab-blurb">
+                  A category carries a default colour and icon. Picking it when you
+                  write a task hands those over, and you can still change them on
+                  that task afterwards.
+                </p>
+                <button
+                  type="button"
+                  class="btn-modal-primary"
+                  id="btnCreateCategory"
+                >
+                  <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px">add</span>
+                  New Category
+                </button>
+              </div>
+              <div id="categoriesList" class="categories-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- RIGHT PANE: section list -->
+        <nav class="modal-nav-pane">
+          <div class="modal-pane-header">
+            <h2>Account &amp; Settings</h2>
+            <button type="button" class="modal-close-btn">
+              <span class="material-symbols-outlined" style="font-size: 22px"
+                >close</span
+              >
+            </button>
+          </div>
+          <div class="modal-nav-list">
+            <button
+              type="button"
+              class="modal-tab-btn active"
+              id="tabBtnSettings"
+              data-panel="tabPanelSettings"
+              data-title="Account Settings"
+            >
+              <span class="material-symbols-outlined">person</span>
+              <span>Account</span>
+            </button>
+            <button
+              type="button"
+              class="modal-tab-btn"
+              id="tabBtnCategories"
+              data-panel="tabPanelCategories"
+              data-title="Categories"
+            >
+              <span class="material-symbols-outlined">category</span>
+              <span>Categories</span>
+            </button>
+            <button
+              type="button"
+              class="modal-tab-btn"
+              id="tabBtnIntegrations"
+              data-panel="tabPanelIntegrations"
+              data-title="Integrations"
+            >
+              <span class="material-symbols-outlined">hub</span>
+              <span>Integrations</span>
+            </button>
+          </div>
+        </nav>
+      </div>
+    </div>
+
+    <!-- Modal 2: Floating Block Edit Preview (Pure card with Cancel and Apply) -->
+    <div class="modal-container" id="blockPreviewModal">
+      <div class="modal-backdrop"></div>
+      <div class="floating-block-editor-wrapper">
+        <!-- Direct Floating Task Card Preview -->
+        <div class="block-preview-card" id="previewCardElement">
+          <div class="task-badge-circle">
+            <span
+              class="material-symbols-outlined"
+              id="previewCardBadgeIcon"
+              style="font-size: 18px"
+              >square_foot</span
+            >
+          </div>
+
+          <input
+            type="text"
+            id="previewTaskTitleInput"
+            class="preview-title-input"
+            placeholder="Task title..."
+          />
+
+          <!-- Title, colour, icon and category belong to the task, so editing
+               from one block changes every block of it. Say so. -->
+          <div class="preview-scope-note" id="previewScopeNote"></div>
+
+          <div class="preview-controls-row">
+            <button
+              type="button"
+              class="inline-picker-btn"
+              id="btnPreviewIcon"
+              title="Change Icon"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 18px"
+                >add_reaction</span
+              >
+            </button>
+            <button
+              type="button"
+              class="inline-picker-btn"
+              id="btnPreviewColor"
+              title="Change Color"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 18px"
+                >palette</span
+              >
+            </button>
+            <button
+              type="button"
+              class="inline-picker-btn"
+              id="btnPreviewCategory"
+              title="Change Category"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 18px"
+                >category</span
+              >
+            </button>
+          </div>
+
+          <!-- Pickers Popups for Preview Modal -->
+          <div class="picker-popup-grid" id="previewIconPopup"></div>
+          <div class="picker-popup-grid" id="previewColorPopup"></div>
+          <div class="picker-popup-categories" id="previewCategoryPopup"></div>
+        </div>
+
+        <!-- Action Buttons below floating card -->
+        <div class="floating-block-actions">
+          <!-- The way a finger reaches lock, split, remove and delete, all of
+               which a mouse gets from the right-click menu this hands off to.
+               Hidden unless the last pointer was a touch. -->
+          <button
+            type="button"
+            class="btn-modal-secondary btn-block-more"
+            id="btnBlockMoreActions"
+            title="More actions for this block"
+          >
+            More…
+          </button>
+          <!-- The second way onto the calendar, for when the editor is
+               already open. The row button in the tasks list is the first. -->
+          <button
+            type="button"
+            class="btn-modal-secondary"
+            id="btnScheduleFromEditor"
+            title="Put this task on the calendar"
+          >
+            Schedule
+          </button>
+          <button
+            type="button"
+            class="btn-modal-secondary"
+            id="btnCancelBlockPreview"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn-modal-primary"
+            id="btnApplyBlockPreview"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 3: Calendar Settings Modal -->
+    <div class="modal-container" id="settingsModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>Calendar Options</h2>
+          <button type="button" class="modal-close-btn">
+            <span class="material-symbols-outlined" style="font-size: 24px"
+              >close</span
+            >
+          </button>
+        </div>
+        <form id="settingsForm" class="modal-form">
+          <!-- Sits apart from the rest of this form on purpose: the others
+               are account settings saved to the server, while orientation
+               belongs to this device and is applied the moment it changes. -->
+          <div class="form-row">
+            <label for="settingsOrientation">Calendar Direction</label>
+            <select id="settingsOrientation">
+              <option value="auto">Automatic (Default)</option>
+              <option value="horizontal">Horizontal — time across</option>
+              <option value="vertical">Vertical — time down</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label for="settingsTouchSnap">Snap While Dragging (Touch)</label>
+            <select id="settingsTouchSnap">
+              <option value="auto">Follow the setting below</option>
+              <option value="off">Never snap</option>
+              <option value="tick">Snap to ticks</option>
+              <option value="bucket">Snap to header buckets</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label for="settingsDayCount">Days Shown</label>
+            <select id="settingsDayCount">
+              <option value="1">1 day</option>
+              <option value="3">3 days</option>
+              <option value="5">5 days</option>
+              <option value="7">Full week</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label for="settingsBucketHours">Header Bucket Size</label>
+            <select id="settingsBucketHours">
+              <option value="1">1 Hour</option>
+              <option value="2" selected>2 Hours (Default)</option>
+              <option value="4">4 Hours</option>
+            </select>
+          </div>
+
+          <div class="form-row">
+            <label class="checkbox-label">
+              <input type="checkbox" id="settingsSnapToRuler" />
+              <span>Snap to ruler ticks</span>
+            </label>
+          </div>
+
+          <div class="form-row">
+            <label for="settingsTickPercent"
+              >Tick Size Fraction (% of bucket)</label
+            >
+            <select id="settingsTickPercent">
+              <option value="10">10%</option>
+              <option value="12.5">12.5%</option>
+              <option value="25" selected>
+                25% (Quarter of bucket - Default)
+              </option>
+              <option value="50">50% (Half bucket)</option>
+            </select>
+          </div>
+
+          <!-- Saved with the rest of this form. "Inbox only" silences
+               stories and corner cards; a banner blocks nothing, so it still
+               shows. -->
+          <div class="form-row">
+            <label for="settingsAnnouncementPopups">Announcements</label>
+            <select id="settingsAnnouncementPopups">
+              <option value="all">Show new posts as they arrive</option>
+              <option value="inbox">Only in the What's new inbox</option>
+            </select>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-modal-secondary js-modal-close">
+              Cancel
+            </button>
+            <button type="submit" class="btn-modal-primary">
+              Save Options
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ====================================================
+       ANNOUNCEMENTS
+       ====================================================
+       The containers KlndrAnnouncements fills in
+       (src/app/announcements/inbox.js). They are ordinary
+       .modal-containers, so Escape, a backdrop click and closeAllModals()
+       treat them exactly like every other modal on this page. -->
+    <div class="modal-container ann-inbox-modal" id="annInboxModal">
+      <div class="modal-backdrop"></div>
+      <div
+        class="modal-card ann-inbox-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="annInboxTitle"
+      >
+        <header class="ann-inbox-head">
+          <h2 id="annInboxTitle">What's new</h2>
+          <div class="ann-inbox-head-actions">
+            <a class="ann-link-btn" id="annOpenStudio" href="/admin/announcements" data-boot-leave="admin" hidden>
+              <span class="material-symbols-outlined" aria-hidden="true">edit_square</span>
+              Manage
+            </a>
+            <button type="button" class="ann-link-btn" id="annMarkAllRead">
+              <span class="material-symbols-outlined" aria-hidden="true">done_all</span>
+              Mark all read
+            </button>
+            <button type="button" class="modal-close-btn" aria-label="Close">
+              <span class="material-symbols-outlined" style="font-size: 22px" aria-hidden="true">close</span>
+            </button>
+          </div>
+        </header>
+        <div
+          class="ann-inbox-filters"
+          id="annInboxFilters"
+          role="group"
+          aria-label="Filter announcements"
+        ></div>
+        <div class="ann-inbox-list" id="annInboxList"></div>
+      </div>
+    </div>
+
+    <div class="modal-container ann-reader-modal" id="annReaderModal">
+      <div class="modal-backdrop"></div>
+      <div
+        class="modal-card ann-reader-card"
+        id="annReaderCard"
+        role="dialog"
+        aria-modal="true"
+        tabindex="-1"
+      >
+        <button type="button" class="modal-close-btn ann-floating-close" aria-label="Close">
+          <span class="material-symbols-outlined" style="font-size: 22px" aria-hidden="true">close</span>
+        </button>
+        <div class="ann-scroll" id="annReaderHost"></div>
+        <nav class="ann-reader-nav" aria-label="More announcements">
+          <button type="button" class="ann-nav-btn" id="annReaderPrev" aria-label="Newer announcement">
+            <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+          </button>
+          <span class="ann-reader-position" id="annReaderPosition"></span>
+          <button type="button" class="ann-nav-btn" id="annReaderNext" aria-label="Older announcement">
+            <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+          </button>
+        </nav>
+      </div>
+    </div>
+
+    <div class="modal-container ann-story-modal" id="annStoryModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card ann-story-card" id="annStoryCard" role="dialog" aria-modal="true">
+        <div class="ann-story-top">
+          <div class="ann-story-progress" id="annStoryProgress" aria-hidden="true"></div>
+          <button type="button" class="modal-close-btn" aria-label="Close">
+            <span class="material-symbols-outlined" style="font-size: 22px" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <div class="ann-scroll" id="annStoryHost"></div>
+        <footer class="ann-story-foot">
+          <button type="button" class="ann-btn ann-btn-ghost ann-btn-small" id="annStorySkip">
+            Skip all
+          </button>
+          <span class="ann-story-count" id="annStoryCount"></span>
+          <div class="ann-story-steps">
+            <button type="button" class="ann-nav-btn" id="annStoryBack" aria-label="Previous">
+              <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+            </button>
+            <button type="button" class="ann-btn ann-btn-primary" id="annStoryNext">
+              <span class="ann-btn-label">Next</span>
+              <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+            </button>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Banners and corner cards float over the workspace instead of taking
+         room in it: see the note in announcements.css. -->
+    <div class="ann-notice-host" id="annNoticeHost"></div>
+    <div class="ann-toast-host" id="annCardHost"></div>
+    <div class="ann-sr-only" id="annLive" aria-live="polite"></div>
+
+    <!-- Modal: Create / Edit Category.
+         Carries .modal-layer-top because it opens OVER whatever is already
+         open - the block editor when the pencil is clicked from its category
+         picker, the account modal when it is opened from the Categories tab -
+         instead of replacing it the way every other modal here does. -->
+    <div class="modal-container modal-layer-top" id="categoryEditModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 id="categoryEditTitle">New Category</h2>
+          <button type="button" class="modal-close-btn">
+            <span class="material-symbols-outlined" style="font-size: 24px"
+              >close</span
+            >
+          </button>
+        </div>
+        <form id="categoryEditForm" class="modal-form">
+          <div id="categoryEditStatusMsg" class="status-msg"></div>
+
+          <div class="form-row">
+            <label for="categoryNameInput">Name</label>
+            <input
+              type="text"
+              id="categoryNameInput"
+              maxlength="40"
+              required
+              placeholder="e.g. Mathematics"
+            />
+          </div>
+
+          <div class="form-row">
+            <label>Default colour</label>
+            <!-- Inline grids rather than the pop-up pickers used elsewhere: a
+                 popup inside a stacked modal is a third layer for no gain. -->
+            <div class="category-swatch-grid" id="categoryColorGrid"></div>
+          </div>
+
+          <div class="form-row">
+            <label>Default icon</label>
+            <div class="category-swatch-grid" id="categoryIconGrid"></div>
+          </div>
+
+          <div class="modal-actions" style="justify-content: space-between">
+            <button
+              type="button"
+              class="btn-modal-danger"
+              id="btnDeleteCategory"
+              style="display: none"
+            >
+              <span
+                class="material-symbols-outlined"
+                style="font-size: 16px; margin-right: 4px"
+                >delete</span
+              >
+              Delete
+            </button>
+            <div style="display: flex; gap: 12px; margin-left: auto">
+              <button
+                type="button"
+                class="btn-modal-secondary"
+                id="btnCancelCategoryEdit"
+              >
+                Cancel
+              </button>
+              <button type="submit" class="btn-modal-primary">Save</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Context Menu (All Google Icons, Uniform Sizing) -->
+    <!-- Shown only while a split is being placed. Fixed to the bottom centre
+         rather than anchored to the block, because the block is exactly what
+         the person is trying to look at. -->
+    <div class="placement-bar" id="placementBar">
+      <span class="placement-label" id="placementLabel"></span>
+      <button type="button" class="btn-modal-secondary" id="placementCancel">
+        Cancel
+      </button>
+      <button type="button" class="btn-modal-primary" id="placementConfirm">
+        Place
+      </button>
+    </div>
+
+    <!-- Dims the page behind a menu that is a sheet at phone width, and takes
+         the tap that dismisses it, so that tap cannot land on the page too.
+         Shown by responsive.css only; it does nothing on a desktop. -->
+    <div class="sheet-scrim" aria-hidden="true"></div>
+
+    <div class="context-menu" id="taskContextMenu">
+      <div class="context-menu-item" id="ctxEdit">
+        <span class="material-symbols-outlined">edit</span>
+        <span>Edit Details</span>
+      </div>
+      <div class="context-menu-item" id="ctxToggleLock">
+        <span class="material-symbols-outlined">lock</span>
+        <span>Lock Duration</span>
+      </div>
+      <div class="context-menu-item" id="ctxSplit">
+        <span class="material-symbols-outlined">content_cut</span>
+        <span>Split here</span>
+      </div>
+      <div class="context-menu-item" id="ctxRemoveBlock">
+        <span class="material-symbols-outlined">scan_delete</span>
+        <span>Remove this block</span>
+      </div>
+      <div class="context-menu-item" id="ctxUnschedule">
+        <span class="material-symbols-outlined">event_busy</span>
+        <span>Remove from Calendar</span>
+      </div>
+      <div class="context-menu-item danger" id="ctxDelete">
+        <span class="material-symbols-outlined" style="color: var(--danger-line)"
+          >delete</span
+        >
+        <span>Delete Task</span>
+      </div>
+    </div>
+
+    <!-- The account menu, opened by the profile pill (app.js initUserMenu).
+         A .context-menu like the one above, so closeAllModals() and Escape put
+         it away, and at phone width it becomes the same bottom sheet.
+         KlndrAnnouncements wires What's new and keeps its count; app.js shows
+         Admin to admins. Hiding it is presentation - /admin is guarded on the
+         server. -->
+    <div class="context-menu user-menu" id="userMenu" role="menu" aria-labelledby="userProfileTrigger">
+      <button type="button" class="context-menu-item" id="userMenuAccount" role="menuitem">
+        <span class="material-symbols-outlined" aria-hidden="true">person</span>
+        <span>Account &amp; settings</span>
+      </button>
+      <button type="button" class="context-menu-item" id="userMenuOptions" role="menuitem">
+        <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+        <span>Calendar options</span>
+      </button>
+      <button type="button" class="context-menu-item" id="userMenuWhatsNew" role="menuitem">
+        <span class="material-symbols-outlined" aria-hidden="true">campaign</span>
+        <span>What's new</span>
+        <span class="user-menu-count" id="userMenuWhatsNewCount" hidden></span>
+      </button>
+      <a class="context-menu-item" id="userMenuAdmin" href="/admin" data-boot-leave="admin" role="menuitem" hidden>
+        <span class="material-symbols-outlined" aria-hidden="true">admin_panel_settings</span>
+        <span>Admin</span>
+      </a>
+    </div>
+
+    <!-- Everything the app runs, imported by main.js. The build replaces this with the bundle, hashed, in the
+         <head>; a module runs once the page is parsed, as these scripts did
+         from the end of <body>. -->
+    <script type="module" src="./main.js"></script>
+    <!-- Forced password change. Raised when an admin reset leaves the account
+         holding a temporary password: the server refuses every other API call
+         until it is replaced, so there is deliberately no way to dismiss this
+         except setting a password or logging out. -->
+    <div class="modal-container forced-password-modal" id="forcedPasswordModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card" style="max-width: 440px">
+        <div class="modal-header">
+          <h2>Set a new password</h2>
+        </div>
+        <p class="forced-password-intro">
+          An administrator reset your password. Choose a new one to get back
+          into your board.
+        </p>
+        <form id="forcedPasswordForm" class="modal-form">
+          <div id="forcedPasswordStatusMsg" class="status-msg"></div>
+          <div class="form-row">
+            <label for="forcedCurrentPassword">Temporary password</label>
+            <input
+              type="password"
+              id="forcedCurrentPassword"
+              required
+              autocomplete="current-password"
+              placeholder="The one you just signed in with"
+            />
+          </div>
+          <div class="form-row">
+            <label for="forcedNewPassword">New password</label>
+            <input
+              type="password"
+              id="forcedNewPassword"
+              required
+              autocomplete="new-password"
+              placeholder="••••••••"
+            />
+          </div>
+          <div class="form-row">
+            <label for="forcedConfirmPassword">Confirm new password</label>
+            <input
+              type="password"
+              id="forcedConfirmPassword"
+              required
+              autocomplete="new-password"
+              placeholder="••••••••"
+            />
+          </div>
+          <div class="modal-actions" style="justify-content: space-between">
+            <button
+              type="button"
+              class="btn-modal-danger"
+              id="forcedPasswordLogout"
+            >
+              Log Out
+            </button>
+            <button type="submit" class="btn-modal-primary">
+              Set Password
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </body>
+</html>

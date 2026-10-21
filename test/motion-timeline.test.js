@@ -5,9 +5,9 @@
 
 const assert = require("node:assert/strict");
 
-const Core = require("../protected/js/motion/motion-core");
-const Scenes = require("../protected/js/motion/scenes");
-const Timeline = require("../protected/js/motion/motion-timeline");
+const { KlndrMotionCore: Core } = require("@klndr/core/motion/motion-core");
+const { KlndrScenes: Scenes } = require("@klndr/core/motion/scenes");
+const { KlndrMotionTimeline: Timeline } = require("@klndr/core/motion/motion-timeline");
 
 const FPS = Timeline.FPS;
 const OUTRO = Scenes.OUTRO;

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const db = require("../server/db");
+const db = require("../apps/server/src/db");
 
 const args = process.argv.slice(2);
 const command = args[0];

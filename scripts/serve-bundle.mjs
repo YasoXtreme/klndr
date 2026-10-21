@@ -22,7 +22,7 @@ if (!fs.existsSync(BUNDLE)) {
 }
 
 // Vercel hands the function its environment; locally that is .env, as for
-// `node server.js`. The shell wins over the file.
+// `npm start`. The shell wins over the file.
 const envFile = path.join(ROOT, ".env");
 if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
 
@@ -30,7 +30,12 @@ const handler = createRequire(import.meta.url)(BUNDLE);
 const { routes } = JSON.parse(fs.readFileSync(path.join(OUT, "config.json"), "utf8"));
 const hitRoutes = routes.slice(routes.findIndex((route) => route.handle === "hit") + 1).filter((route) => route.src);
 
+// A module script with any other type is refused by the browser, which is what
+// the CDN would never do.
 const TYPES = {
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".map": "application/json",
   ".ico": "image/x-icon",
   ".png": "image/png",
   ".ttf": "font/ttf",

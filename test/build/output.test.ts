@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 // What scripts/build-vercel-output.mjs hands Vercel. The layout is the
 // security model as much as the deploy: anything under static/ is served to
@@ -11,6 +11,7 @@ const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const OUT = path.join(ROOT, ".vercel", "output");
 const STATIC = path.join(OUT, "static");
 const FUNCTION = path.join(OUT, "functions", "index.func");
+const LOGIN_ASSETS = path.join(ROOT, "apps", "web", "dist", "public", "assets");
 
 const read = (file: string) => JSON.parse(fs.readFileSync(file, "utf8"));
 
@@ -20,19 +21,19 @@ function filesUnder(dir: string): string[] {
     .map((entry) => path.relative(dir, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"));
 }
 
-beforeAll(() => {
-  execFileSync(process.execPath, [path.join(ROOT, "scripts", "build-vercel-output.mjs")], { cwd: ROOT, stdio: "pipe" });
-}, 120_000);
-
 describe("the CDN", () => {
-  test("holds only /assets and the favicon", () => {
+  test("holds only /assets, the favicon and the login page's files", () => {
     const files = filesUnder(STATIC);
     expect(files.length).toBeGreaterThan(0);
-    expect(files.filter((file) => !(file.startsWith("assets/") || file === "favicon.ico"))).toEqual([]);
+    const allowed = (file: string) => file.startsWith("assets/") || file.startsWith("public/assets/") || file === "favicon.ico";
+    expect(files.filter((file) => !allowed(file))).toEqual([]);
   });
 
-  test("holds no page, script or stylesheet", () => {
-    expect(filesUnder(STATIC).filter((file) => /\.(html|js|css|map)$/.test(file))).toEqual([]);
+  test("holds no page, and no script or stylesheet but the login page's own", () => {
+    const login = new Set(filesUnder(LOGIN_ASSETS).map((file) => `public/assets/${file}`));
+    expect(login.size).toBeGreaterThan(0);
+    const code = filesUnder(STATIC).filter((file) => /\.(html|js|css|map)$/.test(file));
+    expect(code.filter((file) => !login.has(file))).toEqual([]);
   });
 
   test("serves the font at the exact URL every page preloads", () => {
@@ -41,11 +42,13 @@ describe("the CDN", () => {
 });
 
 describe("the function", () => {
-  test("carries public, protected and admin as siblings", () => {
+  test("carries the three pages as siblings", () => {
+    const dist = path.join(FUNCTION, "web", "dist");
     for (const dir of ["public", "protected", "admin"]) {
-      expect(fs.statSync(path.join(FUNCTION, dir)).isDirectory(), dir).toBe(true);
+      expect(fs.statSync(path.join(dist, dir)).isDirectory(), dir).toBe(true);
     }
-    expect(fs.existsSync(path.join(FUNCTION, "protected", "admin"))).toBe(false);
+    expect(fs.existsSync(path.join(dist, "protected", "admin"))).toBe(false);
+    expect(fs.existsSync(path.join(FUNCTION, "web", "static", "assets", "ElmsSans.ttf"))).toBe(true);
   });
 
   test("is configured as a Node 24 function", () => {
@@ -84,6 +87,7 @@ describe("routing", () => {
     const { routes } = read(path.join(OUT, "config.json"));
     const hit = routes.slice(routes.findIndex((route: { handle?: string }) => route.handle === "hit") + 1);
     expect(hit).toEqual([
+      expect.objectContaining({ src: "^/public/assets/.+$", headers: { "Cache-Control": "public, max-age=31536000, immutable" } }),
       expect.objectContaining({ src: "^/(?:assets/.+|favicon\\.ico)$", headers: { "Cache-Control": "public, max-age=604800" } }),
     ]);
   });

@@ -5,10 +5,10 @@
 
 const assert = require("node:assert/strict");
 
-const Rules = require("../protected/js/announcements/rules");
-const Markdown = require("../protected/js/announcements/markdown");
-const model = require("../server/announcements/model");
-const { sanitize, publishProblems } = require("../server/announcements/validate");
+const { KlndrAnnouncementRules: Rules } = require("@klndr/core/announcements/rules");
+const { KlndrMarkdown: Markdown } = require("@klndr/core/announcements/markdown");
+const model = require("../apps/server/src/announcements/model");
+const { sanitize, publishProblems } = require("../apps/server/src/announcements/validate");
 
 const DAY = 86400;
 const NOW = 1_800_000_000;

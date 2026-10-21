@@ -3,25 +3,28 @@
 // vercel.json makes it the deployment's build command:
 //
 //   .vercel/output/config.json            files first, then everything else to the function
-//   .vercel/output/static/                what the CDN may hand to anyone: /assets and the favicon
-//   .vercel/output/functions/index.func/  the server bundled into one file, with public/,
-//                                         protected/ and admin/ beside it
+//   .vercel/output/static/                what the CDN may hand to anyone: /assets, the
+//                                         favicon, and the login page's hashed files
+//   .vercel/output/functions/index.func/  the server bundled into one file, with the built
+//                                         pages beside it in web/dist and web/static
 //
-// The three directories stay siblings inside the function because that is a
+// The pages' directories stay siblings inside the function because that is a
 // security boundary, not tidiness: a static mount resolves `..` after its guard
 // has matched, so a directory inside another mount is reachable through it
-// (see server.js above the /admin mount).
+// (see apps/server/src/server.js above the /admin mount).
 //
-// Only /assets goes on the CDN. /public stays on the function for now: its
-// URLs carry ?v=<hash>, which the CDN would ignore, and pinning a stale hash's
-// answer for a year is exactly what server/pages.js exists to prevent.
+// Nothing behind a login goes on the CDN, which serves anyone. The login
+// page's files do: the page is public, and the build names each after its
+// contents, so a cached copy can never go stale.
 
 import { build } from "esbuild";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const WEB = path.join(ROOT, "apps", "web");
 const OUT = path.join(ROOT, ".vercel", "output");
 const FUNCTION = path.join(OUT, "functions", "index.func");
 const STATIC = path.join(OUT, "static");
@@ -39,13 +42,16 @@ const OPTIONAL_PEERS = [
 ];
 
 const WEEK = 604800;
+const YEAR = 31536000;
+
+execFileSync(process.execPath, [path.join(WEB, "build.mts")], { cwd: ROOT, stdio: "inherit" });
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(FUNCTION, { recursive: true });
 fs.mkdirSync(STATIC, { recursive: true });
 
 await build({
-  entryPoints: [path.join(ROOT, "server.js")],
+  entryPoints: [path.join(ROOT, "apps", "server", "src", "server.js")],
   outfile: path.join(FUNCTION, "index.js"),
   bundle: true,
   platform: "node",
@@ -53,16 +59,17 @@ await build({
   target: "node24",
   sourcemap: true,
   external: OPTIONAL_PEERS,
-  // server/paths.js: inside the bundle, the files sit beside it.
+  // apps/server/src/paths.js: inside the bundle, the files sit beside it.
   define: { "process.env.KLNDR_BUNDLED": '"1"' },
   logLevel: "warning",
 });
 
-for (const dir of ["public", "protected", "admin"]) {
-  fs.cpSync(path.join(ROOT, dir), path.join(FUNCTION, dir), { recursive: true });
+for (const dir of ["dist", "static"]) {
+  fs.cpSync(path.join(WEB, dir), path.join(FUNCTION, "web", dir), { recursive: true });
 }
-fs.cpSync(path.join(ROOT, "public", "assets"), path.join(STATIC, "assets"), { recursive: true });
-fs.copyFileSync(path.join(ROOT, "public", "assets", "favicon.ico"), path.join(STATIC, "favicon.ico"));
+fs.cpSync(path.join(WEB, "static", "assets"), path.join(STATIC, "assets"), { recursive: true });
+fs.copyFileSync(path.join(WEB, "static", "assets", "favicon.ico"), path.join(STATIC, "favicon.ico"));
+fs.cpSync(path.join(WEB, "dist", "public", "assets"), path.join(STATIC, "public", "assets"), { recursive: true });
 
 const json = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 
@@ -84,8 +91,14 @@ json(path.join(OUT, "config.json"), {
     // Anything that isn't a file on the CDN goes to the server, path intact.
     { src: "^/.*$", dest: "/index" },
     // Headers for files the CDN did serve. In the hit phase only, so a missing
-    // /assets/x reaches the server and its 404 is never cached for a week.
+    // file reaches the server and its 404 is never cached.
     { handle: "hit" },
+    {
+      src: "^/public/assets/.+$",
+      headers: { "Cache-Control": `public, max-age=${YEAR}, immutable` },
+      continue: true,
+      important: true,
+    },
     {
       src: "^/(?:assets/.+|favicon\\.ico)$",
       headers: { "Cache-Control": `public, max-age=${WEEK}` },
@@ -96,4 +109,4 @@ json(path.join(OUT, "config.json"), {
 });
 
 const size = fs.statSync(path.join(FUNCTION, "index.js")).size;
-console.log(`Built .vercel/output: server bundle ${(size / 1024).toFixed(0)} KB, static /assets and /favicon.ico.`);
+console.log(`Built .vercel/output: server bundle ${(size / 1024).toFixed(0)} KB; on the CDN /assets, /favicon.ico and /public/assets.`);

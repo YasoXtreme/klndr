@@ -12,7 +12,7 @@ const into = join(here, '..', 'public', 'klndr');
 
 // The klndr mark is drawn inline (src/klndr/brand.tsx) rather than copied from
 // brand/svg: an SVG loaded as an image cannot reach ElmsSans, nor follow the theme.
-const ASSETS = [['public/assets/ElmsSans.ttf', 'ElmsSans.ttf']];
+const ASSETS = [['apps/web/static/assets/ElmsSans.ttf', 'ElmsSans.ttf']];
 
 mkdirSync(into, { recursive: true });
 for (const [from, to] of ASSETS) {

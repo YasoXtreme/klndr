@@ -1,24 +1,36 @@
 import js from "@eslint/js";
+import { createNodeResolver, importX } from "eslint-plugin-import-x";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-// The browser code is still classic scripts sharing top-level names in the
-// order each page loads them (protected/index.html, admin/index.html). These
-// maps are that graph written down: a name used but listed nowhere is a typo
-// or a missing <script>. They go away when the files become modules and
-// import what they use.
-const SHARED = [
-  "KlndrTheme", "KlndrBoot", "API", "KlndrPalette", "KlndrVendor",
-  "KlndrAnnouncementRules", "KlndrMarkdown", "KlndrAnnouncementMedia", "KlndrAnnouncementReader",
-  "KlndrMotionCore", "KlndrScenes", "KlndrMotionTimeline", "KlndrMotion",
-];
-const APP = [
-  "CategoryPicker", "HistoryStack", "TaskModel", "PhysicsEngine", "TimelineCanvas", "TimelineDOM",
-  "DragController", "TasksSidebar", "KlndrAnnouncements", "KlndrApp",
-];
-const ADMIN = ["KlndrCharts", "KlndrAdmin", "KlndrStudio"];
+// The browser code is ES modules: apps/web/src for the pages, packages/core/src
+// for what the server, the tests and the motion workspace load too.
+const BROWSER_MODULES = ["apps/web/src/**/*.js", "packages/core/src/**/*.js"];
+// The boot overlay is inlined into each page as a classic script, ahead of the
+// modules, and it is the one global they read: window.KlndrBoot.
+const BOOT = "apps/web/src/shared/boot.js";
 
-const readonly = (names) => Object.fromEntries(names.map((name) => [name, "readonly"]));
+// Which pages may import what. Each page is its own build, so an import across
+// them would quietly copy one page's code into another: admin code into the
+// app, or anything at all into the login page, which is served to everyone.
+const boundary = (regex, message) => ({ regex, message });
+const BOUNDARIES = {
+  "apps/web/src/login/**/*.js": [
+    boundary("^(?!\\./|\\.\\./shared/)", "The login page is public: it may import only its own files and src/shared."),
+  ],
+  "apps/web/src/app/**/*.js": [
+    boundary("(^|/)(admin|login)/", "The app may import src/shared and @klndr/core, never another page."),
+  ],
+  "apps/web/src/admin/**/*.js": [
+    boundary("(^|/)(app|login)/", "Admin may import src/shared and @klndr/core, never another page."),
+  ],
+  "apps/web/src/shared/**/*.js": [
+    boundary("(^|/)(app|admin|login)/", "src/shared is loaded by every page, so it may not import any one of them."),
+  ],
+  "packages/core/src/**/*.js": [
+    boundary("^[^.]", "@klndr/core has no dependencies: the server, the tests and the motion workspace load it as it is."),
+  ],
+};
 
 export default tseslint.config(
   {
@@ -30,7 +42,6 @@ export default tseslint.config(
       "motion/**",
       "desktop/**",
       "data/**",
-      "protected/vendor/**",
       "test-results/**",
       "playwright-report/**",
       "**/dist/**",
@@ -60,7 +71,7 @@ export default tseslint.config(
 
   // Node: the server, scripts and the CommonJS tests.
   {
-    files: ["server.js", "server/**/*.js", "scripts/**/*.js", "test/**/*.js", "test/**/*.cjs"],
+    files: ["apps/server/**/*.js", "scripts/**/*.js", "test/**/*.js", "test/**/*.cjs"],
     languageOptions: { sourceType: "commonjs", globals: { ...globals.node } },
   },
   {
@@ -72,42 +83,29 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.vitest } },
   },
 
-  // The browser: classic scripts, one shared global scope per page.
+  // The browser.
   {
-    files: ["public/js/**/*.js", "protected/js/**/*.js", "admin/**/*.js"],
-    languageOptions: { sourceType: "script", globals: { ...globals.browser } },
+    files: BROWSER_MODULES,
+    ignores: [BOOT],
+    plugins: { "import-x": importX },
+    settings: { "import-x/resolver-next": [createNodeResolver()] },
+    languageOptions: { sourceType: "module", globals: { ...globals.browser, KlndrBoot: "readonly" } },
     rules: {
-      // A file's top-level names are its exports: every page shares them. Each
-      // file says which they are in an `/* exported Name */` comment, so a
-      // helper declared at the top level by accident is an error rather than
-      // one more global, and the move to modules can turn each comment into
-      // an export statement.
-      "no-implicit-globals": ["error", { lexicalBindings: true }],
-      "no-unused-vars": ["error", { args: "none", caughtErrors: "none", ignoreRestSiblings: true }],
-      // An exported name is also listed in the maps above, for the files that
-      // use it.
-      "no-redeclare": ["error", { builtinGlobals: false }],
+      "import-x/no-unresolved": "error",
+      "import-x/named": "error",
+      // Evaluation order is import order, so a cycle makes it depend on which
+      // file a page happens to reach first.
+      "import-x/no-cycle": "error",
     },
   },
+  ...Object.entries(BOUNDARIES).map(([files, patterns]) => ({
+    files: [files],
+    rules: { "no-restricted-imports": ["error", { patterns }] },
+  })),
+  // Inlined as a classic script, and required by its unit test.
   {
-    files: ["protected/js/**/*.js"],
-    languageOptions: { globals: { ...readonly(SHARED), ...readonly(APP) } },
-  },
-  {
-    files: ["admin/**/*.js"],
-    languageOptions: { globals: { ...readonly(SHARED), ...readonly(ADMIN) } },
-  },
-  // Loaded by the browser as a global and by Node through require: palette,
-  // the announcement rules and markdown, the motion files, the boot overlay.
-  {
-    files: [
-      "protected/js/palette.js",
-      "protected/js/announcements/rules.js",
-      "protected/js/announcements/markdown.js",
-      "protected/js/motion/*.js",
-      "public/js/boot.js",
-    ],
-    languageOptions: { globals: { module: "readonly", require: "readonly" } },
+    files: [BOOT],
+    languageOptions: { sourceType: "script", globals: { ...globals.browser, module: "readonly" } },
   },
 
   // TypeScript: tests, configs and (from here on) new code.

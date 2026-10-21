@@ -81,21 +81,22 @@ local work never touches production data.
 
 | Script | Purpose |
 | --- | --- |
-| `npm start` | Run the server |
-| `npm run dev` | Run with `node --watch` |
+| `npm start` | Run the server (build the pages first: `npm run build:web`) |
+| `npm run dev` | Build the pages, then rebuild them and restart the server as files change |
+| `npm run build:web` | Build the three pages with Vite into `apps/web/dist` |
 | `npm run add-user -- <username> [role]` | Create an account with a one-shot temporary password (`role` is `user` or `admin`) |
 | `npm run list-users` | List accounts |
 | `npm run delete-user -- <username>` | Delete an account |
 | `npm run reset-password -- <username>` | Issue a one-shot temporary password |
 | `npm run check` | Lint, typecheck, design-token lint and unit tests in one go |
-| `npm test` | Unit tests: announcement rules and markdown, media policy, motion scenes, page caching, the boot overlay |
+| `npm test` | Unit tests: announcement rules and markdown, media policy, motion scenes, page caching, the page build, the boot overlay |
+| `npm run build` / `npm run test:build` | What Vercel deploys, in `.vercel/output`; the built pages and that layout, checked |
 | `npm run test:integration` | The HTTP API end to end against a test database (see [Testing](#testing)) |
 | `npm run test:e2e` | Playwright UI tests, desktop and phone |
 | `npm run lint` / `npm run typecheck` | ESLint, and `tsc` over the TypeScript |
 | `npm run check:tokens` | Design-token lint across the stylesheets, including the motion scenes' theme copy |
 | `npm run r2:check` | Check the R2 credentials, bucket and CORS, with a write/read/delete round trip |
 | `npm run r2:cors [-- <origin> ...]` | Write the bucket CORS policy that browser uploads need |
-| `npm run vendor` | Refresh the vendored browser libraries (lottie-web light, fflate) from `node_modules` |
 
 `add-user` and `reset-password` both print a generated temporary password once
 and force a password change at next login; `reset-password` also signs out
@@ -139,13 +140,17 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 ## Architecture
 
-A plain Express server, a MongoDB store, and a dependency-free browser client.
-No build step, no bundler, no framework: the protected app is served as static
-files behind a session guard.
+An Express server, a MongoDB store, and a framework-free browser client in ES
+modules, built by Vite into three pages: the app, admin and the login page. The
+repo is npm workspaces: `apps/web` (the pages), `apps/server` (the server) and
+`packages/core` (code with no DOM in it, which the browser, the server, the
+tests and the motion workspace all load). The app's and admin's files are
+served behind a session guard.
 
 ```
-server.js                    Express app — auth, tasks, settings, categories, route mounts
-server/
+apps/server/src/
+  server.js                  Express app — auth, tasks, settings, categories, route mounts
+  pages.js, paths.js         Where the built pages are, and how long each file may be cached
   auth-middleware.js         Session resolution, API vs. page guards, admin guard, reset gate
   db.js / db-mongodb.js      Data layer, indexes, first-run admin seed
   categories.js              Per-user categories, rename cascade, legacy migration
@@ -175,48 +180,56 @@ server/
     sync.js                  NormalizedItem <-> klndr task
     sylla.js                 The one shipped connector
 
-protected/                   Served only to an authenticated session
-  index.html
-  js/
-    app.js                   Application coordinator: state, loading, commits, undo wiring
+apps/web/                    The pages, built by Vite (build.mts, vite.pages.mts) into dist/
+  build/klndr-page.mts       Writes the boot overlay into each page, and puts its stylesheet where its links were
+  static/assets/             The font, icons and manifest, served unhashed at /assets
+  src/shared/                Loaded by more than one page
+    theme.js / theme.css     Light, dark or the system's; the design tokens
+    common.css               The shared scale: radii, lines, the lockup
+    boot.js / boot.css       The boot overlay, inlined into the app and admin as their first frame
     api.js                   Fetch wrapper; a 401 clears local state and redirects
-    palette.js               The 20 colours and 20 icons — required by the server too
-    task-model.js            Task/segment model, derived fields, legacy migration on read
-    physics-engine.js        Ripple, compression, flow-around placement, mirrored physics
+    vendor.js                Fetches lottie-web and fflate the first time a post or an upload needs one
+    announcements/
+      media-view.js          A post's header: image, SVG, video, Lottie or motion scene
+      reader.js              One post, drawn the same for the reader, stories and the studio preview
+      announcements.css      Everything announcement-shaped a person sees
+    motion/motion-player.js  Canvas player: pauses offscreen and hidden, respects reduced motion
+  src/app/                   The app, /, its files under /protected — served only to a session
+    index.html, main.js      The page, and its entry: stylesheets and modules in cascade order
+    app.js                   Application coordinator: state, loading, commits, undo wiring
     timeline-canvas.js       Canvas renderer: body, ruler and gutter surfaces
     timeline-dom.js          Interactive overlay: cards, handles, seams, ghosts, tooltips
     drag-controller.js       One resolver drives both the live preview and the commit
     sidebar.js               Tasks panel, filters, multi-column board
     category-picker.js       One picker shared by the inline bar and the block editor
-    history.js               Undo/redo stack of gestures
-    vendor.js                Fetches lottie-web and fflate the first time a post or an upload needs one
-    announcements/
-      rules.js               Who a post is for, when it is delivered and read — the server requires it too
-      markdown.js            Escape-first Markdown for post bodies, and the legacy three-rule markup
-      media-view.js          A post's header: image, SVG, video, Lottie or motion scene
-      reader.js              One post, drawn the same for the reader, stories and the studio preview
-      inbox.js               Unread dot and menu entry, inbox, reader, stories, banner and corner card
-    motion/
-      motion-core.js         Springs, easing, seeded randomness, theme tokens, canvas text
-      scenes.js              The built-in motion scenes: in, idle and out, each a pure function of its clock
-      motion-timeline.js     What plays when: clips, idle, loop or play once, the progress bar — the server requires it too
-      motion-player.js       Canvas player: pauses offscreen and hidden, respects reduced motion
-  css/announcements.css      Everything announcement-shaped a person sees
-  vendor/                    lottie-web (light build) and fflate, copied by npm run vendor
+    announcements/inbox.js   Unread dot and menu entry, inbox, reader, stories, banner and corner card
+  src/admin/                 The admin page, /admin — every URL under it serves index.html
+    index.html, main.js      The page, and its entry: the sections in sidebar order
+    shell.js                 Sidebar, page header, router, shared dialogs and menus
+    admin.css                The shell's layout
+    analytics.*, charts.js   Analytics section, and the cards, tables and charts every section uses
+    announcements.*          Announcements section — the announcement studio
+    studio/                  Studio views: list, editor and its sections, uploads, preview, stats
+    accounts.js              Accounts section
+  src/login/                 The login page, /login, its files under /public — served to anyone
 
-admin/                       The admin page, /admin — every URL under it serves index.html
-  index.html, shell.js       Sidebar, page header, router, shared dialogs and menus
-  admin.css                  The shell's layout
-  analytics.*, charts.js     Analytics section, and the cards, tables and charts every section uses
-  announcements.*            Announcements section — the announcement studio
-  studio/                    Studio views: list, editor and its sections, uploads, preview, stats
-  accounts.js                Accounts section
+packages/core/src/           No DOM: the server requires it, the tests load it, motion/ renders with it
+  palette.js                 The 20 colours and 20 icons
+  task-model.js              Task/segment model, derived fields, legacy migration on read
+  physics-engine.js          Ripple, compression, flow-around placement, mirrored physics
+  history.js                 Undo/redo stack of gestures
+  announcements/
+    rules.js                 Who a post is for, when it is delivered and read
+    markdown.js              Escape-first Markdown for post bodies, and the legacy three-rule markup
+  motion/
+    motion-core.js           Springs, easing, seeded randomness, theme tokens, canvas text
+    scenes.js                The built-in motion scenes: in, idle and out, each a pure function of its clock
+    motion-timeline.js       What plays when: clips, idle, loop or play once, the progress bar
 
-public/                      Login page, brand assets, fonts — unauthenticated
 brand/                       Logo kit, source SVGs, PNG renders (see brand/README.md)
 motion/                      Remotion workspace for header clips; never deployed (see motion/README.md)
-scripts/                     Account CLI, brand asset build, design-token lint, R2 setup, vendoring
-test/                        Unit tests (Vitest); integration/ is the HTTP API against a test database
+scripts/                     Account CLI, brand asset build, design-token lint, R2 setup, the Vercel build, dev
+test/                        Unit tests (Vitest); build/ checks the built pages and the deploy; integration/ is the HTTP API against a test database
 e2e/                         Playwright UI tests
 docs/                        Manual regression checklists
 ```
@@ -228,15 +241,15 @@ docs/                        Manual regression checklists
 - **Ids are minted client-side.** A new task appears and is editable before the create request is sent; the server keeps whatever id it is handed, so nothing needs reconciling.
 - **Optimistic writes with a revision guard.** Every local edit bumps a task's revision, and a server response may only overwrite a task whose revision still matches.
 - **Derived fields stay on the wire.** `segments` is authoritative in memory, while `start_times` / `durations` / `total_duration` / `completed` are kept in sync so date-range queries work against records written before segments existed.
-- **The palette is shared, not duplicated.** `protected/js/palette.js` is loaded as a browser global *and* `require`d by the server, because "pick a colour no other category has taken" is only meaningful if both sides draw from the same twenty.
+- **The palette is shared, not duplicated.** `packages/core/src/palette.js` is imported by the browser *and* `require`d by the server, because "pick a colour no other category has taken" is only meaningful if both sides draw from the same twenty.
 - **Undo stores changes, not snapshots.** Each entry carries the before and after of the fields one gesture touched, so undo and redo are the same replay in opposite directions.
 - **Analytics reports its own blind spots instead of backfilling them.** klndr recorded nothing temporal before the analytics feature — no last login, no `tasks.created_at`, no activity log — and `updated_at` is an *upper bound* on creation, so deriving a creation date from it would drag every task forward in time and make the earliest weeks look empty, undetectably and permanently. Nothing is backfilled. Every report instead returns `meta.instrumented_since` and `meta.coverage`, probed from the data rather than hardcoded, and the page renders the gap ("1,290 tasks predate instrumentation") so totals stay reconcilable. The one exception is *derived at read time*, never stored: a missing `last_login_at` falls back to the newest surviving session row and is tagged `last_login_source`, so it self-heals as real logins arrive.
 - **New members do not inherit the announcement backlog.** A post reaches someone's badge or pops up for them only if they already had an account when it went live (or when it was last sent again), unless the post says "also show to people who join later". Older posts still sit in their inbox, already marked read. Before this, a new account's read watermark started at `0`, so every announcement ever posted played at their first sign-in.
 - **Read state is per post, not a watermark.** A receipt per person per post records delivery, opening, dismissal, button click and reaction, stamped with the delivery version it belongs to. "Notify again" makes a post unread for everyone without erasing anyone's history. Posts from before receipts still honour the old `last_seen_announcement_id` watermark, read at request time; nothing was backfilled.
 - **Media bytes never pass through Express.** Vercel caps a function body at 4.5 MB. So the studio asks the server for presigned R2 URLs, with type, size and cache headers bound into the signature, and uploads straight to the bucket with a progress bar. The server then confirms the object with a HEAD request, and reads SVG and Lottie files to reject anything scriptable.
 - **One motion scene, two renderers.** A scene animates in, stays idle - still moving - for as long as it is asked to, then animates out. It is a pure function from its clock (frames since it began, and frames since its out began) to canvas drawing, so any length of idle joins its out without a jump. The app's player and the Remotion workspace in `motion/` run the same timeline and the same functions, so a rendered clip matches the in-app scene frame for frame, and a resting pose costs nothing to show under reduced motion.
-- **Files are cached by what is in them.** Every page is served through `server/pages.js`, which stamps each local stylesheet and script URL with a hash of the file's contents. A URL naming the current hash is cached for a year and never asked about again; editing the file changes its URL. The pages themselves are always revalidated, which is how a deploy reaches everyone. The app's and admin's files stay behind their login guards and are only ever cached privately, in the browser that was allowed to fetch them.
-- **The loading screen is the page's first frame.** `public/css/boot.css` and `public/js/boot.js` are written into each page by the server rather than linked, so the logo never waits on a file of its own. It animates on the compositor only (transform and opacity) so it stays smooth while the page's scripts compile, holds a fast load for no longer than its entrance, and then flies each part of the logo onto the page's own brand - the topbar, or admin's sidebar - landing on it exactly.
+- **Files are cached by what is in them.** The build names every file a page loads after its contents, under the page's `assets/`, and the server (`apps/server/src/pages.js`) caches those for a year: editing a file changes its name, so a cached one is never stale. The pages themselves are always revalidated, which is how a deploy reaches everyone. The app's and admin's files stay behind their login guards and are only ever cached privately, in the browser that was allowed to fetch them.
+- **The loading screen is the page's first frame.** `src/shared/boot.css` and `src/shared/boot.js` are written into each page by the build rather than linked, so the logo never waits on a file of its own. It animates on the compositor only (transform and opacity) so it stays smooth while the page's scripts compile, holds a fast load for no longer than its entrance, and then flies each part of the logo onto the page's own brand - the topbar, or admin's sidebar - landing on it exactly.
 - **One logo carries you between the app and admin.** A link marked `data-boot-leave` hands the click to `KlndrBoot.leave()`, which starts the navigation in the same breath and plays over the wait rather than before it. The logo lifts off the brand of the page being left, turns into the destination's - the plate turning over to a shield and the admin tag popping out, or the tag staying behind on the way back - and the next page picks the same motion up from the very frame the last one stopped on, worked out from when its own response began. So a slow server makes the trip longer, never jumpier. A page with unsaved work registers `KlndrBoot.guard()` and keeps the browser's own prompt instead.
 - **A run of clips is one camera move, not clips glued together.** Each clip is a panel on klndr's board, laid out left to right like days on the calendar. Just before a clip's out, the camera lifts its panel off the board and slides to the next one, which starts arriving while it is still sliding in; what the panels carry lags a touch as the camera sets off and runs on a touch as it stops. So the leaving clip is still on screen while the next one builds, and no moment is empty. The same move joins every pair of clips, the last back to the first included, and it is planned in `motion-timeline.js`, so the player, the scrubber and a Remotion render share it. Between moves, a clip draws exactly as it does on its own.
 
@@ -532,9 +545,9 @@ happens and what it looks like.** Titles, category names and completion come
 from the source. Segments, start times and durations are the person's and are
 never written by a sync.
 
-The plumbing is provider-agnostic. `server/integrations/registry.js` maps a
+The plumbing is provider-agnostic. `apps/server/src/integrations/registry.js` maps a
 provider id to a connector implementing the interface documented in
-`server/integrations/connector.js`. Nothing else in the codebase names a
+`apps/server/src/integrations/connector.js`. Nothing else in the codebase names a
 provider: tasks carry generic `source_*` fields and the routes are
 `/api/integrations/:provider/...`.
 
@@ -572,10 +585,12 @@ klndr runs as a single Node process. On Vercel, `npm run build`
 `vercel.json` makes that the build:
 
 - **One function** holds the server, bundled by esbuild into a single file,
-  with `public/`, `protected/` and `admin/` copied beside it as siblings. Every
-  request that isn't a CDN file reaches it with its path intact.
-- **The CDN** serves only `/assets` (the font, icons and manifest) and
-  `/favicon.ico`, cached for a week. Nothing behind the login is ever put
+  with the built pages beside it (`apps/web/dist`, whose `protected/`, `admin/`
+  and `public/` stay siblings). Every request that isn't a CDN file reaches it
+  with its path intact.
+- **The CDN** serves `/assets` (the font, icons and manifest) and
+  `/favicon.ico`, cached for a week, and the login page's hashed files under
+  `/public/assets`, cached for a year. Nothing behind the login is ever put
   there; `npm run test:build` checks the layout.
 
 `npm run build && npm run serve:bundle` serves that output locally the way

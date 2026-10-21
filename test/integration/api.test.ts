@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { built } from "./built";
 import { startServer, type Request, type Response, type TestServer } from "./server";
 
 // The HTTP surface end to end, against a real server and a real (test)
@@ -10,6 +11,14 @@ import { startServer, type Request, type Response, type TestServer } from "./ser
 
 const require = createRequire(import.meta.url);
 const { ensureUser } = require("../support/test-db.cjs");
+
+const APP = built("protected");
+const ADMIN_PAGE = built("admin");
+const LOGIN = built("public");
+// Inside its page's directory: what a path climbing out of another one has to
+// reach.
+const appFile = APP.js.slice("/protected/".length);
+const adminFile = ADMIN_PAGE.js.slice("/admin/".length);
 
 const run = Math.random().toString(36).slice(2, 8);
 const ADMIN = `e2e_admin_${run}`;
@@ -90,7 +99,7 @@ describe("guards before signing in", () => {
   });
 
   test("a protected script is blocked", async () => {
-    expect((await page("/protected/js/app.js")).status).toBe(302);
+    expect((await page(APP.js)).status).toBe(302);
   });
 
   test("an admin page redirects to /login", async () => {
@@ -102,18 +111,19 @@ describe("guards before signing in", () => {
   // Every way of climbing out of an open directory into a guarded one. None
   // may hand over the app's code without a session.
   test.each([
-    "/public/../protected/js/app.js",
-    "/public/x/../../protected/js/app.js",
-    "/public/%2e%2e/protected/js/app.js",
-    "/public/..%2fprotected/js/app.js",
-    "/public/..%5cprotected/js/app.js",
-    "/public/%252e%252e/protected/js/app.js",
-    "/assets/../protected/js/app.js",
-    "/assets/%2e%2e/protected/js/app.js",
+    `/public/../protected/${appFile}`,
+    `/public/x/../../protected/${appFile}`,
+    `/public/%2e%2e/protected/${appFile}`,
+    `/public/..%2fprotected/${appFile}`,
+    `/public/..%5cprotected/${appFile}`,
+    `/public/%252e%252e/protected/${appFile}`,
+    `/public/assets/../../protected/${appFile}`,
+    `/assets/../protected/${appFile}`,
+    `/assets/%2e%2e/protected/${appFile}`,
   ])("%s does not leak app code", async (path) => {
     const res = await page(path);
     expect(res.status).not.toBe(200);
-    expect(res.body).not.toContain("class KlndrApp");
+    expect(res.body).not.toContain(APP.sample);
   });
 });
 
@@ -368,7 +378,7 @@ describe("the admin page", () => {
   });
 
   test("a member cannot fetch admin scripts", async () => {
-    const res = await page("/admin/shell.js", betaToken);
+    const res = await page(ADMIN_PAGE.js, betaToken);
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("/");
   });
@@ -378,16 +388,17 @@ describe("the admin page", () => {
   // past the /protected guard, so these are the paths that would reach admin
   // code if it ever moved inside.
   test.each([
-    "/protected/x/../admin/shell.js",
-    "/protected/x/../../admin/shell.js",
-    "/protected/%2e%2e/admin/shell.js",
-    "/protected/..%2fadmin/shell.js",
-    "/protected/..%5cadmin/shell.js",
-    "/protected/%252e%252e/admin/shell.js",
+    `/protected/x/../admin/${adminFile}`,
+    `/protected/x/../../admin/${adminFile}`,
+    `/protected/assets/../../admin/${adminFile}`,
+    `/protected/%2e%2e/admin/${adminFile}`,
+    `/protected/..%2fadmin/${adminFile}`,
+    `/protected/..%5cadmin/${adminFile}`,
+    `/protected/%252e%252e/admin/${adminFile}`,
   ])("%s does not reach admin code for a member", async (path) => {
     const res = await page(path, betaToken);
     expect(res.status).not.toBe(200);
-    expect(res.body).not.toContain("KlndrAdmin");
+    expect(res.body).not.toContain(ADMIN_PAGE.sample);
   });
 
   test("an admin deep link serves the admin page", async () => {
@@ -397,9 +408,15 @@ describe("the admin page", () => {
   });
 
   test("admin scripts load for an admin", async () => {
-    const res = await page("/admin/shell.js", token);
+    const res = await page(ADMIN_PAGE.js, token);
     expect(res.status).toBe(200);
-    expect(res.body).toContain("KlndrAdmin");
+    expect(res.body).toContain(ADMIN_PAGE.sample);
+  });
+
+  test("what the build leaves in .vite/ is never served", async () => {
+    for (const dir of ["protected", "admin", "public"]) {
+      expect((await page(`/${dir}/.vite/manifest.json`, token)).status, dir).toBe(404);
+    }
   });
 
   test("a missing admin asset is a 404, not the page", async () => {
@@ -413,8 +430,8 @@ describe("the admin page", () => {
   });
 });
 
-// server/pages.js: pages are always revalidated; the files they name carry a
-// hash and are cached for a year; the guards do not move.
+// apps/server/src/pages.js: pages are always revalidated; the files the build
+// named after their contents are cached for a year; the guards do not move.
 describe("caching", () => {
   let appPage: Response;
 
@@ -431,34 +448,47 @@ describe("caching", () => {
     expect(res.status).toBe(304);
   });
 
+  test("the page names the files the build hashed, and is finished", () => {
+    expect(appPage.body).toContain(`src="${APP.js}"`);
+    expect(appPage.body).toContain(`href="${APP.css}"`);
+    expect(appPage.body).toContain('<script id="kb-js">');
+    expect(appPage.body).not.toMatch(/<!--\s*klndr:/);
+  });
+
   test("hashed files are cached a year, and the guards still hold", async () => {
-    const appJs = appPage.body.match(/src="(\/protected\/js\/app\.js\?v=[0-9a-f]{10})"/)?.[1];
-    const themeCss = appPage.body.match(/href="(\/public\/css\/theme\.css\?v=[0-9a-f]{10})"/)?.[1];
-    expect(appJs).toBeTruthy();
-    expect(themeCss).toBeTruthy();
+    for (const url of [APP.js, APP.css]) {
+      const file = await page(url, token);
+      expect(file.status).toBe(200);
+      expect(file.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
 
-    const script = await page(appJs!, token);
-    expect(script.status).toBe(200);
-    expect(script.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
+      const signedOut = await page(url);
+      expect(signedOut.status).toBe(302);
+      expect(signedOut.headers.location).toBe("/login");
+    }
 
-    const signedOut = await page(appJs!);
-    expect(signedOut.status).toBe(302);
-    expect(signedOut.headers.location).toBe("/login");
+    // Not named after its contents, so revalidated.
+    const legacy = await page("/protected/vendor/lottie_light.min.js", token);
+    expect(legacy.status).toBe(200);
+    expect(legacy.headers["cache-control"]).toBe("private, no-cache");
 
-    const stale = await page("/protected/js/app.js?v=0123456789", token);
-    expect(stale.status).toBe(200);
-    expect(stale.headers["cache-control"]).toBe("private, no-cache");
+    for (const url of [LOGIN.js, LOGIN.css]) {
+      const file = await page(url);
+      expect(file.status).toBe(200);
+      expect(file.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+    }
+  });
 
-    const sheet = await page(themeCss!);
-    expect(sheet.status).toBe(200);
-    expect(sheet.headers["cache-control"] ?? "").toMatch(/^public, max-age=31536000, immutable/);
+  test("the font keeps its one URL, cached for a week", async () => {
+    const font = await page("/assets/ElmsSans.ttf");
+    expect(font.status).toBe(200);
+    expect(font.headers["cache-control"]).toBe("public, max-age=604800");
+    expect(appPage.body).toContain('href="/assets/ElmsSans.ttf"');
   });
 
   test("a member cannot fetch a hashed admin script either", async () => {
     const adminPage = await page("/admin", token);
-    const shellJs = adminPage.body.match(/src="(\/admin\/shell\.js\?v=[0-9a-f]{10})"/)?.[1];
-    expect(shellJs).toBeTruthy();
-    const res = await page(shellJs!, betaToken);
+    expect(adminPage.body).toContain(`src="${ADMIN_PAGE.js}"`);
+    const res = await page(ADMIN_PAGE.js, betaToken);
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("/");
   });

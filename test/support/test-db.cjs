@@ -3,7 +3,7 @@
 //
 // Both suites create and delete accounts, tasks and posts. Pointed at a real
 // database they would do that to real people, so the guard runs before
-// anything requires server/db: requiring it is enough to start index builds
+// anything requires the server's db module: requiring it is enough to start index builds
 // and the first-run seed against whatever MONGODB_DB names.
 
 const fs = require("node:fs");
@@ -14,7 +14,7 @@ const TEST_DATABASE = /_(e2e|test)$/;
 
 // The environment the server will see. `.env.test` comes first and only fills
 // what the shell has not set; `.env` then fills the rest (usually just the
-// connection string), the same way server/db.js loads it.
+// connection string), the same way apps/server/src/db.js loads it.
 function loadTestEnv() {
   const testEnv = path.join(ROOT, ".env.test");
   if (fs.existsSync(testEnv)) process.loadEnvFile(testEnv);
