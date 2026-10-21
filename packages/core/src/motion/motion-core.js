@@ -8,14 +8,8 @@
 // what lets one scene play live inside klndr, jump to any frame in the Studio's
 // scrubber, and render to video from the Remotion workspace in motion/ - there
 // is no wall clock anywhere in here, only frame counts.
-//
-// Browser global and CommonJS module, like palette.js: the Remotion project and
-// the unit tests require it.
 
-'use strict';
-
-/* exported KlndrMotionCore */
-const KlndrMotionCore = (() => {
+export const KlndrMotionCore = (() => {
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const lerp = (from, to, t) => from + (to - from) * t;
 
@@ -279,7 +273,7 @@ const KlndrMotionCore = (() => {
 
   // Static copies for where there is no stylesheet to read: node, the tests and
   // the Remotion renderer. scripts/check-design-tokens.js fails if these stop
-  // matching public/css/theme.css.
+  // matching apps/web/src/shared/theme.css.
   const THEMES = {
     light: {
       ground: '#f2ffec',
@@ -504,4 +498,3 @@ const KlndrMotionCore = (() => {
   };
 })();
 
-if (typeof module !== 'undefined' && module.exports) module.exports = KlndrMotionCore;

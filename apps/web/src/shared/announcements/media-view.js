@@ -9,10 +9,12 @@
 // tap when someone has asked for reduced motion. SVG is only ever an <img>:
 // inlined, an uploaded SVG could run script in the page.
 
-'use strict';
+import { KlndrAnnouncementRules } from '@klndr/core/announcements/rules';
+import { KlndrMotionTimeline } from '@klndr/core/motion/motion-timeline';
+import { KlndrMotion } from '../motion/motion-player.js';
+import { KlndrVendor } from '../vendor.js';
 
-/* exported KlndrAnnouncementMedia */
-const KlndrAnnouncementMedia = (() => {
+export const KlndrAnnouncementMedia = (() => {
   const TYPE_ICONS = {
     image: 'image',
     animated_image: 'gif_box',

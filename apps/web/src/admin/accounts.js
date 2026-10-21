@@ -7,7 +7,8 @@
 // Every username on this page is set with textContent. Usernames are whatever
 // an admin typed, and nothing upstream escapes them.
 
-'use strict';
+import { API } from '../shared/api.js';
+import { KlndrAdmin } from './shell.js';
 
 (() => {
   const A = KlndrAdmin;

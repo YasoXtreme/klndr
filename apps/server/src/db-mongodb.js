@@ -883,7 +883,7 @@ async function updateSettings(userId, newSettings) {
 //
 // A category list lives in the settings document, under `values.categories`.
 // The absence of that key is load-bearing: it means "this user has never been
-// migrated", and server/categories.js reads it to decide whether to derive a
+// migrated", and categories.js reads it to decide whether to derive a
 // list from the categories their tasks already carry. An empty array means the
 // opposite - migrated, and they deliberately have none - so the two must never
 // be conflated, and `categories` must stay OUT of the getSettings defaults.
@@ -955,7 +955,7 @@ async function countTasksByCategory(userId) {
 //
 // Storage only. What an announcement means - who it is for, when it counts as
 // read, how a post from before the rewrite is interpreted - lives in
-// server/announcements and protected/js/announcements/rules.js.
+// announcements/ and @klndr/core/announcements/rules.
 
 /**
  * The next announcement id.
@@ -1205,7 +1205,7 @@ async function earliestReceiptAt() {
 // ==========================================
 //
 // The media library's rows. What may be uploaded, and the bucket itself, are
-// server/media.js and server/storage/r2.js.
+// media.js and storage/r2.js.
 
 async function insertMedia(doc) {
   const { media } = await indexedCollections();

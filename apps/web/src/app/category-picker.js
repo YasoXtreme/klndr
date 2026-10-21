@@ -10,10 +10,9 @@
 // every time a popup opens, never at init, so the list is whatever the person
 // owns right now.
 
-'use strict';
+import { KlndrTheme } from '../shared/theme.js';
 
-/* exported CategoryPicker */
-const CategoryPicker = {
+export const CategoryPicker = {
   // "No category" is drawn as though it were a category, so the pinned-selected
   // row, the checkmark and the accent all work without a special case. It has
   // no id, which is also what marks it as un-editable.

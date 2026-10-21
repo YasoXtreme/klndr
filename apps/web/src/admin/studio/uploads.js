@@ -3,9 +3,11 @@
 // The browser does the looking: what kind of file this really is, how big it
 // is on screen, a still frame to show before it plays. Then it asks the server
 // to sign an upload, PUTs the bytes straight to R2 with progress, and asks the
-// server to confirm what arrived. See server/media.js for the other half.
+// server to confirm what arrived. See apps/server/src/media.js for the other half.
 
-'use strict';
+import { API } from '../../shared/api.js';
+import { KlndrVendor } from '../../shared/vendor.js';
+import { KlndrStudio } from './core.js';
 
 (() => {
   const S = KlndrStudio;

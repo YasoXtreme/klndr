@@ -53,7 +53,8 @@ export default defineConfig({
   ],
   webServer: {
     // KLNDR_TARGET=bundle tests the bundle Vercel deploys (npm run build first).
-    command: process.env.KLNDR_TARGET === "bundle" ? "node scripts/serve-bundle.mjs" : "node server.js",
+    // Otherwise the pages are built first, so the suite never runs an old build.
+    command: process.env.KLNDR_TARGET === "bundle" ? "node scripts/serve-bundle.mjs" : "npm run build:web && npm start",
     url: `${BASE_URL}/login`,
     reuseExistingServer: !CI,
     timeout: 120_000,

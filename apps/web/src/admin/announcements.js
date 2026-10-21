@@ -5,7 +5,9 @@
 // the router in admin/studio/core.js. Each view lives in its own file under
 // admin/studio/.
 
-'use strict';
+import { API } from '../shared/api.js';
+import { KlndrAdmin } from './shell.js';
+import { KlndrStudio } from './studio/core.js';
 
 (() => {
   const S = KlndrStudio;

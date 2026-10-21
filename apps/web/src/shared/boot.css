@@ -1,8 +1,9 @@
 /* klndr boot overlay
    ====================================================
    The logo that stands in for a page while it loads, on the app and on admin.
-   server/pages.js inlines this file into each page's <head>, and boot.js at the
-   top of <body>, so the overlay never waits on a file of its own.
+   The page build (apps/web/build/klndr-page.mts) inlines this file into each
+   page's <head>, and boot.js at the top of <body>, so the overlay never waits
+   on a file of its own.
 
    Every rule is scoped to #klndrBoot. This sheet sits BEFORE common.css, and at
    equal specificity the later file wins: .klndr-lockup{--klndr-size:64px} there

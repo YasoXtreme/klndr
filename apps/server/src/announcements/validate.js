@@ -1,6 +1,6 @@
-const Rules = require("../../protected/js/announcements/rules");
-const Scenes = require("../../protected/js/motion/scenes");
-const MotionTimeline = require("../../protected/js/motion/motion-timeline");
+const { KlndrAnnouncementRules: Rules } = require("@klndr/core/announcements/rules");
+const { KlndrScenes: Scenes } = require("@klndr/core/motion/scenes");
+const { KlndrMotionTimeline: MotionTimeline } = require("@klndr/core/motion/motion-timeline");
 const { HttpError } = require("../http-error");
 
 // Everything the Studio can send, reduced to what an announcement may hold.

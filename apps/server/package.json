@@ -1,0 +1,17 @@
+{
+  "name": "@klndr/server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Express server: the API, the login and page guards, and every file the browser loads.",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "dependencies": {
+    "@klndr/core": "*",
+    "aws4fetch": "^1.0.20",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "mongodb": "^7.5.0"
+  }
+}

@@ -12,13 +12,8 @@
 // three rules the old announcement box understood - *bold*, _italic_ and
 // "* item" lists - reproduced exactly, so posts written back then still read the
 // way they were written.
-//
-// Browser global and CommonJS module, like palette.js, so the tests can reach it.
 
-'use strict';
-
-/* exported KlndrMarkdown */
-const KlndrMarkdown = (() => {
+export const KlndrMarkdown = (() => {
   // Placeholders for finished HTML while the rest of a line is still being
   // formatted. Private-use characters, stripped from the input first, so no
   // text can forge one.
@@ -376,4 +371,3 @@ const KlndrMarkdown = (() => {
   return { render, renderLegacy, convertLegacy, toPlainText, escapeHtml, safeHref, safeImageSrc };
 })();
 
-if (typeof module !== 'undefined' && module.exports) module.exports = KlndrMarkdown;

@@ -15,22 +15,22 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const SHEETS = [
-  'public/css/theme.css',
-  'public/css/common.css',
-  'public/css/boot.css',
-  'public/css/login.css',
-  'protected/css/app.css',
-  'protected/css/responsive.css',
-  'protected/css/announcements.css',
-  'admin/analytics.css',
-  'admin/announcements.css',
-  'admin/admin.css'
-];
+// Every stylesheet the pages are built from. Found rather than listed, so a new
+// one is checked from the start; the count is a floor, so a glob that quietly
+// matched nothing would fail rather than pass.
+const SHEETS = fs
+  .readdirSync(path.join(ROOT, 'apps/web/src'), { recursive: true })
+  .map((rel) => `apps/web/src/${rel.split(path.sep).join('/')}`)
+  .filter((rel) => rel.endsWith('.css'))
+  .sort();
+if (SHEETS.length < 10) {
+  console.error(`design tokens: found only ${SHEETS.length} stylesheets under apps/web/src`);
+  process.exit(1);
+}
 
 // common.css is where the scale is DEFINED, so it is the one file allowed to
 // say a raw number for these.
-const SCALE_FILE = 'public/css/common.css';
+const SCALE_FILE = 'apps/web/src/shared/common.css';
 
 const RADIUS_OK = /^(var\(--radius-(xs|sm|md|lg|pill)\)|0|50%|calc\(.*\))$/;
 const WIDTH_OK = /var\(--(line-(hair|control|container)|border-(control|container|block|hair))\)/;
@@ -88,7 +88,7 @@ for (const rel of SHEETS) {
 }
 
 // --- theme.css, as declarations ---------------------------------------------
-const themeSrc = fs.readFileSync(path.join(ROOT, 'public/css/theme.css'), 'utf8');
+const themeSrc = fs.readFileSync(path.join(ROOT, 'apps/web/src/shared/theme.css'), 'utf8');
 const grab = (start, end) => {
   const a = themeSrc.indexOf(start);
   if (a < 0) return null;
@@ -110,8 +110,8 @@ const decls = (block) => {
 // in motion-core.js - and a clip rendered from a stale copy would quietly
 // disagree with the app it is announcing.
 {
-  const rel = 'protected/js/motion/motion-core.js';
-  const { TOKEN_VARS, THEMES } = require(path.join(ROOT, rel));
+  const rel = 'packages/core/src/motion/motion-core.js';
+  const { TOKEN_VARS, THEMES } = require(path.join(ROOT, rel)).KlndrMotionCore;
   const lightBlock = grab('\n:root {\n', '\n}\n');
   const darkBlock = grab(':root:not([data-theme="light"]) {', '\n  }\n');
   if (lightBlock && darkBlock) {

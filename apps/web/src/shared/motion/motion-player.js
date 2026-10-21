@@ -14,10 +14,11 @@
 // play, and redraws the moment the theme changes instead of waiting for its
 // next frame.
 
-'use strict';
+import { KlndrMotionCore } from '@klndr/core/motion/motion-core';
+import { KlndrMotionTimeline } from '@klndr/core/motion/motion-timeline';
+import { KlndrScenes } from '@klndr/core/motion/scenes';
 
-/* exported KlndrMotion */
-const KlndrMotion = (() => {
+export const KlndrMotion = (() => {
   const Timeline = KlndrMotionTimeline;
   const FPS = KlndrScenes.FPS;
   // Scenes are timed in frames at 30 a second, but drawn in between as well: a

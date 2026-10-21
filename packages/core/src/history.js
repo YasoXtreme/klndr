@@ -15,10 +15,7 @@
 // The stack never touches the network or the DOM. The app owns applying an
 // entry; this only decides which one is next and which way it goes.
 
-'use strict';
-
-/* exported HistoryStack */
-class HistoryStack {
+export class HistoryStack {
   constructor(limit = 60) {
     this.limit = limit;
     this.past = [];

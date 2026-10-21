@@ -1,7 +1,8 @@
 // Announcement Studio - the editor's form: words, button, delivery, audience
 // and schedule. The header section is editor-media.js.
 
-'use strict';
+import { KlndrAnnouncementReader } from '../../shared/announcements/reader.js';
+import { KlndrStudio } from './core.js';
 
 (() => {
   const S = KlndrStudio;

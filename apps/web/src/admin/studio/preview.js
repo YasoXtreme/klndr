@@ -5,7 +5,14 @@
 // inbox, banner and card views are only frames around those pieces, placed
 // the way each one sits in the app.
 
-'use strict';
+import { KlndrMarkdown } from '@klndr/core/announcements/markdown';
+import { KlndrAnnouncementRules } from '@klndr/core/announcements/rules';
+import { KlndrMotionTimeline } from '@klndr/core/motion/motion-timeline';
+import { KlndrScenes } from '@klndr/core/motion/scenes';
+import { KlndrAnnouncementMedia } from '../../shared/announcements/media-view.js';
+import { KlndrAnnouncementReader } from '../../shared/announcements/reader.js';
+import { KlndrTheme } from '../../shared/theme.js';
+import { KlndrStudio } from './core.js';
 
 (() => {
   const S = KlndrStudio;

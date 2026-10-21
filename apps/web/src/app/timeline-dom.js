@@ -9,10 +9,11 @@
 // the shared boundary, then pops in. Aim at the boundary and you move both
 // blocks; aim a few pixels either side and you resize just that one.
 
-'use strict';
+import { TaskModel } from '@klndr/core/task-model';
+import { KlndrTheme } from '../shared/theme.js';
+import { TimelineCanvas } from './timeline-canvas.js';
 
-/* exported TimelineDOM */
-class TimelineDOM {
+export class TimelineDOM {
   // Two boundaries within this many minutes of each other count as touching.
   static SEAM_TOLERANCE_MINUTES = 0.5;
 

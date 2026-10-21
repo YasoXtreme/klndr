@@ -15,15 +15,13 @@
 //
 // It is the one place that knows, so the player, the Studio's scrubber, the
 // server, the tests and the Remotion render all agree frame for frame.
-//
-// Browser global and CommonJS module, like palette.js.
 
-'use strict';
+import { KlndrMotionCore } from './motion-core.js';
+import { KlndrScenes } from './scenes.js';
 
-/* exported KlndrMotionTimeline */
-const KlndrMotionTimeline = (() => {
-  const M = typeof KlndrMotionCore !== 'undefined' ? KlndrMotionCore : require('./motion-core');
-  const Scenes = typeof KlndrScenes !== 'undefined' ? KlndrScenes : require('./scenes');
+export const KlndrMotionTimeline = (() => {
+  const M = KlndrMotionCore;
+  const Scenes = KlndrScenes;
 
   const FPS = Scenes.FPS;
   // Idle is set in seconds, on the Studio's slider.
@@ -495,4 +493,3 @@ const KlndrMotionTimeline = (() => {
   };
 })();
 
-if (typeof module !== 'undefined' && module.exports) module.exports = KlndrMotionTimeline;

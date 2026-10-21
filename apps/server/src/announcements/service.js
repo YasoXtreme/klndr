@@ -1,6 +1,6 @@
 const db = require("../db");
 const media = require("../media");
-const Rules = require("../../protected/js/announcements/rules");
+const { KlndrAnnouncementRules: Rules } = require("@klndr/core/announcements/rules");
 const model = require("./model");
 const { sanitize, publishProblems } = require("./validate");
 const { HttpError } = require("../http-error");

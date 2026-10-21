@@ -2,8 +2,8 @@
  * The boot overlay: the klndr logo, standing in for a page while it loads, and
  * carrying you from one page to the next.
  *
- * server/pages.js inlines this as the first thing in <body> on the app and on
- * admin, with boot.css in the <head>, so the logo is part of the page's first
+ * The page build (apps/web/build/klndr-page.mts) inlines this as the first
+ * thing in <body> on the app and on admin, with boot.css in the <head>, so the logo is part of the page's first
  * painted frame rather than something that arrives later. <body data-boot>
  * says which page it is on: "app" or "admin".
  *

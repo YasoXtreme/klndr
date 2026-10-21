@@ -1,8 +1,5 @@
 // Klndr Client API Service
-'use strict';
-
-/* exported API */
-const API = {
+export const API = {
   async request(endpoint, options = {}) {
     const defaultHeaders = {
       'Content-Type': 'application/json'

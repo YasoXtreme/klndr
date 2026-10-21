@@ -1,7 +1,13 @@
 // Announcement Studio - the header section: motion scenes, uploads, the media
 // library, and how the chosen header is framed.
 
-'use strict';
+import { KlndrMotionTimeline } from '@klndr/core/motion/motion-timeline';
+import { KlndrScenes } from '@klndr/core/motion/scenes';
+import { KlndrPalette } from '@klndr/core/palette';
+import { KlndrAnnouncementMedia } from '../../shared/announcements/media-view.js';
+import { API } from '../../shared/api.js';
+import { KlndrTheme } from '../../shared/theme.js';
+import { KlndrStudio } from './core.js';
 
 (() => {
   const S = KlndrStudio;

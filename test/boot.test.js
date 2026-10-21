@@ -8,8 +8,8 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const Boot = require("../public/js/boot");
-const SOURCE = fs.readFileSync(path.join(__dirname, "..", "public", "js", "boot.js"), "utf8");
+const Boot = require("../apps/web/src/shared/boot");
+const SOURCE = fs.readFileSync(path.join(__dirname, "..", "apps", "web", "src", "shared", "boot.js"), "utf8");
 
 // Just enough of a browser for boot.js to start in: the browser half runs
 // top to bottom the moment the page parses it, so a mistake there - a constant

@@ -1,9 +1,19 @@
 // Klndr Application Coordinator & Main Controller
 
-'use strict';
+import { HistoryStack } from '@klndr/core/history';
+import { KlndrPalette } from '@klndr/core/palette';
+import { PhysicsEngine } from '@klndr/core/physics-engine';
+import { TaskModel } from '@klndr/core/task-model';
+import { API } from '../shared/api.js';
+import { KlndrTheme } from '../shared/theme.js';
+import { KlndrAnnouncements } from './announcements/inbox.js';
+import { CategoryPicker } from './category-picker.js';
+import { DragController } from './drag-controller.js';
+import { TasksSidebar } from './sidebar.js';
+import { TimelineCanvas } from './timeline-canvas.js';
+import { TimelineDOM } from './timeline-dom.js';
 
-/* exported KlndrApp */
-class KlndrApp {
+export class KlndrApp {
   constructor() {
     this.user = null;
     this.tasks = [];

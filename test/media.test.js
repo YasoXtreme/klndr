@@ -3,7 +3,7 @@
 
 const assert = require("node:assert/strict");
 
-const policy = require("../server/media-policy");
+const policy = require("../apps/server/src/media-policy");
 
 test("each kind has a ceiling and a list of types", () => {
   const ok = policy.checkUpload({ kind: "video", content_type: "video/mp4", bytes: 1024, filename: "Clip.MP4" });
@@ -72,7 +72,7 @@ test("an upload URL binds the type, the exact size and the cache header", async 
   process.env.R2_SECRET_ACCESS_KEY = "test-secret-key";
   process.env.R2_BUCKET = "klndr-media";
   delete process.env.R2_PUBLIC_BASE_URL;
-  const r2 = require("../server/storage/r2");
+  const r2 = require("../apps/server/src/storage/r2");
 
   assert.equal(r2.isConfigured(), true);
   assert.equal(r2.mode(), "private");

@@ -1,15 +1,15 @@
 // Announcement Studio - shared pieces.
 //
 // The Studio is the Announcements section of the admin page. It is split
-// across a few files in admin/studio/, each adding to one global, KlndrStudio,
-// the way the app's own scripts share KlndrPalette and friends. This one holds
+// across a few files in admin/studio/, each adding to KlndrStudio, which this
+// one exports. It holds
 // what every view needs: page state, small DOM builders, formatting, and the
 // router. admin/announcements.js registers it with the admin shell.
 
-'use strict';
+import { KlndrAnnouncementRules } from '@klndr/core/announcements/rules';
+import { KlndrAdmin } from '../shell.js';
 
-/* exported KlndrStudio */
-const KlndrStudio = (() => {
+export const KlndrStudio = (() => {
   const Rules = KlndrAnnouncementRules;
   // The pieces every admin section shares live in the shell; the Studio's
   // views keep reaching them through KlndrStudio.

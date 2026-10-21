@@ -17,7 +17,7 @@
 
 require("dotenv").config({ quiet: true });
 const crypto = require("crypto");
-const r2 = require("../server/storage/r2");
+const r2 = require("../apps/server/src/storage/r2");
 
 const [command, ...extraOrigins] = process.argv.slice(2);
 
@@ -83,7 +83,7 @@ async function check() {
     );
 
     // If a different size gets through, the signature is not binding it, and
-    // the size limits in server/media.js are only advisory.
+    // the size limits in apps/server/src/media.js are only advisory.
     const tampered = await fetch(upload.url, {
       method: "PUT",
       headers: upload.headers,

@@ -45,7 +45,7 @@ body {
   line-height: 1;
 }
 
-/* The boot overlay is public/css/boot.css, which server/pages.js writes into
+/* The boot overlay is src/shared/boot.css, which the page build writes into
    the page itself so the loading screen never waits on a file. */
 
 /* ====================================================

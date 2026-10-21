@@ -1,6 +1,6 @@
 const { collections } = require("./db");
 const A = require("./analytics");
-const Rules = require("../protected/js/announcements/rules");
+const { KlndrAnnouncementRules: Rules } = require("@klndr/core/announcements/rules");
 const model = require("./announcements/model");
 
 const { TZ, DAY, WEEK, WEEK_EPOCH } = A;
@@ -231,7 +231,7 @@ async function people(days) {
   }
   // Unread the way the app counts it, not watermark arithmetic: only posts a
   // person was here for (or evergreen ones), read by receipt or by the legacy
-  // marker. The rules are protected/js/announcements/rules.js.
+  // marker. The rules are @klndr/core/announcements/rules.
   const liveAnnouncements = announcementRows
     .map(model.normalize)
     .filter((a) => Rules.isLive(a, meta.generated_at));

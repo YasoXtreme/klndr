@@ -1,6 +1,6 @@
 const db = require("../db");
 const categories = require("../categories");
-const KlndrPalette = require("../../protected/js/palette");
+const { KlndrPalette } = require("@klndr/core/palette");
 const { getAccessToken } = require("./tokens");
 
 // Turns NormalizedItems into klndr tasks.

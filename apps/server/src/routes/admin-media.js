@@ -6,7 +6,7 @@ const { jsonRoute } = require("../http-error");
 // and requireAdmin on the mount, like analytics: every route is admin-only JSON.
 //
 // No route here ever receives file bytes. An upload is signed here, sent by the
-// browser straight to R2, and confirmed here - see server/media.js.
+// browser straight to R2, and confirmed here - see media.js.
 
 const router = express.Router();
 

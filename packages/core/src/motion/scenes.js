@@ -24,12 +24,12 @@
 // ground under it is the registry's to paint. test/motion.test.js holds every
 // scene to all of that.
 
-'use strict';
+import { KlndrPalette } from '../palette.js';
+import { KlndrMotionCore } from './motion-core.js';
 
-/* exported KlndrScenes */
-const KlndrScenes = (() => {
-  const M = typeof KlndrMotionCore !== 'undefined' ? KlndrMotionCore : require('./motion-core');
-  const Palette = typeof KlndrPalette !== 'undefined' ? KlndrPalette : require('../palette');
+export const KlndrScenes = (() => {
+  const M = KlndrMotionCore;
+  const Palette = KlndrPalette;
 
   const FPS = 30;
   const WIDTH = 1200;
@@ -3246,4 +3246,3 @@ const KlndrScenes = (() => {
   };
 })();
 
-if (typeof module !== 'undefined' && module.exports) module.exports = KlndrScenes;

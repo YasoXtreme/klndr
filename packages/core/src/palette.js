@@ -1,15 +1,12 @@
 // Klndr Shared Palette
 //
 // The twenty colours and twenty icons a task or a category can wear. This lives
-// in its own file, loaded by the browser AND required by the server, because
+// in @klndr/core, imported by the browser AND required by the server, because
 // "give a new category a random colour that no other category has taken" is only
 // meaningful if both sides are drawing from the same twenty. Two copies would
 // drift, and the drift would show up as a category the picker cannot render.
 
-'use strict';
-
-/* exported KlndrPalette */
-const KlndrPalette = {
+export const KlndrPalette = {
   // 20 Curated Google Icons
   icons: [
     'square_foot', 'balance', 'science', 'bolt', 'menu_book',
@@ -32,6 +29,3 @@ const KlndrPalette = {
   DEFAULT_ICON: 'task_alt'
 };
 
-// The browser gets it as a global, the way api.js and task-model.js do; node
-// gets it through require. Neither half knows about the other.
-if (typeof module !== 'undefined' && module.exports) module.exports = KlndrPalette;

@@ -6,17 +6,16 @@
 // dialogs, the toast - so that a page in one section looks and behaves like a
 // page in any other.
 //
-// A section is one script that calls KlndrAdmin.section() when it loads. The
-// order those scripts load in is the order of the sidebar, so adding a tool is
-// a file and a <script> tag in admin/index.html.
+// A section is one module that calls KlndrAdmin.section() when it loads. The
+// order admin/main.js imports them in is the order of the sidebar, so adding a
+// tool is a file and an import there.
 //
 // Hiding the way in from people who are not admins is presentation. The page
 // and every endpoint behind it are guarded on the server.
 
-'use strict';
+import { API } from '../shared/api.js';
 
-/* exported KlndrAdmin */
-const KlndrAdmin = (() => {
+export const KlndrAdmin = (() => {
   const BASE = '/admin';
   const LAST_PAGE_KEY = 'klndr:admin:last';
   const NARROW = window.matchMedia('(max-width: 1023px)');
@@ -36,7 +35,7 @@ const KlndrAdmin = (() => {
     (error) => ({ error })
   );
 
-  // The boot overlay (public/js/boot.js), when the page has one.
+  // The boot overlay (src/shared/boot.js), when the page has one.
   const boot = window.KlndrBoot || { ready: () => Promise.resolve(), fail: () => {} };
 
   // ==========================================

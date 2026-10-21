@@ -1,5 +1,5 @@
-const Rules = require("../../protected/js/announcements/rules");
-const MotionTimeline = require("../../protected/js/motion/motion-timeline");
+const { KlndrAnnouncementRules: Rules } = require("@klndr/core/announcements/rules");
+const { KlndrMotionTimeline: MotionTimeline } = require("@klndr/core/motion/motion-timeline");
 
 // The shape an announcement has in memory, whatever shape it was stored in.
 //

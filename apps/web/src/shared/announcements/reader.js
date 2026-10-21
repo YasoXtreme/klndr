@@ -8,10 +8,11 @@
 // It builds DOM and wires callbacks, and that is all. Where the result is put,
 // and what a click means, are the caller's business.
 
-'use strict';
+import { KlndrMarkdown } from '@klndr/core/announcements/markdown';
+import { KlndrAnnouncementRules } from '@klndr/core/announcements/rules';
+import { KlndrAnnouncementMedia } from './media-view.js';
 
-/* exported KlndrAnnouncementReader */
-const KlndrAnnouncementReader = (() => {
+export const KlndrAnnouncementReader = (() => {
   const Rules = KlndrAnnouncementRules;
 
   const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });

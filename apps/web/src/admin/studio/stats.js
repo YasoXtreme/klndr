@@ -1,7 +1,10 @@
 // Announcement Studio - one post's numbers: who it was for, who it reached,
 // who opened it, and what they did with it.
 
-'use strict';
+import { API } from '../../shared/api.js';
+import { KlndrCharts } from '../charts.js';
+import { KlndrAdmin } from '../shell.js';
+import { KlndrStudio } from './core.js';
 
 (() => {
   const S = KlndrStudio;

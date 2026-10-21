@@ -25,9 +25,7 @@
    round trip on a preference this cheap would only slow the page down.
    ==================================================== */
 
-'use strict';
-
-window.KlndrTheme = (function () {
+export const KlndrTheme = (function () {
   const STORAGE_KEY = 'klndr:theme';
   const MODES = ['system', 'light', 'dark'];
 
@@ -198,3 +196,8 @@ window.KlndrTheme = (function () {
 
   return { STORAGE_KEY, mode, resolved, set, toggle, paint, mount };
 })();
+
+// Also on window, for the one reader that cannot import it: the motion core in
+// @klndr/core, which has no DOM of its own and asks the page which theme is on
+// when there is a page to ask.
+window.KlndrTheme = KlndrTheme;

@@ -12,7 +12,7 @@
 
 const crypto = require("crypto");
 const db = require("./db");
-const KlndrPalette = require("../protected/js/palette");
+const { KlndrPalette } = require("@klndr/core/palette");
 
 const MAX_NAME_LENGTH = 40;
 

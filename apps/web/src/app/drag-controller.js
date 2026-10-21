@@ -5,10 +5,14 @@
 // the ghost blocks the user sees during a drag are produced by exactly the same
 // physics call that will run when they let go, so the preview cannot lie.
 
-'use strict';
+import { KlndrPalette } from '@klndr/core/palette';
+import { PhysicsEngine } from '@klndr/core/physics-engine';
+import { TaskModel } from '@klndr/core/task-model';
+import { KlndrTheme } from '../shared/theme.js';
+import { TimelineCanvas } from './timeline-canvas.js';
+import { TimelineDOM } from './timeline-dom.js';
 
-/* exported DragController */
-class DragController {
+export class DragController {
   static SEAM_MIN_MINUTES = PhysicsEngine.MIN_TASK_DURATION_MINUTES;
 
   constructor(canvasRenderer, domRenderer, state, onCommitChanges, onReorderTasks) {

@@ -1,6 +1,11 @@
 // Announcement Studio - the list, and the actions a post's card offers.
 
-'use strict';
+import { KlndrMotionTimeline } from '@klndr/core/motion/motion-timeline';
+import { KlndrAnnouncementMedia } from '../../shared/announcements/media-view.js';
+import { KlndrAnnouncementReader } from '../../shared/announcements/reader.js';
+import { API } from '../../shared/api.js';
+import { KlndrAdmin } from '../shell.js';
+import { KlndrStudio } from './core.js';
 
 (() => {
   const S = KlndrStudio;

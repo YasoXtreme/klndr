@@ -217,7 +217,7 @@ html, body {
 }
 
 /* The lockup's entrance lives with the boot overlay that plays it:
-   public/css/boot.css. */
+   src/shared/boot.css. */
 
 @media (prefers-reduced-motion: reduce) {
   /* Near-zero rather than zero: the split's JS orchestrator unpins the frozen

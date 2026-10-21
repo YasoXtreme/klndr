@@ -4,15 +4,12 @@
 // in-app actions - and the questions every surface asks of one: is it live, is
 // it for this person, has it reached them, have they read it.
 //
-// Loaded by the browser AND required by the server, the way palette.js is. The
+// Imported by the browser AND required by the server, the way palette.js is. The
 // Studio's "reaches N people" and the server's decision about who actually gets
 // a post have to be the same sum, and two copies of these rules would drift into
 // two different answers.
 
-'use strict';
-
-/* exported KlndrAnnouncementRules */
-const KlndrAnnouncementRules = (() => {
+export const KlndrAnnouncementRules = (() => {
   const KINDS = [
     { id: 'feature', label: 'New feature', icon: 'auto_awesome' },
     { id: 'improvement', label: 'Improvement', icon: 'trending_up' },
@@ -178,6 +175,3 @@ const KlndrAnnouncementRules = (() => {
   };
 })();
 
-// The browser gets it as a global, the way palette.js does; node gets it
-// through require.
-if (typeof module !== 'undefined' && module.exports) module.exports = KlndrAnnouncementRules;

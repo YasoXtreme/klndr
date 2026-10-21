@@ -3,10 +3,13 @@
 // before a ticked row moves on), the list's motion, filter tabs (default:
 // Uncompleted & Unscheduled), and inline task creation with dynamic background color.
 
-'use strict';
+import { KlndrPalette } from '@klndr/core/palette';
+import { TaskModel } from '@klndr/core/task-model';
+import { KlndrTheme } from '../shared/theme.js';
+import { CategoryPicker } from './category-picker.js';
+import { TimelineDOM } from './timeline-dom.js';
 
-/* exported TasksSidebar */
-class TasksSidebar {
+export class TasksSidebar {
   // A drag has to earn the gesture. Starting one on the bare press built a ghost
   // on every click, and on touch it made the list unscrollable: the first
   // finger-down became a drag and the scroll never happened.

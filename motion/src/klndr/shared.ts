@@ -1,6 +1,6 @@
 // The motion scenes klndr plays live in the app, used here unchanged - so a clip
 // rendered from this workspace matches the in-app scene frame for frame. Edit a
-// scene in protected/js/motion/scenes.js and both places change.
+// scene in packages/core/src/motion/scenes.js and both places change.
 
 export type FieldSchema =
   | { key: string; type: 'text'; label: string; max: number; default: string }
@@ -91,10 +91,12 @@ type CoreApi = {
   alpha(hex: string, opacity: number): string;
 };
 
-export const KlndrScenes: ScenesApi = require('../../../protected/js/motion/scenes.js');
-export const KlndrMotionTimeline: TimelineApi = require('../../../protected/js/motion/motion-timeline.js');
-export const KlndrMotionCore: CoreApi = require('../../../protected/js/motion/motion-core.js');
-export const KlndrPalette: { colors: string[] } = require('../../../protected/js/palette.js');
+// By relative path: motion/ is not one of the repo's workspaces. Each module
+// exports its namespace object by name.
+export const KlndrScenes: ScenesApi = require('../../../packages/core/src/motion/scenes.js').KlndrScenes;
+export const KlndrMotionTimeline: TimelineApi = require('../../../packages/core/src/motion/motion-timeline.js').KlndrMotionTimeline;
+export const KlndrMotionCore: CoreApi = require('../../../packages/core/src/motion/motion-core.js').KlndrMotionCore;
+export const KlndrPalette: { colors: string[] } = require('../../../packages/core/src/palette.js').KlndrPalette;
 
 // The app's own face, loaded by ./fonts.ts.
 export const FONT = "ElmsSans, -apple-system, 'Segoe UI', Roboto, sans-serif";

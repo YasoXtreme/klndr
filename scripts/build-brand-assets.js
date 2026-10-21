@@ -29,7 +29,7 @@ const zlib = require('zlib');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'brand', 'png');
-const OUT = path.join(ROOT, 'public', 'assets');
+const OUT = path.join(ROOT, 'apps', 'web', 'static', 'assets');
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -422,7 +422,7 @@ function load(name) {
 
 function write(name, buf) {
   fs.writeFileSync(path.join(OUT, name), buf);
-  console.log(`  ${name.padEnd(24)} ${String(buf.length).padStart(7)} bytes  public/assets`);
+  console.log(`  ${name.padEnd(24)} ${String(buf.length).padStart(7)} bytes  apps/web/static/assets`);
 }
 
 function writeKit(name, buf) {

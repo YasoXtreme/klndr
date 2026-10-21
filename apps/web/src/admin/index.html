@@ -38,20 +38,16 @@
       crossorigin
     />
 
-    <!-- The boot overlay's styles, written in here by server/pages.js from
-         public/css/boot.css: the loading screen cannot wait on a file of its
+    <!-- The boot overlay's styles, written in here by the build from
+         src/shared/boot.css: the loading screen cannot wait on a file of its
          own. -->
     <!-- klndr:boot.css -->
 
-    <link rel="stylesheet" href="/public/css/theme.css" />
-    <link rel="stylesheet" href="/public/css/common.css" />
-    <!-- Cards, tables, stat tiles and charts, which every section uses. -->
-    <link rel="stylesheet" href="/admin/analytics.css" />
-    <!-- The rules the app itself draws announcements with, so the Studio's
-         preview is the real thing rather than a lookalike. -->
-    <link rel="stylesheet" href="/protected/css/announcements.css" />
-    <link rel="stylesheet" href="/admin/announcements.css" />
-    <link rel="stylesheet" href="/admin/admin.css" />
+    <!-- The page's stylesheet, as built from the imports in main.js. The build
+         puts it here, before the icon font's stylesheet below: that one
+         also styles .material-symbols-outlined, and the later sheet wins at
+         equal specificity. -->
+    <!-- klndr:styles -->
 
     <link
       rel="preload"
@@ -67,7 +63,7 @@
     </noscript>
   </head>
   <body data-boot="admin">
-    <!-- The boot overlay: server/pages.js writes public/js/boot.js in here,
+    <!-- The boot overlay: the build writes src/shared/boot.js in here,
          and it puts the klndr logo up, admin tag and all, before anything
          else is parsed. admin/shell.js calls KlndrBoot.ready() once the first
          page has drawn, and the logo flies into whichever of the two brands
@@ -127,35 +123,9 @@
 
     <div class="adm-toast" id="admToast" role="status" aria-live="polite" hidden></div>
 
-    <script src="/public/js/theme.js"></script>
-    <script src="/protected/js/api.js"></script>
-    <script src="/protected/js/palette.js"></script>
-    <script src="/admin/charts.js"></script>
-    <script src="/protected/js/announcements/rules.js"></script>
-    <script src="/protected/js/announcements/markdown.js"></script>
-    <script src="/protected/js/motion/motion-core.js"></script>
-    <script src="/protected/js/motion/scenes.js"></script>
-    <script src="/protected/js/motion/motion-timeline.js"></script>
-    <script src="/protected/js/motion/motion-player.js"></script>
-    <script src="/protected/js/vendor.js"></script>
-    <script src="/protected/js/announcements/media-view.js"></script>
-    <script src="/protected/js/announcements/reader.js"></script>
-
-    <script src="/admin/shell.js"></script>
-
-    <!-- The sections, in sidebar order. -->
-    <script src="/admin/analytics.js"></script>
-
-    <script src="/admin/studio/core.js"></script>
-    <script src="/admin/studio/uploads.js"></script>
-    <script src="/admin/studio/list.js"></script>
-    <script src="/admin/studio/editor.js"></script>
-    <script src="/admin/studio/editor-sections.js"></script>
-    <script src="/admin/studio/editor-media.js"></script>
-    <script src="/admin/studio/preview.js"></script>
-    <script src="/admin/studio/stats.js"></script>
-    <script src="/admin/announcements.js"></script>
-
-    <script src="/admin/accounts.js"></script>
+    <!-- The shell and every section, imported by main.js in sidebar order. The build replaces this with the bundle, hashed, in the
+         <head>; a module runs once the page is parsed, as these scripts did
+         from the end of <body>. -->
+    <script type="module" src="./main.js"></script>
   </body>
 </html>

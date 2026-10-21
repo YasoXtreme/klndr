@@ -5,7 +5,12 @@
 // each other. The form sections are editor-sections.js and editor-media.js; the
 // live preview is preview.js.
 
-'use strict';
+import { KlndrMarkdown } from '@klndr/core/announcements/markdown';
+import { KlndrMotionTimeline } from '@klndr/core/motion/motion-timeline';
+import { KlndrAnnouncementReader } from '../../shared/announcements/reader.js';
+import { API } from '../../shared/api.js';
+import { KlndrAdmin } from '../shell.js';
+import { KlndrStudio } from './core.js';
 
 (() => {
   const S = KlndrStudio;

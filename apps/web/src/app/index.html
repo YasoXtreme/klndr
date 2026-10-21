@@ -17,7 +17,7 @@
          It writes an attribute and nothing else, and only for a PINNED
          choice: the default is the OS, which the media queries below and in
          theme.css already answer without any script running. The rest of the
-         controller is /public/js/theme.js. -->
+         controller is src/shared/theme.js. -->
     <script>
       try {
         var t = localStorage.getItem('klndr:theme');
@@ -54,18 +54,16 @@
       crossorigin
     />
 
-    <!-- The boot overlay's styles, written in here by server/pages.js from
-         public/css/boot.css: the loading screen cannot wait on a file of its
+    <!-- The boot overlay's styles, written in here by the build from
+         src/shared/boot.css: the loading screen cannot wait on a file of its
          own. -->
     <!-- klndr:boot.css -->
 
-    <link rel="stylesheet" href="/public/css/theme.css" />
-    <link rel="stylesheet" href="/public/css/common.css" />
-    <link rel="stylesheet" href="/protected/css/app.css" />
-    <link rel="stylesheet" href="/protected/css/responsive.css" />
-    <!-- After responsive.css on purpose: its phone rules restate what the
-         bottom-sheet rules above would otherwise override. -->
-    <link rel="stylesheet" href="/protected/css/announcements.css" />
+    <!-- The page's stylesheet, as built from the imports in main.js. The build
+         puts it here, before the icon font's stylesheet below: that one
+         also styles .material-symbols-outlined, and the later sheet wins at
+         equal specificity. -->
+    <!-- klndr:styles -->
 
     <!-- Third party and render-blocking, which on a cold start is the single
          longest thing between the request and a first paint. Loaded async so
@@ -88,7 +86,7 @@
     <!-- ====================================================
        0. BOOT OVERLAY
        ====================================================
-       server/pages.js writes public/js/boot.js in here, first thing in the
+       The build writes src/shared/boot.js in here, first thing in the
        body, and it puts the klndr logo up before anything else is parsed.
        app.js tells it two things: KlndrBoot.ready() once the board is on
        screen, when the logo flies into the topbar's (data-boot-brand), and
@@ -972,7 +970,7 @@
        ANNOUNCEMENTS
        ====================================================
        The containers KlndrAnnouncements fills in
-       (protected/js/announcements/inbox.js). They are ordinary
+       (src/app/announcements/inbox.js). They are ordinary
        .modal-containers, so Escape, a backdrop click and closeAllModals()
        treat them exactly like every other modal on this page. -->
     <div class="modal-container ann-inbox-modal" id="annInboxModal">
@@ -1213,29 +1211,10 @@
       </a>
     </div>
 
-    <!-- Protected Frontend Scripts -->
-    <script src="/public/js/theme.js"></script>
-    <script src="/protected/js/api.js"></script>
-    <script src="/protected/js/palette.js"></script>
-    <script src="/protected/js/category-picker.js"></script>
-    <script src="/protected/js/history.js"></script>
-    <script src="/protected/js/task-model.js"></script>
-    <script src="/protected/js/physics-engine.js"></script>
-    <script src="/protected/js/timeline-canvas.js"></script>
-    <script src="/protected/js/timeline-dom.js"></script>
-    <script src="/protected/js/drag-controller.js"></script>
-    <script src="/protected/js/sidebar.js"></script>
-    <script src="/protected/js/announcements/rules.js"></script>
-    <script src="/protected/js/announcements/markdown.js"></script>
-    <script src="/protected/js/motion/motion-core.js"></script>
-    <script src="/protected/js/motion/scenes.js"></script>
-    <script src="/protected/js/motion/motion-timeline.js"></script>
-    <script src="/protected/js/motion/motion-player.js"></script>
-    <script src="/protected/js/vendor.js"></script>
-    <script src="/protected/js/announcements/media-view.js"></script>
-    <script src="/protected/js/announcements/reader.js"></script>
-    <script src="/protected/js/announcements/inbox.js"></script>
-    <script src="/protected/js/app.js"></script>
+    <!-- Everything the app runs, imported by main.js. The build replaces this with the bundle, hashed, in the
+         <head>; a module runs once the page is parsed, as these scripts did
+         from the end of <body>. -->
+    <script type="module" src="./main.js"></script>
     <!-- Forced password change. Raised when an admin reset leaves the account
          holding a temporary password: the server refuses every other API call
          until it is replaced, so there is deliberately no way to dismiss this

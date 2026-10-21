@@ -1,0 +1,14 @@
+{
+  "name": "@klndr/web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The three pages (app, admin, login) and what they load, built by Vite into dist/.",
+  "dependencies": {
+    "@klndr/core": "*",
+    "fflate": "^0.8.3",
+    "lottie-web": "^5.13.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
+  }
+}

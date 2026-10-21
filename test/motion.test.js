@@ -9,8 +9,8 @@
 
 const assert = require("node:assert/strict");
 
-const Core = require("../protected/js/motion/motion-core");
-const Scenes = require("../protected/js/motion/scenes");
+const { KlndrMotionCore: Core } = require("@klndr/core/motion/motion-core");
+const { KlndrScenes: Scenes } = require("@klndr/core/motion/scenes");
 
 function round(value) {
   if (typeof value !== "number") return value;

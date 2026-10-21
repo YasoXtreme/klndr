@@ -1,16 +1,17 @@
 const express = require("express");
 const path = require("path");
 const cookieParser = require("cookie-parser");
-const db = require("./server/db");
-const categories = require("./server/categories");
-const pages = require("./server/pages");
+const db = require("./db");
+const categories = require("./categories");
+const pages = require("./pages");
+const { DIST, STATIC } = require("./paths");
 const {
   getSessionToken,
   requireApiAuth,
   requirePageAuth,
   requireAdmin,
   requirePageAdmin,
-} = require("./server/auth-middleware");
+} = require("./auth-middleware");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,30 +47,29 @@ app.use(
 );
 
 // getSessionToken / requireApiAuth / requirePageAuth now live in
-// server/auth-middleware.js, so route modules can share them.
+// auth-middleware.js, so route modules can share them.
 
 // ==========================================
 // 1. PUBLIC ROUTES (Login & Public Assets)
 // ==========================================
 
-// Serve public static assets (fonts, brand marks, login css/js). How long each
-// may be cached is decided in server/pages.js.
+// The login page's own files, and the ones served as they are (the font, the
+// icons, the manifest). How long each may be cached is decided in pages.js.
+const PUBLIC_DIR = path.join(DIST, "public");
 app.use(
   "/public",
-  express.static(path.join(__dirname, "public"), pages.staticOptions("public")),
+  express.static(PUBLIC_DIR, pages.staticOptions("public", PUBLIC_DIR)),
 );
+const ASSETS_DIR = path.join(STATIC, "assets");
 app.use(
   "/assets",
-  express.static(
-    path.join(__dirname, "public", "assets"),
-    pages.staticOptions("assets"),
-  ),
+  express.static(ASSETS_DIR, pages.staticOptions("assets", ASSETS_DIR)),
 );
 
 // Both pages point at the icons explicitly, so this is only ever hit by
 // clients that probe the conventional path instead of reading the markup.
 app.get("/favicon.ico", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "assets", "favicon.ico"), {
+  res.sendFile(path.join(ASSETS_DIR, "favicon.ico"), {
     maxAge: "7d",
   });
 });
@@ -273,15 +273,13 @@ app.post(
 // 2. PROTECTED STATIC ASSETS & APP CODE
 // ==========================================
 
-// Guard protected CSS and JS. Cached privately, in the browser that got past
-// the guard, and only for as long as server/pages.js allows.
+// Guard the app's files. Cached privately, in the browser that got past the
+// guard, and only for as long as pages.js allows.
+const PROTECTED_DIR = path.join(DIST, "protected");
 app.use(
   "/protected",
   requirePageAuth,
-  express.static(
-    path.join(__dirname, "protected"),
-    pages.staticOptions("protected"),
-  ),
+  express.static(PROTECTED_DIR, pages.staticOptions("protected", PROTECTED_DIR)),
 );
 
 // The admin page, and its own assets beside it. They live in a sibling
@@ -300,13 +298,14 @@ app.use(
 // so any /admin URL that is not a file gets that page. The link into it is
 // hidden for non-admins, but that is presentation - these guards are the
 // control, and every endpoint the page calls is guarded again on its own mount.
+const ADMIN_DIR = path.join(DIST, "admin");
 app.use(
   "/admin",
   requirePageAuth,
   requirePageAdmin,
   express.static(
-    path.join(__dirname, "admin"),
-    pages.staticOptions("admin", { index: false, redirect: false }),
+    ADMIN_DIR,
+    pages.staticOptions("admin", ADMIN_DIR, { index: false, redirect: false }),
   ),
   (req, res, next) => {
     if (req.method !== "GET" || path.extname(req.path)) return next();
@@ -383,7 +382,7 @@ app.put("/api/settings", requireApiAuth, async (req, res) => {
 //
 // The list is per user and starts empty. A user who predates categories is
 // migrated on their first read here, from the categories their tasks actually
-// carry - see server/categories.js.
+// carry - see categories.js.
 app.get("/api/categories", requireApiAuth, async (req, res) => {
   try {
     const list = await categories.listCategories(req.user.id);
@@ -433,14 +432,14 @@ app.delete("/api/categories/:id", requireApiAuth, async (req, res) => {
 app.use(
   "/api/announcements",
   requireApiAuth,
-  require("./server/routes/announcements"),
+  require("./routes/announcements"),
 );
 
 app.use(
   "/api/admin/announcements",
   requireApiAuth,
   requireAdmin,
-  require("./server/routes/admin-announcements"),
+  require("./routes/admin-announcements"),
 );
 
 // The media library behind the Studio. Uploads are signed here and sent by the
@@ -449,21 +448,21 @@ app.use(
   "/api/admin/media",
   requireApiAuth,
   requireAdmin,
-  require("./server/routes/admin-media"),
+  require("./routes/admin-media"),
 );
 
 // Announcement media in a private bucket, signed per read. A page guard rather
 // than an API one: these are <img> and <video> requests, for which a JSON 401
 // means nothing. With a public bucket the app links to the bucket directly and
 // this route only redirects there.
-app.get("/media/*", requirePageAuth, require("./server/media").serveObject);
+app.get("/media/*", requirePageAuth, require("./media").serveObject);
 
 // Integrations (Sylla and anything added to the connector registry later).
 // Must be registered before the catch-all below, which would otherwise turn an
 // OAuth callback into a redirect to /login. Guards are per-route inside the
 // router: JSON 401s for the XHR endpoints, a redirect for the two that are
 // top-level navigations.
-app.use("/api/integrations", require("./server/routes/integrations"));
+app.use("/api/integrations", require("./routes/integrations"));
 
 // Guards hoisted to the mount, unlike the integrations router: every route
 // under this one is admin-only JSON, with no navigation among them.
@@ -471,7 +470,7 @@ app.use(
   "/api/admin/analytics",
   requireApiAuth,
   requireAdmin,
-  require("./server/routes/analytics"),
+  require("./routes/analytics"),
 );
 
 // Catch-all 404 handler. A path with a file extension is a missing file, not

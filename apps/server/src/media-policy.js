@@ -2,7 +2,7 @@ const { HttpError } = require("./http-error");
 
 // What may go into the media library, and how an uploaded document is checked.
 //
-// Pure: no bucket, no database. server/media.js does the I/O and asks this file
+// Pure: no bucket, no database. media.js does the I/O and asks this file
 // every question, which is what lets test/media.test.js cover the rules without
 // either of them.
 

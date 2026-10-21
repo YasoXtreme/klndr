@@ -1,0 +1,10 @@
+{
+  "name": "@klndr/core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Code with no DOM in it that the browser, the server, the tests and the motion workspace share.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.js"
+  }
+}

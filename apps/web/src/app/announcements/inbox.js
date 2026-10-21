@@ -8,10 +8,13 @@
 // It owns its own DOM and needs little from KlndrApp: closing modals, a toast,
 // the person's settings, and the screens a post's button can open.
 
-'use strict';
+import { KlndrMarkdown } from '@klndr/core/announcements/markdown';
+import { KlndrAnnouncementRules } from '@klndr/core/announcements/rules';
+import { KlndrAnnouncementMedia } from '../../shared/announcements/media-view.js';
+import { KlndrAnnouncementReader } from '../../shared/announcements/reader.js';
+import { API } from '../../shared/api.js';
 
-/* exported KlndrAnnouncements */
-class KlndrAnnouncements {
+export class KlndrAnnouncements {
   // More stories than this at once is a queue, not news. The rest are marked
   // delivered - they will not pop up later - and wait in the inbox, unread.
   static STORY_LIMIT = 3;

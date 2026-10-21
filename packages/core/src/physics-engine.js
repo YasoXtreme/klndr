@@ -7,10 +7,7 @@
 //
 // Entry shape: { taskId, segmentId, startTime, duration, endTime, isLocked, completed }
 
-'use strict';
-
-/* exported PhysicsEngine */
-const PhysicsEngine = {
+export const PhysicsEngine = {
   MIN_TASK_DURATION_MINUTES: 15,
 
   // Below this, a shift is not a move. Without snapping on, a drop carries

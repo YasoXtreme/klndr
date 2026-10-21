@@ -2,7 +2,9 @@ node_modules
 .claude
 .env
 .env.test
-# npm run build (Build Output API), and the Vercel CLI's project link
+# npm run build:web (the pages) and npm run build (Build Output API), and the
+# Vercel CLI's project link
+/apps/web/dist/
 .vercel
 data/
 motion/out/
