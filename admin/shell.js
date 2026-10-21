@@ -15,6 +15,7 @@
 
 'use strict';
 
+/* exported KlndrAdmin */
 const KlndrAdmin = (() => {
   const BASE = '/admin';
   const LAST_PAGE_KEY = 'klndr:admin:last';

@@ -10,6 +10,7 @@
 
 'use strict';
 
+/* exported KlndrAnnouncementReader */
 const KlndrAnnouncementReader = (() => {
   const Rules = KlndrAnnouncementRules;
 

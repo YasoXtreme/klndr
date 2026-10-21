@@ -17,6 +17,7 @@
 
 'use strict';
 
+/* exported KlndrMarkdown */
 const KlndrMarkdown = (() => {
   // Placeholders for finished HTML while the rest of a line is still being
   // formatted. Private-use characters, stripped from the input first, so no

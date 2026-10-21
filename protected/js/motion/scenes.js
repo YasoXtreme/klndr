@@ -26,6 +26,7 @@
 
 'use strict';
 
+/* exported KlndrScenes */
 const KlndrScenes = (() => {
   const M = typeof KlndrMotionCore !== 'undefined' ? KlndrMotionCore : require('./motion-core');
   const Palette = typeof KlndrPalette !== 'undefined' ? KlndrPalette : require('../palette');

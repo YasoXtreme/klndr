@@ -9,6 +9,7 @@
 
 'use strict';
 
+/* exported PhysicsEngine */
 const PhysicsEngine = {
   MIN_TASK_DURATION_MINUTES: 15,
 

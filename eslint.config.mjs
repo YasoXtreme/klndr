@@ -11,12 +11,10 @@ const SHARED = [
   "KlndrTheme", "KlndrBoot", "API", "KlndrPalette",
   "KlndrAnnouncementRules", "KlndrMarkdown", "KlndrAnnouncementMedia", "KlndrAnnouncementReader",
   "KlndrMotionCore", "KlndrScenes", "KlndrMotionTimeline", "KlndrMotion",
-  // Vendor UMD builds, loaded on demand by media-view.js and studio/uploads.js.
-  "lottie", "fflate",
 ];
 const APP = [
   "CategoryPicker", "HistoryStack", "TaskModel", "PhysicsEngine", "TimelineCanvas", "TimelineDOM",
-  "DragController", "TasksSidebar", "UNCATEGORIZED", "KlndrAnnouncements", "KlndrApp",
+  "DragController", "TasksSidebar", "KlndrAnnouncements", "KlndrApp",
 ];
 const ADMIN = ["KlndrCharts", "KlndrAdmin", "KlndrStudio"];
 
@@ -79,10 +77,16 @@ export default tseslint.config(
     files: ["public/js/**/*.js", "protected/js/**/*.js", "admin/**/*.js"],
     languageOptions: { sourceType: "script", globals: { ...globals.browser } },
     rules: {
-      // A file's top-level name is its export: defined here, used by the
-      // files loaded after it, and listed in the maps above.
+      // A file's top-level names are its exports: every page shares them. Each
+      // file says which they are in an `/* exported Name */` comment, so a
+      // helper declared at the top level by accident is an error rather than
+      // one more global, and the move to modules can turn each comment into
+      // an export statement.
+      "no-implicit-globals": ["error", { lexicalBindings: true }],
+      "no-unused-vars": ["error", { args: "none", caughtErrors: "none", ignoreRestSiblings: true }],
+      // An exported name is also listed in the maps above, for the files that
+      // use it.
       "no-redeclare": ["error", { builtinGlobals: false }],
-      "no-unused-vars": ["error", { vars: "local", args: "none", caughtErrors: "none", ignoreRestSiblings: true }],
     },
   },
   {

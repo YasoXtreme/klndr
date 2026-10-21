@@ -11,6 +11,7 @@
 
 'use strict';
 
+/* exported KlndrAnnouncementRules */
 const KlndrAnnouncementRules = (() => {
   const KINDS = [
     { id: 'feature', label: 'New feature', icon: 'auto_awesome' },

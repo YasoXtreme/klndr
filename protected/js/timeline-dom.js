@@ -11,6 +11,7 @@
 
 'use strict';
 
+/* exported TimelineDOM */
 class TimelineDOM {
   // Two boundaries within this many minutes of each other count as touching.
   static SEAM_TOLERANCE_MINUTES = 0.5;

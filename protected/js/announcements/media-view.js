@@ -11,6 +11,7 @@
 
 'use strict';
 
+/* exported KlndrAnnouncementMedia */
 const KlndrAnnouncementMedia = (() => {
   const LOTTIE_SRC = '/protected/vendor/lottie_light.min.js';
 

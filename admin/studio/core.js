@@ -8,6 +8,7 @@
 
 'use strict';
 
+/* exported KlndrStudio */
 const KlndrStudio = (() => {
   const Rules = KlndrAnnouncementRules;
   // The pieces every admin section shares live in the shell; the Studio's

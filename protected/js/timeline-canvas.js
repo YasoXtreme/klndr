@@ -10,6 +10,7 @@
 
 'use strict';
 
+/* exported TimelineCanvas */
 class TimelineCanvas {
   static MIN_ROW_HEIGHT = 72;
   static MIN_ZOOM = 1;

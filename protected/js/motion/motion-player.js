@@ -16,6 +16,7 @@
 
 'use strict';
 
+/* exported KlndrMotion */
 const KlndrMotion = (() => {
   const Timeline = KlndrMotionTimeline;
   const FPS = KlndrScenes.FPS;

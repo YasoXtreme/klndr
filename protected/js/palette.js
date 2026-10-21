@@ -8,6 +8,7 @@
 
 'use strict';
 
+/* exported KlndrPalette */
 const KlndrPalette = {
   // 20 Curated Google Icons
   icons: [

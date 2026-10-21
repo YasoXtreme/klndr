@@ -17,6 +17,7 @@
 
 'use strict';
 
+/* exported HistoryStack */
 class HistoryStack {
   constructor(limit = 60) {
     this.limit = limit;

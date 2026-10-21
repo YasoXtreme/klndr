@@ -5,8 +5,7 @@
 
 'use strict';
 
-const UNCATEGORIZED = CategoryPicker.UNCATEGORIZED;
-
+/* exported TasksSidebar */
 class TasksSidebar {
   // A drag has to earn the gesture. Starting one on the bare press built a ghost
   // on every click, and on touch it made the list unscrollable: the first
@@ -586,7 +585,7 @@ class TasksSidebar {
       if (this.activeCategoryFilter === 'UNSCHEDULED') {
         return !isScheduled;
       }
-      if (this.activeCategoryFilter === UNCATEGORIZED) {
+      if (this.activeCategoryFilter === CategoryPicker.UNCATEGORIZED) {
         return !task.category;
       }
       if (this.activeCategoryFilter !== 'ALL') {
@@ -820,7 +819,7 @@ class TasksSidebar {
     const names = this.categoryColumns.map(cat => cat.name);
     const hasLoose = (this.state.tasks || []).some(task => !task.category);
     const entries = names.map(name => ({ value: name, label: name }));
-    if (hasLoose) entries.push({ value: UNCATEGORIZED, label: 'Uncategorized' });
+    if (hasLoose) entries.push({ value: CategoryPicker.UNCATEGORIZED, label: 'Uncategorized' });
 
     const stillThere = entries.some(entry => entry.value === this.activeCategoryFilter);
     const isStatusFilter = ['ALL', 'UNCOMPLETED_UNSCHEDULED', 'UNCOMPLETED', 'COMPLETED', 'UNSCHEDULED']
@@ -897,7 +896,7 @@ class TasksSidebar {
       if (loose.length) {
         columns.push({
           category: { id: null, name: 'Uncategorized', color: null, icon: null },
-          key: UNCATEGORIZED,
+          key: CategoryPicker.UNCATEGORIZED,
           tasks: loose
         });
       }

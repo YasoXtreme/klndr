@@ -20,6 +20,7 @@
 
 'use strict';
 
+/* exported KlndrMotionTimeline */
 const KlndrMotionTimeline = (() => {
   const M = typeof KlndrMotionCore !== 'undefined' ? KlndrMotionCore : require('./motion-core');
   const Scenes = typeof KlndrScenes !== 'undefined' ? KlndrScenes : require('./scenes');

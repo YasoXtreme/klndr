@@ -7,6 +7,7 @@
 
 'use strict';
 
+/* exported DragController */
 class DragController {
   static SEAM_MIN_MINUTES = PhysicsEngine.MIN_TASK_DURATION_MINUTES;
 

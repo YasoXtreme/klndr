@@ -17,6 +17,7 @@
 
 'use strict';
 
+/* exported TaskModel */
 const TaskModel = {
   MIN_SEGMENT_MINUTES: 15,
 

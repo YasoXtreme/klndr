@@ -14,6 +14,7 @@
 
 'use strict';
 
+/* exported KlndrMotionCore */
 const KlndrMotionCore = (() => {
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const lerp = (from, to, t) => from + (to - from) * t;

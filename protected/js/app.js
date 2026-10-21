@@ -2,6 +2,7 @@
 
 'use strict';
 
+/* exported KlndrApp */
 class KlndrApp {
   constructor() {
     this.user = null;
