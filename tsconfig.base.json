@@ -1,0 +1,19 @@
+{
+  // Shared by every TypeScript project in the repo. The same strictness as
+  // Sylla: strict, indexed access may be undefined, overrides are explicit.
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  }
+}

@@ -40,7 +40,7 @@
  * A page that is ready sooner never waits for more than that: the logo sets
  * off for home the moment it has landed.
  *
- * The pure parts come first and are exported to node:test; everything that
+ * The pure parts come first and are exported to the unit tests; everything that
  * touches the DOM only runs in a browser.
  */
 (function () {

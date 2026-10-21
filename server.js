@@ -490,8 +490,8 @@ app.use((req, res) => {
 // Last. Express 4 only gets here through next(err), which the auth guards and
 // the pages now use: before, a database error inside an async handler left
 // the request open until the function timed out, which looked exactly like
-// the app freezing.
-// eslint-disable-next-line no-unused-vars
+// the app freezing. It takes four parameters even though `next` goes unused:
+// that is how Express tells an error handler from ordinary middleware.
 app.use((err, req, res, next) => {
   const fromDatabase = Boolean(err && typeof err.name === "string" && err.name.startsWith("Mongo"));
   const status = err.status || err.statusCode || (fromDatabase ? 503 : 500);
