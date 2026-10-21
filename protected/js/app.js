@@ -3630,7 +3630,18 @@ class KlndrApp {
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  window.klndr = new KlndrApp();
-  window.klndr.init();
-});
+// Started once the page is parsed. As the last script in <body> this runs
+// while the page is still loading, but loaded any other way (async, or imported
+// once the page is up) it would run after DOMContentLoaded has fired and wait
+// for an event that never comes. theme.js and admin/shell.js start the same way.
+(() => {
+  const start = () => {
+    window.klndr = new KlndrApp();
+    window.klndr.init();
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();
