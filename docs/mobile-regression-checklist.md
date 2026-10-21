@@ -1,21 +1,35 @@
 # klndr — responsive & touch regression checklist
 
-The Playwright suite (`npm run test:e2e`) only smoke-tests the UI so far:
-sign-in, the geometry check on desktop, one mouse drag from the task list and
-its undo, and admin. Everything else here is still checked by hand: run it
-after any change to the timeline renderer, the drag controller, the layout
-controller or `responsive.css`.
+Run it after any change to the timeline renderer, the drag controller, the
+layout controller or `responsive.css`. Much of it now runs by itself:
+`npm run test:e2e` (the `checklist` project, `e2e/mobile/`) covers the parts
+marked **[auto]** below, so by hand you only need the rest.
 
-Two things here are automatable and should be done first, because they are free:
-
-| Check | How |
+| Automated | Where |
 |---|---|
-| Geometry self-check | Load `/?debug=geom`. The console must print `[klndr geom] ok:` and never `[klndr geom]` with a problem list. Repeat at each day count. |
-| Console is clean | `Failed to load resource: 400` / `Background sync failed for sylla` are pre-existing and unrelated. Anything else is a regression. |
+| Geometry self-check at 1, 3, 5 and 7 days; a clean console | `e2e/mobile/board.spec.ts`, `e2e/smoke.spec.ts` |
+| The device matrix: layout, orientation, input, a calendar pane wider than 0, the tab bar only on a phone | `e2e/mobile/device-matrix.spec.ts` |
+| All 20 drag cases, each checked in the model and undone exactly; a mouse released outside the window; a cancelled touch | `e2e/mobile/drags.spec.ts` |
+| Day-count defaults, the phone's day-count buttons surviving a reload, arrows stepping one view and stopping at ±28 days, navigation fetching its range | `e2e/mobile/board.spec.ts` |
+| Phone panes and tab bar, the flat task list, opening at the current hour, reduced motion on menus and sheets, touch-target size | `e2e/mobile/board.spec.ts` |
+
+Touch drags run with `(pointer: coarse)` emulated, as on a phone or tablet. On
+a touchscreen laptop, whose primary pointer is fine, block bodies keep
+`touch-action: pan` (see `responsive.css`), so a finger long-press there pans
+instead of dragging. That case is untested and worth checking by hand.
+
+**Known failure.** On a touch tablet in portrait (768×1024, seven days) the
+calendar header overflows its pane: the date label wraps, Fit is cut off, and
+zoom-in and Calendar Options sit under the tasks sidebar. The suite keeps this
+as an expected failure until the layout is fixed.
+
+The console's known noise: `Failed to load resource: 400` and
+`Background sync failed for sylla` are pre-existing and unrelated. Anything
+else is a regression.
 
 ---
 
-## Device matrix
+## Device matrix [auto]
 
 Reload at every size. Resizing an already-loaded page does **not** re-evaluate
 media queries reliably in emulation, and several rules only take effect at boot.
@@ -36,7 +50,7 @@ At each: `document.body.dataset` must report the `layout`, `orientation` and
 
 ---
 
-## The 20 drag cases
+## The 20 drag cases [auto]
 
 Five drag types × two orientations × two input types. Force an orientation from
 **Calendar Options → Calendar Direction** so both can be exercised at any width.
@@ -268,13 +282,13 @@ not stick to the pointer, and that **undo** restores the previous state exactly.
 
 ## Accessibility
 
-- [ ] With **prefers-reduced-motion: reduce**, no modal, sheet, context menu,
+- [ ] **[auto for menus and sheets]** With **prefers-reduced-motion: reduce**, no modal, sheet, context menu,
       seam grip, focus flash or sync dot animates. The boot logo fades in and
       out and nothing else: no bounce, sweep, press, shield turn or flight into
       the topbar, and going between the app and admin is a fade, not a trip.
       The only animation that must survive is `kb-bailout` — it is `0s` and is
       a timeout, not motion.
-- [ ] Touch targets reach 44px: nav arrows, zoom, Today, sidebar icons, modal
+- [ ] **[auto, 40px wide]** Touch targets reach 44px: nav arrows, zoom, Today, sidebar icons, modal
       close, and the day-count buttons.
 
 ---

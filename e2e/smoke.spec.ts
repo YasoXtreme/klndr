@@ -120,9 +120,3 @@ test("admin loads its sections in order, and the logo carries you there and back
   await page.waitForFunction(() => Boolean(window.klndr));
   expect(problems).toEqual([]);
 });
-
-declare global {
-  interface Window {
-    klndr?: { tasks: Array<{ id: string; segments?: unknown[] }> };
-  }
-}
